@@ -122,24 +122,27 @@ export const Sidebar = (props: SidebarProps) => {
 
     return (
         <nav
-            className={`bg-slate-900 overflow-auto flex flex-col justify-between ${
+            className={`bg-slate-900 flex flex-col h-full ${
                 expand ? "block" : "hidden"
             }`}
         >
-            <div className="sticky top-0 bg-slate-900 py-4 flex justify-center items-center font-semibold text-gray-100 border-b border-gray-400">
-                <span>{title}</span>
-            </div>
-            {!Object.values(sessionsCategory)
-                .map(({ sessions }) => sessions ?? {})
-                .every((sessions) => !Object.keys(sessions).length) && (
-                <div
-                    className="mx-3 my-5 py-1 border border-dashed text-sm text-center text-gray-200 hover:bg-slate-600 transition-all rounded-sm cursor-pointer"
-                    onClick={() => navigate(newChatUrl)}
-                >
-                    {t("components.Sidebar.new_chat")}
+            <div className="sticky top-0 bg-slate-900">
+                <div className="py-4 flex justify-center items-center font-semibold text-gray-100 border-b border-gray-400">
+                    <span>{title}</span>
                 </div>
-            )}
-            <div className="flex flex-col space-y-2 p-2 mb-auto">
+                {!Object.values(sessionsCategory)
+                    .map(({ sessions }) => sessions ?? {})
+                    .every((sessions) => !Object.keys(sessions).length) && (
+                    <div
+                        className="mx-3 my-5 py-1 border border-dashed text-sm text-center text-gray-200 hover:bg-slate-600 transition-all rounded-sm cursor-pointer"
+                        onClick={() => navigate(newChatUrl)}
+                    >
+                        {t("components.Sidebar.new_chat")}
+                    </div>
+                )}
+            </div>
+            <div className="flex-1 overflow-auto">
+                <div className="flex flex-col space-y-2 p-2 mb-auto">
                 {Object.keys(sessionsCategory).map((key, index, arr) => {
                     const currentLabel = sessionsCategory[key].label;
                     const currentSessions =
@@ -297,6 +300,7 @@ export const Sidebar = (props: SidebarProps) => {
                     {t("components.Sidebar.no_history_chat")}
                 </div>
             )}
+            </div>
             <div className="sticky bottom-0 bg-slate-900 py-1 flex justify-center items-center text-xs text-gray-100 border-gray-400 border-t">
                 <select
                     className="text-gray-300/50 text-center bg-transparent w-full outline-none m-1"
