@@ -10,7 +10,7 @@ import { Skeleton } from "./components/Skeleton";
 import { useDispatch, useSelector } from "react-redux";
 import { ReduxStoreProps } from "./config/store";
 import { onUpdate as updateAI } from "./store/ai";
-import { matchPath, useNavigate } from "react-router-dom";
+import { matchPath, useNavigate, useLocation } from "react-router-dom";
 import { saveMdToHtml } from "./helpers/saveMdToHtml";
 import { getAiChats } from "./helpers/getAiChats";
 import { modelConfig } from "./config/model";
@@ -41,6 +41,7 @@ const App = () => {
     }, {} as Record<string, string>);
 
     const navigate = useNavigate();
+    const location = useLocation();
     const dispatch = useDispatch();
     const sessions = useSelector(
         (state: ReduxStoreProps) => state.sessions.sessions
@@ -258,6 +259,11 @@ const App = () => {
         setCurrentLocaleToState();
     }, [t, hasLogined, passcodes, site]);
 
+    const isGpts = !!matchPath(
+        { path: `${routes.gpts.prefix}${routes.gpts.uri}${routes.gpts.suffix}` },
+        location.hash.replace("#", "") || location.pathname
+    );
+
     return (
         <Container
             className={
@@ -283,20 +289,22 @@ const App = () => {
                     />
                     <Container
                         ref={mainSectionRef}
-                        className={`min-w-full overflow-y-auto overflow-x-hidden flex flex-col h-screen justify-between ${
-                            !sidebarExpand ? "col-span-2" : ""
-                        }`}
+                        className={`min-w-full overflow-y-auto overflow-x-hidden flex flex-col h-screen ${
+                            isGpts ? "" : "justify-between"
+                        } ${!sidebarExpand ? "col-span-2" : ""}`}
                     >
-                        <Header
-                            logoutIcon={!!passcodes.length}
-                            newChatUrl={routes.index.prefix}
-                            title={!sidebarExpand ? header : ""}
-                            onPurgeSessions={handlePurgeSessions}
-                            onToggleSidebar={() =>
-                                setSidebarExpand((state) => !state)
-                            }
-                            onLogout={handleLogout}
-                        />
+                        {!isGpts && (
+                            <Header
+                                logoutIcon={!!passcodes.length}
+                                newChatUrl={routes.index.prefix}
+                                title={!sidebarExpand ? header : ""}
+                                onPurgeSessions={handlePurgeSessions}
+                                onToggleSidebar={() =>
+                                    setSidebarExpand((state) => !state)
+                                }
+                                onLogout={handleLogout}
+                            />
+                        )}
                         <RouterView
                             routes={routes}
                             suspense={<Skeleton />}
@@ -304,22 +312,26 @@ const App = () => {
                                 refs: { mainSectionRef, textAreaRef },
                             }}
                         />
-                        <InputArea
-                            minHeight={45}
-                            ref={textAreaRef}
-                            busy={ai.busy}
-                            onSubmit={handleSubmit}
-                            onUpload={handleUpload}
-                        />
-                        {!ai.busy && (
-                            <PageScroller
-                                thresholds={{
-                                    top: 200,
-                                    bottom: 200,
-                                    debounce: 50,
-                                }}
-                                monitorRef={mainSectionRef}
-                            />
+                        {!isGpts && (
+                            <>
+                                <InputArea
+                                    minHeight={45}
+                                    ref={textAreaRef}
+                                    busy={ai.busy}
+                                    onSubmit={handleSubmit}
+                                    onUpload={handleUpload}
+                                />
+                                {!ai.busy && (
+                                    <PageScroller
+                                        thresholds={{
+                                            top: 200,
+                                            bottom: 200,
+                                            debounce: 50,
+                                        }}
+                                        monitorRef={mainSectionRef}
+                                    />
+                                )}
+                            </>
                         )}
                     </Container>
                 </>
