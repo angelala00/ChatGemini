@@ -3,6 +3,7 @@ import { RouterMode } from "../components/RouterWrapper";
 
 const Home = lazy(() => import("../views/Home"));
 const Chat = lazy(() => import("../views/Chat"));
+const Gpts = lazy(() => import("../views/Gpts"));
 const NotFound = lazy(() => import("../views/NotFound"));
 
 export type RouterProp<T> = Record<string, T>;
@@ -32,6 +33,7 @@ export const routerConfig: RouterConfig = {
     routes: {
         index: { prefix: "/", uri: "", suffix: "", element: Home },
         chat: { prefix: "/chat", uri: "/:id", suffix: "", element: Chat },
+        gpts: { prefix: "/gpts", uri: "", suffix: "", element: Gpts },
         default: { prefix: "*", uri: "", suffix: "", element: NotFound },
     },
 };
