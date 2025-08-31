@@ -113,7 +113,10 @@
             "earlier_label": "更早",
             "new_chat": "+ 新聊天",
             "load_more": "加载更多...",
-            "no_history_chat": "没有历史记录"
+            "no_history_chat": "没有历史记录",
+            "rename": "重命名",
+            "export": "导出",
+            "delete": "删除"
         }
     }
 }
