@@ -92,6 +92,8 @@
             "run_script": "Run",
             "copy_result": "Copy",
             "close_window": "Close",
+            "echarts_rendering": "Rendering...",
+            "echarts_render_failed": "Render failed",
             "handleCopyCode": {
                 "copy_success": "Copied",
                 "copy_failed": "Failed"

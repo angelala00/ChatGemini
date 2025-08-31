@@ -92,6 +92,8 @@
             "run_script": "執行腳本",
             "copy_result": "複製結果",
             "close_window": "關閉視窗",
+            "echarts_rendering": "渲染中",
+            "echarts_render_failed": "渲染失敗",
             "handleCopyCode": {
                 "copy_success": "複製成功",
                 "copy_failed": "複製失敗"

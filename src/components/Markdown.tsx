@@ -188,8 +188,21 @@ export const Markdown = (props: MarkdownProps) => {
                                 </>
                             );
                         } catch (e) {
+                            const isIncomplete =
+                                e instanceof SyntaxError &&
+                                e.message.includes("Unexpected end");
                             return (
-                                <code className="text-red-700">Invalid ECharts option</code>
+                                <code
+                                    className={
+                                        isIncomplete ? "text-gray-700" : "text-red-700"
+                                    }
+                                >
+                                    {isIncomplete
+                                        ? t("components.Markdown.echarts_rendering")
+                                        : t(
+                                              "components.Markdown.echarts_render_failed"
+                                          )}
+                                </code>
                             );
                         }
                     }
