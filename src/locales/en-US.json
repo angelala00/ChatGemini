@@ -113,7 +113,10 @@
             "earlier_label": "Earlier",
             "new_chat": "+ New chat",
             "load_more": "Load more...",
-            "no_history_chat": "No history chat"
+            "no_history_chat": "No history chat",
+            "rename": "Rename",
+            "export": "Export",
+            "delete": "Delete"
         }
     }
 }
