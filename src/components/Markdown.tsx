@@ -16,6 +16,7 @@ import { getPythonResult } from "../helpers/getPythonResult";
 import { PyodideInterface } from "pyodide";
 import { getPythonRuntime } from "../helpers/getPythonRuntime";
 import { useTranslation } from "react-i18next";
+import { ECharts } from "./ECharts";
 
 interface MarkdownProps {
     readonly className?: string;
@@ -159,6 +160,39 @@ export const Markdown = (props: MarkdownProps) => {
                     ).replace(typingEffect, TypingEffectPlaceholder);
                     const startPos = node?.position?.start ?? null;
                     const endPos = node?.position?.end ?? null;
+                    if (lang === "echarts") {
+                        try {
+                            const trimmed = code.replace(/\n$/, "");
+                            const option = JSON.parse(trimmed);
+                            return (
+                                <>
+                                    <ECharts option={option} />
+                                    <Prism
+                                        PreTag={"div"}
+                                        style={style}
+                                        language="json"
+                                        showLineNumbers={true}
+                                        lineNumberStyle={{ opacity: 0.5 }}
+                                        children={trimmed}
+                                    />
+                                    <div className="flex gap-2">
+                                        <button
+                                            className="text-gray-700/100 text-xs hover:opacity-50"
+                                            onClick={({ currentTarget }) =>
+                                                handleCopyCode(trimmed, currentTarget)
+                                            }
+                                        >
+                                            {t("components.Markdown.copy_code")}
+                                        </button>
+                                    </div>
+                                </>
+                            );
+                        } catch (e) {
+                            return (
+                                <code className="text-red-700">Invalid ECharts option</code>
+                            );
+                        }
+                    }
                     return match ? (
                         <>
                             <Prism
