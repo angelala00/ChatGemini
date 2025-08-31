@@ -3,6 +3,7 @@ import deleteIcon from "../assets/icons/trash-can-solid.svg";
 import renameIcon from "../assets/icons/file-pen-solid.svg";
 import submitIcon from "../assets/icons/circle-check-solid.svg";
 import emptyIcon from "../assets/icons/folder-open-solid.svg";
+import moreIcon from "../assets/icons/ellipsis-vertical-solid.svg";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Sessions } from "../store/sessions";
@@ -40,6 +41,7 @@ export const Sidebar = (props: SidebarProps) => {
     const navigate = useNavigate();
 
     const [newLocale, setNewLocale] = useState<string | null>(null);
+    const [activeMenu, setActiveMenu] = useState<string | null>(null);
 
     const handleSelectChange = ({
         target,
@@ -180,7 +182,10 @@ export const Sidebar = (props: SidebarProps) => {
                                         return (
                                             <div
                                                 key={_index}
-                                                className="flex rounded-lg items-center justify-between p-2 text-gray-200 hover:bg-slate-600 transition-all space-x-2"
+                                                className="flex rounded-lg items-center justify-between p-2 text-gray-200 hover:bg-slate-600 transition-all space-x-2 group"
+                                                onMouseLeave={() =>
+                                                    setActiveMenu(null)
+                                                }
                                             >
                                                 <Link
                                                     className={`flex-1 text-sm text-left truncate ${
@@ -212,66 +217,85 @@ export const Sidebar = (props: SidebarProps) => {
                                                         )
                                                     }
                                                 />
-                                                <img
-                                                    className={`cursor-pointer text-xs size-3 hover:scale-125 transition-all ${
-                                                        renamingChatTitle.id ===
-                                                        id
-                                                            ? "hidden"
-                                                            : ""
-                                                    }`}
-                                                    src={renameIcon}
-                                                    alt=""
-                                                    onClick={() =>
-                                                        setRenamingChatTitle({
-                                                            id,
-                                                            title: currentSessionTitle,
-                                                        })
-                                                    }
-                                                />
-                                                <img
-                                                    className={`cursor-pointer text-xs size-3 hover:scale-125 transition-all ${
-                                                        renamingChatTitle.id !==
-                                                        id
-                                                            ? "hidden"
-                                                            : ""
-                                                    }`}
-                                                    src={submitIcon}
-                                                    alt=""
-                                                    onClick={() => {
-                                                        const { title } =
-                                                            renamingChatTitle;
-                                                        if (
-                                                            !!title.length &&
-                                                            renamingChatTitle.title !==
-                                                                currentSessionTitle
-                                                        ) {
-                                                            onRenameSession(
-                                                                id,
-                                                                title
-                                                            );
-                                                        }
-                                                        setRenamingChatTitle({
-                                                            id: "",
-                                                            title: "",
-                                                        });
-                                                    }}
-                                                />
-                                                <img
-                                                    className="cursor-pointer text-xs size-3 hover:scale-125 transition-all"
-                                                    src={exportIcon}
-                                                    alt=""
-                                                    onClick={() =>
-                                                        onExportSession(id)
-                                                    }
-                                                />
-                                                <img
-                                                    className="cursor-pointer size-3 hover:scale-125 transition-all"
-                                                    src={deleteIcon}
-                                                    alt=""
-                                                    onClick={() =>
-                                                        onDeleteSession(id)
-                                                    }
-                                                />
+                                                {renamingChatTitle.id !== id && (
+                                                    <>
+                                                        <div
+                                                            className={`space-x-2 ${
+                                                                activeMenu === id
+                                                                    ? "flex"
+                                                                    : "hidden"
+                                                            }`}
+                                                        >
+                                                            <img
+                                                                className="cursor-pointer text-xs size-3 hover:scale-125 transition-all"
+                                                                src={renameIcon}
+                                                                alt=""
+                                                                onClick={() => {
+                                                                    setRenamingChatTitle({
+                                                                        id,
+                                                                        title: currentSessionTitle,
+                                                                    });
+                                                                    setActiveMenu(null);
+                                                                }}
+                                                            />
+                                                            <img
+                                                                className="cursor-pointer text-xs size-3 hover:scale-125 transition-all"
+                                                                src={exportIcon}
+                                                                alt=""
+                                                                onClick={() => {
+                                                                    setActiveMenu(null);
+                                                                    onExportSession(id);
+                                                                }}
+                                                            />
+                                                            <img
+                                                                className="cursor-pointer size-3 hover:scale-125 transition-all"
+                                                                src={deleteIcon}
+                                                                alt=""
+                                                                onClick={() => {
+                                                                    setActiveMenu(null);
+                                                                    onDeleteSession(id);
+                                                                }}
+                                                            />
+                                                        </div>
+                                                        <img
+                                                            className={`cursor-pointer size-3 hover:scale-125 transition-all invisible group-hover:visible ${
+                                                                activeMenu === id
+                                                                    ? "hidden"
+                                                                    : ""
+                                                            }`}
+                                                            src={moreIcon}
+                                                            alt=""
+                                                            onClick={() =>
+                                                                setActiveMenu(id)
+                                                            }
+                                                        />
+                                                    </>
+                                                )}
+                                                {renamingChatTitle.id === id && (
+                                                    <img
+                                                        className="cursor-pointer text-xs size-3 hover:scale-125 transition-all"
+                                                        src={submitIcon}
+                                                        alt=""
+                                                        onClick={() => {
+                                                            const { title } =
+                                                                renamingChatTitle;
+                                                            if (
+                                                                !!title.length &&
+                                                                renamingChatTitle.title !==
+                                                                    currentSessionTitle
+                                                            ) {
+                                                                onRenameSession(
+                                                                    id,
+                                                                    title
+                                                                );
+                                                            }
+                                                            setRenamingChatTitle({
+                                                                id: "",
+                                                                title: "",
+                                                            });
+                                                        }}
+                                                    />
+                                                )}
                                             </div>
                                         );
                                     })}
