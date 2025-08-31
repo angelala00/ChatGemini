@@ -167,7 +167,7 @@ export const Markdown = (props: MarkdownProps) => {
                             return (
                                 <>
                                     <ECharts option={option} />
-                                    <Prism
+                                    {/* <Prism
                                         PreTag={"div"}
                                         style={style}
                                         language="json"
@@ -184,7 +184,7 @@ export const Markdown = (props: MarkdownProps) => {
                                         >
                                             {t("components.Markdown.copy_code")}
                                         </button>
-                                    </div>
+                                    </div> */}
                                 </>
                             );
                         } catch (e) {
