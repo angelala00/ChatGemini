@@ -143,7 +143,7 @@ export const Sidebar = (props: SidebarProps) => {
                     </div>
                 )}
                 <div
-                    className="mx-3 my-5 py-1 border border-dashed text-sm text-center text-gray-200 hover:bg-slate-600 transition-all rounded-sm cursor-pointer"
+                    className="p-2 mx-3 my-1 py-1 text-sm text-center text-gray-200 hover:bg-slate-600 transition-all rounded-lg cursor-pointer flex items-center justify-start gap-2"
                     onClick={() => navigate("/gpts")}
                 >
                     {"gpts"}
@@ -182,7 +182,7 @@ export const Sidebar = (props: SidebarProps) => {
                                         return (
                                             <div
                                                 key={_index}
-                                                className="group relative flex rounded-lg items-center justify-between p-2 text-gray-200 hover:bg-slate-600 transition-all space-x-2"
+                                                className="flex rounded-lg items-center justify-between p-2 text-gray-200 hover:bg-slate-600 transition-all space-x-2 group"
                                                 onMouseLeave={() =>
                                                     setActiveMenu(null)
                                                 }
@@ -220,14 +220,16 @@ export const Sidebar = (props: SidebarProps) => {
                                                 {renamingChatTitle.id !== id && (
                                                     <>
                                                         <div
-                                                            className={`absolute right-0 top-1/2 z-10 flex w-32 -translate-y-1/2 translate-x-full flex-col rounded bg-slate-700 py-1 text-xs shadow-lg ${
+                                                            className={`space-x-2 ${
                                                                 activeMenu === id
                                                                     ? "flex"
                                                                     : "hidden"
                                                             }`}
                                                         >
-                                                            <button
-                                                                className="flex items-center space-x-2 px-2 py-1 hover:bg-slate-600 text-gray-200"
+                                                            <img
+                                                                className="cursor-pointer text-xs size-3 hover:scale-125 transition-all"
+                                                                src={renameIcon}
+                                                                alt=""
                                                                 onClick={() => {
                                                                     setRenamingChatTitle({
                                                                         id,
@@ -235,48 +237,25 @@ export const Sidebar = (props: SidebarProps) => {
                                                                     });
                                                                     setActiveMenu(null);
                                                                 }}
-                                                            >
-                                                                <img
-                                                                    className="size-3"
-                                                                    src={renameIcon}
-                                                                    alt=""
-                                                                />
-                                                                <span>
-                                                                    {t("components.Sidebar.rename")}
-                                                                </span>
-                                                            </button>
-                                                            <button
-                                                                className="flex items-center space-x-2 px-2 py-1 hover:bg-slate-600 text-gray-200"
+                                                            />
+                                                            <img
+                                                                className="cursor-pointer text-xs size-3 hover:scale-125 transition-all"
+                                                                src={exportIcon}
+                                                                alt=""
                                                                 onClick={() => {
                                                                     setActiveMenu(null);
                                                                     onExportSession(id);
                                                                 }}
-                                                            >
-                                                                <img
-                                                                    className="size-3"
-                                                                    src={exportIcon}
-                                                                    alt=""
-                                                                />
-                                                                <span>
-                                                                    {t("components.Sidebar.export")}
-                                                                </span>
-                                                            </button>
-                                                            <button
-                                                                className="flex items-center space-x-2 px-2 py-1 hover:bg-slate-600 text-red-400"
+                                                            />
+                                                            <img
+                                                                className="cursor-pointer size-3 hover:scale-125 transition-all"
+                                                                src={deleteIcon}
+                                                                alt=""
                                                                 onClick={() => {
                                                                     setActiveMenu(null);
                                                                     onDeleteSession(id);
                                                                 }}
-                                                            >
-                                                                <img
-                                                                    className="size-3"
-                                                                    src={deleteIcon}
-                                                                    alt=""
-                                                                />
-                                                                <span>
-                                                                    {t("components.Sidebar.delete")}
-                                                                </span>
-                                                            </button>
+                                                            />
                                                         </div>
                                                         <img
                                                             className={`cursor-pointer size-3 hover:scale-125 transition-all invisible group-hover:visible ${

@@ -1,1 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" fill="white"><path d="M120 256a56 56 0 1 1 -112 0 56 56 0 1 1 112 0zm160-56a56 56 0 1 0 0 112 56 56 0 1 0 0-112zm160 56a56 56 0 1 1 -112 0 56 56 0 1 1 112 0z"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" fill="white">
+  <circle cx="80" cy="256" r="40"/>
+  <circle cx="224" cy="256" r="40"/>
+  <circle cx="368" cy="256" r="40"/>
+</svg>
