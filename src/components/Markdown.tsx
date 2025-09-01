@@ -189,8 +189,7 @@ export const Markdown = (props: MarkdownProps) => {
                             );
                         } catch (e) {
                             const isIncomplete =
-                                e instanceof SyntaxError &&
-                                e.message.includes("Unexpected end");
+                                code.includes(TypingEffectPlaceholder);
                             return (
                                 <code
                                     className={
