@@ -50,22 +50,22 @@ const Section = ({
     readonly title: string;
     readonly items: GptsCard[];
 }) => (
-    <section className="mb-12">
-        <h2 className="mb-5 text-sm text-gray-400 tracking-widest">
+    <section className="mb-16">
+        <h2 className="mb-6 text-sm font-semibold text-gray-500 tracking-wide uppercase">
             {title}
         </h2>
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-5">
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {items.map((item) => (
                 <div
                     key={item.title}
-                    className="flex items-center p-4 rounded-2xl bg-neutral-900 hover:bg-neutral-800 transition-colors"
+                    className="flex items-start p-4 rounded-xl bg-gray-50 hover:bg-gray-100 border transition-colors"
                 >
-                    <div className="mr-4 flex h-14 w-14 items-center justify-center rounded-xl bg-neutral-800 text-2xl">
+                    <div className="mr-4 flex h-14 w-14 items-center justify-center rounded-lg bg-gray-200 text-2xl">
                         {item.icon}
                     </div>
                     <div>
-                        <h3 className="text-base font-medium">{item.title}</h3>
-                        <p className="mt-1 mb-2 text-sm text-gray-400">
+                        <h3 className="text-base font-medium text-gray-900">{item.title}</h3>
+                        <p className="mt-1 mb-2 text-sm text-gray-600">
                             {item.desc}
                         </p>
                         <span className="text-xs text-gray-500">{item.from}</span>
@@ -78,11 +78,11 @@ const Section = ({
 
 const Gpts = () => {
     return (
-        <Container className="flex-1 w-full overflow-y-auto bg-neutral-950 text-gray-100">
-            <header className="px-12 py-8 text-2xl font-medium">
-                探索 Kimi+
-            </header>
-            <div className="px-12 pb-12">
+        <Container className="flex-1 w-full overflow-y-auto bg-white text-gray-900">
+            <div className="max-w-5xl mx-auto px-6 pb-16">
+                <header className="py-10 text-3xl font-semibold">
+                    探索 Kimi+
+                </header>
                 <Section title="我的最爱" items={favorites} />
                 <Section title="官方推荐" items={recommended} />
             </div>
