@@ -303,6 +303,7 @@ REACT_APP_GEMINI_API_URL="https://example.workers.dev"
 **需要注意，由于 Cloudflare Workers 默认分配的域名（以 `.dev` 结尾）在中国大陆无法访问，因此需要另行绑定域名。**
 
 部署好应用并绑定好域名后，以 `api.example.com` 为例，即
+add test0
 
 ```bash
 REACT_APP_GEMINI_API_URL="https://api.example.com"
