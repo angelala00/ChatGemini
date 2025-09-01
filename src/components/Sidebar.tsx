@@ -124,7 +124,7 @@ export const Sidebar = (props: SidebarProps) => {
 
     return (
         <nav
-            className={`bg-slate-900 flex flex-col h-full ${
+            className={`bg-slate-900 flex flex-col h-screen overflow-hidden ${
                 expand ? "block" : "hidden"
             }`}
         >
@@ -149,7 +149,7 @@ export const Sidebar = (props: SidebarProps) => {
                     {"gpts"}
                 </div>
             </div>
-            <div className="flex-1 overflow-auto">
+            <div className="flex-1 overflow-auto min-h-0">
                 <div className="flex flex-col space-y-2 p-2 mb-auto">
                 {Object.keys(sessionsCategory).map((key, index, arr) => {
                     const currentLabel = sessionsCategory[key].label;
