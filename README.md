@@ -307,6 +307,7 @@ REACT_APP_GEMINI_API_URL="https://example.workers.dev"
 ```bash
 REACT_APP_GEMINI_API_URL="https://api.example.com"
 ```
+add test
 
 ## 开源许可
 
