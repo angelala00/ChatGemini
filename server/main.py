@@ -9,7 +9,15 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import google.generativeai as genai
-from gpts import router as gpts_router
+# NOTE:
+# ``server`` and ``gpts`` live in the same folder.  When ``uvicorn`` imports
+# ``server.main`` as a module, Python does not automatically put this directory
+# on ``sys.path`` for absolute imports.  The previous absolute import
+# ``from gpts import router as gpts_router`` therefore failed with
+# ``ModuleNotFoundError`` when launching the application.  Using a relative
+# import ensures the router module is loaded correctly regardless of how the
+# package is executed.
+from .gpts import router as gpts_router
 
 # Load environment variables
 load_dotenv()
