@@ -16,7 +16,7 @@ async function request(
         headers: {
             "Content-Type": "application/json",
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, stream }),
     });
 
     if (!response.ok) {
@@ -30,7 +30,12 @@ async function request(
                 if (data === "[DONE]") {
                     onMessage("", true);
                 } else {
-                    onMessage(data, false);
+                    try {
+                        const json = JSON.parse(data);
+                        onMessage(json.text ?? "", false);
+                    } catch {
+                        onMessage(data, false);
+                    }
                 }
             }
         });
@@ -44,7 +49,12 @@ async function request(
         onMessage("", true);
     } else {
         const text = await response.text();
-        onMessage(text, true);
+        try {
+            const json = JSON.parse(text);
+            onMessage(json.text ?? "", true);
+        } catch {
+            onMessage(text, true);
+        }
     }
 }
 
