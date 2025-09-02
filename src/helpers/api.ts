@@ -15,6 +15,7 @@ async function request(
         method: "POST",
         headers: {
             "Content-Type": "application/json",
+            ...(stream ? { Accept: "text/event-stream" } : {}),
         },
         body: JSON.stringify({ ...payload, stream }),
     });
@@ -23,7 +24,11 @@ async function request(
         throw new Error(await response.text());
     }
 
-    if (stream && response.body) {
+    const isEventStream =
+        response.headers.get("content-type")?.includes("text/event-stream") ??
+        false;
+
+    if (stream && isEventStream && response.body) {
         const parser = createParser((event: ParsedEvent | ReconnectInterval) => {
             if ("data" in event) {
                 const data = event.data;
@@ -44,7 +49,7 @@ async function request(
         while (true) {
             const { value, done } = await reader.read();
             if (done) break;
-            parser.feed(decoder.decode(value));
+            parser.feed(decoder.decode(value, { stream: true }));
         }
         onMessage("", true);
     } else {
