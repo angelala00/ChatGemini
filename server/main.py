@@ -4,6 +4,7 @@ import os
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -19,6 +20,14 @@ if API_KEY:
 
 app = FastAPI()
 
+# Enable CORS for local development or custom front-end origins
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class ChatRequest(BaseModel):
     prompt: str
