@@ -1,4 +1,6 @@
+import { useEffect, useState } from "react";
 import { Container } from "../components/Container";
+import { globalConfig } from "../config/global";
 
 interface GptsCard {
     readonly icon: string;
@@ -6,42 +8,6 @@ interface GptsCard {
     readonly desc: string;
     readonly from: string;
 }
-
-const favorites: GptsCard[] = [
-    {
-        icon: "🔍",
-        title: "学术搜索",
-        desc: "检索学术问题和参考文献",
-        from: "来自 Kimi",
-    },
-    {
-        icon: "📊",
-        title: "PPT 助手",
-        desc: "轻松制作演示文稿",
-        from: "来自 Kimi",
-    },
-    {
-        icon: "💼",
-        title: "Kimi 专业版",
-        desc: "更精准的搜索助手",
-        from: "来自 Kimi",
-    },
-];
-
-const recommended: GptsCard[] = [
-    {
-        icon: "💡",
-        title: "AI 创意助手",
-        desc: "激发灵感的创作工具",
-        from: "来自 Kimi",
-    },
-    {
-        icon: "📚",
-        title: "知识问答",
-        desc: "快速获取专业答案",
-        from: "来自 Kimi",
-    },
-];
 
 const Section = ({
     title,
@@ -77,12 +43,27 @@ const Section = ({
 );
 
 const Gpts = () => {
+    const [favorites, setFavorites] = useState<GptsCard[]>([]);
+    const [recommended, setRecommended] = useState<GptsCard[]>([]);
+
+    useEffect(() => {
+        const base = globalConfig.api ?? "";
+        fetch(`${base}/gpts/home`)
+            .then((res) => res.json())
+            .then((data) => {
+                setFavorites(data.favorites ?? []);
+                setRecommended(data.recommended ?? []);
+            })
+            .catch(() => {
+                setFavorites([]);
+                setRecommended([]);
+            });
+    }, []);
+
     return (
         <Container className="flex-1 w-full overflow-y-auto bg-white text-gray-900">
             <div className="max-w-5xl mx-auto px-6 pb-16">
-                <header className="py-10 text-3xl font-semibold">
-                    探索 Kimi+
-                </header>
+                <header className="py-10 text-3xl font-semibold">探索 Kimi+</header>
                 <Section title="我的最爱" items={favorites} />
                 <Section title="官方推荐" items={recommended} />
             </div>

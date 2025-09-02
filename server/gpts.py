@@ -16,6 +16,43 @@ FAKE_GPTS = [
 ID2GPTS = {g["id"]: g for g in FAKE_GPTS}
 LIMIT_PINNED = 8
 
+HOME_CARDS = {
+    "favorites": [
+        {
+            "icon": "🔍",
+            "title": "学术搜索",
+            "desc": "检索学术问题和参考文献",
+            "from": "来自 Kimi",
+        },
+        {
+            "icon": "📊",
+            "title": "PPT 助手",
+            "desc": "轻松制作演示文稿",
+            "from": "来自 Kimi",
+        },
+        {
+            "icon": "💼",
+            "title": "Kimi 专业版",
+            "desc": "更精准的搜索助手",
+            "from": "来自 Kimi",
+        },
+    ],
+    "recommended": [
+        {
+            "icon": "💡",
+            "title": "AI 创意助手",
+            "desc": "激发灵感的创作工具",
+            "from": "来自 Kimi",
+        },
+        {
+            "icon": "📚",
+            "title": "知识问答",
+            "desc": "快速获取专业答案",
+            "from": "来自 Kimi",
+        },
+    ],
+}
+
 router = APIRouter()
 
 def get_db():
@@ -49,6 +86,11 @@ def require_user(uid: str | None) -> str:
     if not uid:
         raise HTTPException(401, "Missing X-User-ID")
     return uid
+
+
+@router.get("/gpts/home")
+def get_home_cards():
+    return HOME_CARDS
 
 @router.patch("/gpts/{gpts_id}/pin")
 async def toggle_pin(gpts_id: str, request: Request, x_user_id: str | None = Header(None)):
