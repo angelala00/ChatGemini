@@ -63,9 +63,9 @@ const Gpts = () => {
     return (
         <Container className="flex-1 w-full overflow-y-auto bg-white text-gray-900">
             <div className="max-w-5xl mx-auto px-6 pb-16">
-                <header className="py-10 text-3xl font-semibold">探索 Kimi+</header>
-                <Section title="我的最爱" items={favorites} />
-                <Section title="官方推荐" items={recommended} />
+                <header className="py-10 text-3xl font-semibold">探索 GPTs</header>
+                <Section title="置顶" items={favorites} />
+                <Section title="全部" items={recommended} />
             </div>
         </Container>
     );
