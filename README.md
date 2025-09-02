@@ -66,6 +66,45 @@ ChatGemini 是一个基于 Google Gemini 的网页客户端，对标 ChatGPT 3.5
 
 </details>
 
+## 本地启动
+
+在本地开发环境中启动前端和后端：
+
+### 启动前端
+
+1. 安装依赖
+   ```bash
+   npm install
+   ```
+2. 复制并修改配置
+   ```bash
+   cp .env.example .env
+   ```
+   > 填写 `REACT_APP_GEMINI_API_KEY` 等配置项。
+3. 启动开发服务器
+   ```bash
+   npm run start
+   ```
+   前端默认运行在 `http://localhost:3000`。
+
+### 启动后端
+
+1. 进入 `server` 目录并安装依赖
+   ```bash
+   cd server
+   pip install -r requirements.txt
+   ```
+2. 复制并修改配置
+   ```bash
+   cp .env.example .env
+   ```
+   > 在 `.env` 中填入 `GEMINI_API_KEY` 等环境变量。
+3. 启动服务
+   ```bash
+   uvicorn main:app --reload
+   ```
+   后端默认运行在 `http://localhost:8000`。
+
 ## 应用部署
 
 请确保您已经得到 Gemini API 密钥，有关 Gemini API 的申请，请前往 [Google AI Studio](https://makersuite.google.com/app/apikey)。
