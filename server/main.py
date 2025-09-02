@@ -64,12 +64,29 @@ async def chat(req: ChatRequest):
     try:
         if req.stream:
             def event_stream():
-                for chunk in chat_session.send_message(req.prompt, stream=True, generation_config=generation_config, safety_settings=safety_settings):
-                    if chunk.text:
-                        yield f"data: {json.dumps({'text': chunk.text})}\n\n"
-            return StreamingResponse(event_stream(), media_type="text/event-stream")
+                try:
+                    for chunk in chat_session.send_message(
+                        req.prompt,
+                        stream=True,
+                        generation_config=generation_config,
+                        safety_settings=safety_settings,
+                    ):
+                        if chunk.text:
+                            yield f"data: {json.dumps({'text': chunk.text})}\n\n"
+                finally:
+                    # signal the client the stream is complete
+                    yield "data: [DONE]\n\n"
+
+            return StreamingResponse(
+                event_stream(), media_type="text/event-stream"
+            )
         else:
-            response = chat_session.send_message(req.prompt, stream=False, generation_config=generation_config, safety_settings=safety_settings)
+            response = chat_session.send_message(
+                req.prompt,
+                stream=False,
+                generation_config=generation_config,
+                safety_settings=safety_settings,
+            )
             return {"text": response.text}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
@@ -87,12 +104,28 @@ async def vision(req: VisionRequest):
     try:
         if req.stream:
             def event_stream():
-                for chunk in model.generate_content([req.prompt, img], stream=True, generation_config=generation_config, safety_settings=safety_settings):
-                    if chunk.text:
-                        yield f"data: {json.dumps({'text': chunk.text})}\n\n"
-            return StreamingResponse(event_stream(), media_type="text/event-stream")
+                try:
+                    for chunk in model.generate_content(
+                        [req.prompt, img],
+                        stream=True,
+                        generation_config=generation_config,
+                        safety_settings=safety_settings,
+                    ):
+                        if chunk.text:
+                            yield f"data: {json.dumps({'text': chunk.text})}\n\n"
+                finally:
+                    yield "data: [DONE]\n\n"
+
+            return StreamingResponse(
+                event_stream(), media_type="text/event-stream"
+            )
         else:
-            response = model.generate_content([req.prompt, img], stream=False, generation_config=generation_config, safety_settings=safety_settings)
+            response = model.generate_content(
+                [req.prompt, img],
+                stream=False,
+                generation_config=generation_config,
+                safety_settings=safety_settings,
+            )
             return {"text": response.text}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
