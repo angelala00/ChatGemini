@@ -8,10 +8,10 @@ os.makedirs(DATA_DIR, exist_ok=True)
 DB_PATH = os.path.join(DATA_DIR, "pins.db")
 
 FAKE_GPTS = [
-    {"id": "g1", "name": "SQL助手"},
-    {"id": "g2", "name": "报表生成器"},
-    {"id": "g3", "name": "法务审查"},
-    {"id": "g4", "name": "市场分析"},
+    {"id": "g1", "name": "SQL助手", "desc": "处理 SQL 相关问题"},
+    {"id": "g2", "name": "报表生成器", "desc": "自动生成数据报表"},
+    {"id": "g3", "name": "法务审查", "desc": "快速审查合同条款"},
+    {"id": "g4", "name": "市场分析", "desc": "洞察市场趋势"},
 ]
 ID2GPTS = {g["id"]: g for g in FAKE_GPTS}
 LIMIT_PINNED = 8
