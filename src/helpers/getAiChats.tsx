@@ -1,13 +1,11 @@
-import { BaseParams, GenerativeModel, Part } from "@google/generative-ai";
 import { SessionHistory } from "../store/sessions";
 import { asyncSleep } from "./asyncSleep";
+import { chat } from "./api";
 
 export const getAiChats = async (
-    model: GenerativeModel,
     history: SessionHistory[],
-    prompts: string | Array<string | Part>,
+    prompts: string,
     stream: boolean,
-    options: BaseParams,
     onChatMessage: (message: string, end: boolean) => void
 ) => {
     const TypeWriterEffectThreshold = 30;
@@ -28,56 +26,59 @@ export const getAiChats = async (
         });
 
         if (stream) {
-            const chat = model.startChat({ ...options, history: payload });
-            const result = await chat.sendMessageStream(prompts);
-            for await (const chunk of result.stream) {
-                const chunkText = chunk.text();
-                if (chunkText.length > TypeWriterEffectThreshold) {
-                    const chunkTextArr = chunkText.split("");
-                    for (
-                        let i = 0;
-                        i < chunkTextArr.length;
-                        i += TypeWriterEffectThreshold
-                    ) {
-                        onChatMessage(
-                            chunkTextArr
-                                .slice(i, i + TypeWriterEffectThreshold)
-                                .join(""),
-                            false
-                        );
-                        await asyncSleep(Math.random() * 600 + 300);
+            await chat(
+                { history: payload, prompt: prompts },
+                true,
+                async (chunk, end) => {
+                    if (end) return;
+                    const chunkText = chunk;
+                    if (chunkText.length > TypeWriterEffectThreshold) {
+                        const chunkTextArr = chunkText.split("");
+                        for (
+                            let i = 0;
+                            i < chunkTextArr.length;
+                            i += TypeWriterEffectThreshold
+                        ) {
+                            onChatMessage(
+                                chunkTextArr
+                                    .slice(i, i + TypeWriterEffectThreshold)
+                                    .join(""),
+                                false
+                            );
+                            await asyncSleep(Math.random() * 600 + 300);
+                        }
+                    } else {
+                        onChatMessage(chunkText, false);
                     }
-                } else {
-                    onChatMessage(chunkText, false);
                 }
-            }
+            );
             onChatMessage("", true);
         } else {
-            const chat = model.startChat({
-                ...options,
-                history: payload,
-            });
-            const result = await chat.sendMessage(prompts);
-            const response = result.response;
-            const text = response.text();
-            if (text.length > TypeWriterEffectThreshold) {
-                const textArr = text.split("");
-                for (
-                    let i = 0;
-                    i < textArr.length;
-                    i += TypeWriterEffectThreshold
-                ) {
-                    onChatMessage(
-                        textArr
-                            .slice(i, i + TypeWriterEffectThreshold)
-                            .join(""),
-                        false
-                    );
-                    await asyncSleep(Math.random() * 600 + 300);
+            await chat(
+                { history: payload, prompt: prompts },
+                false,
+                async (text) => {
+                    const chunkText = text;
+                    if (chunkText.length > TypeWriterEffectThreshold) {
+                        const textArr = chunkText.split("");
+                        for (
+                            let i = 0;
+                            i < textArr.length;
+                            i += TypeWriterEffectThreshold
+                        ) {
+                            onChatMessage(
+                                textArr
+                                    .slice(i, i + TypeWriterEffectThreshold)
+                                    .join(""),
+                                false
+                            );
+                            await asyncSleep(Math.random() * 600 + 300);
+                        }
+                    } else {
+                        onChatMessage(chunkText, false);
+                    }
                 }
-            } else {
-                onChatMessage(text, false);
-            }
+            );
             onChatMessage("", true);
         }
     } catch (e) {

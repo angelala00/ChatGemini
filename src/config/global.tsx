@@ -17,9 +17,6 @@ if (!Object.keys(env).length) {
     }
 }
 
-const keys = env["REACT_APP_GEMINI_API_KEY"]
-    ?.split("|")
-    .map((v) => v.trim()) ?? [""];
 const passcodes =
     env["REACT_APP_PASSCODE_MD5"]
         ?.split("|")
@@ -28,7 +25,6 @@ const passcodes =
 
 export const globalConfig = {
     passcodes,
-    keys,
     title: {
         site: !!env["REACT_APP_TITLE_SITE"]?.length
             ? env["REACT_APP_TITLE_SITE"]
@@ -37,6 +33,6 @@ export const globalConfig = {
             ? env["REACT_APP_TITLE_HEADER"]
             : "Gemini Pro",
     },
-    api: env["REACT_APP_GEMINI_API_URL"],
+    api: env["REACT_APP_BACKEND_URL"],
     sse: env["REACT_APP_GEMINI_API_SSE"] === "false" ? false : true,
 };
