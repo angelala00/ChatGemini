@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import google.generativeai as genai
+from gpts import router as gpts_router
 
 # Load environment variables
 load_dotenv()
@@ -28,6 +29,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# GPTS endpoints
+app.include_router(gpts_router)
 
 class ChatRequest(BaseModel):
     prompt: str
