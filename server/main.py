@@ -55,7 +55,7 @@ async def exception_handler(request: Request, exc: Exception):
 
 @app.post("/chat")
 async def chat(req: ChatRequest):
-    model_name = req.options.get("model", "gemini-pro") if req.options else "gemini-pro"
+    model_name = req.options.get("model", "gemini-2.5-pro") if req.options else "gemini-2.5-pro"
     model = genai.GenerativeModel(model_name)
     chat_session = model.start_chat(history=req.history or [])
     generation_config = (req.options or {}).get("generation_config")
