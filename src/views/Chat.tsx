@@ -2,17 +2,15 @@ import { useParams } from "react-router-dom";
 import { Markdown } from "../components/Markdown";
 import { Session, SessionEditState, SessionRole } from "../components/Session";
 import { useCallback, useEffect, useState } from "react";
-import { SessionHistory, Sessions } from "../store/sessions";
+import { SessionHistory, Sessions, Attachment } from "../store/sessions";
 import { useDispatch, useSelector } from "react-redux";
 import { ReduxStoreProps } from "../config/store";
 import { onUpdate as updateAI } from "../store/ai";
 import { onUpdate as updateSessions } from "../store/sessions";
 import { getAiChats } from "../helpers/getAiChats";
-import { modelConfig } from "../config/model";
 import { globalConfig } from "../config/global";
 import { Container } from "../components/Container";
 import { getAiContent } from "../helpers/getAiContent";
-import { GenerativeContentBlob } from "@google/generative-ai";
 import { getBase64BlobUrl } from "../helpers/getBase64BlobUrl";
 import { ImageView } from "../components/ImageView";
 import { sendUserConfirm } from "../helpers/sendUserConfirm";
@@ -104,24 +102,21 @@ const Chat = (props: RouterComponentProps) => {
                 dispatch(updateSessions(_sessions));
             };
             if (!_sessions[id][index - 1].attachment?.data.length) {
-                await getAiChats(
-                    ai.model.pro,
-                    _sessions[id].slice(0, index - 1),
-                    _sessions[id][index - 1].parts,
-                    globalConfig.sse,
-                    modelConfig,
-                    handler
-                );
-            } else {
-                await getAiContent(
-                    ai.model.vision,
-                    _sessions[id][index - 1].parts,
-                    _sessions[id][index - 1]
-                        .attachment as GenerativeContentBlob,
-                    globalConfig.sse,
-                    handler
-                );
-            }
+                    await getAiChats(
+                        _sessions[id].slice(0, index - 1),
+                        _sessions[id][index - 1].parts,
+                        globalConfig.sse,
+                        handler
+                    );
+                } else {
+                    await getAiContent(
+                        _sessions[id][index - 1].parts,
+                        _sessions[id][index - 1]
+                            .attachment as Attachment,
+                        globalConfig.sse,
+                        handler
+                    );
+                }
         } else if (ai.busy) {
             sendUserAlert(t("views.Chat.handleRefresh.not_available"), true);
         }

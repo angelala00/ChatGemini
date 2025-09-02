@@ -13,10 +13,8 @@ import { onUpdate as updateAI } from "./store/ai";
 import { matchPath, useNavigate, useLocation } from "react-router-dom";
 import { saveMdToHtml } from "./helpers/saveMdToHtml";
 import { getAiChats } from "./helpers/getAiChats";
-import { modelConfig } from "./config/model";
-import { initialSessions, onUpdate as updateSessions } from "./store/sessions";
+import { initialSessions, onUpdate as updateSessions, Attachment } from "./store/sessions";
 import { getAiContent } from "./helpers/getAiContent";
-import { GenerativeContentBlob } from "@google/generative-ai";
 import { getBase64Img } from "./helpers/getBase64Img";
 import { sendUserAlert } from "./helpers/sendUserAlert";
 import { sendUserConfirm } from "./helpers/sendUserConfirm";
@@ -53,7 +51,7 @@ const App = () => {
     const [currentLocale, setCurrentLocale] = useState(fallback);
     const [hasLogined, setHasLogined] = useState(false);
     const [uploadInlineData, setUploadInlineData] =
-        useState<GenerativeContentBlob>({ data: "", mimeType: "" });
+        useState<Attachment>({ data: "", mimeType: "" });
     const [sidebarExpand, setSidebarExpand] = useState(window.innerWidth > 768);
 
     const setCurrentLocaleToState = async () =>
@@ -232,16 +230,13 @@ const App = () => {
         };
         if (!uploadInlineData.data.length) {
             await getAiChats(
-                ai.model.pro,
                 currentSessionHistory,
                 prompt,
                 sse,
-                modelConfig,
                 handler
             );
         } else {
             await getAiContent(
-                ai.model.vision,
                 prompt,
                 uploadInlineData,
                 sse,

@@ -1,67 +1,69 @@
-import { GenerativeContentBlob, GenerativeModel } from "@google/generative-ai";
 import { asyncSleep } from "./asyncSleep";
+import { vision } from "./api";
+import { Attachment } from "../store/sessions";
 
 export const getAiContent = async (
-    model: GenerativeModel,
     prompts: string,
-    inlineData: GenerativeContentBlob,
+    inlineData: Attachment,
     stream: boolean,
     onContentMessage: (message: string, end: boolean) => void
 ) => {
     const TypeWriterEffectThreshold = 30;
     try {
         if (stream) {
-            const result = await model.generateContentStream([
-                prompts,
-                { inlineData },
-            ]);
-            for await (const chunk of result.stream) {
-                const chunkText = chunk.text();
-                if (chunkText.length > TypeWriterEffectThreshold) {
-                    const chunkTextArr = chunkText.split("");
-                    for (
-                        let i = 0;
-                        i < chunkTextArr.length;
-                        i += TypeWriterEffectThreshold
-                    ) {
-                        onContentMessage(
-                            chunkTextArr
-                                .slice(i, i + TypeWriterEffectThreshold)
-                                .join(""),
-                            false
-                        );
-                        await asyncSleep(Math.random() * 600 + 300);
+            await vision(
+                { prompt: prompts, image: inlineData },
+                true,
+                async (chunk, end) => {
+                    if (end) return;
+                    const chunkText = chunk;
+                    if (chunkText.length > TypeWriterEffectThreshold) {
+                        const chunkTextArr = chunkText.split("");
+                        for (
+                            let i = 0;
+                            i < chunkTextArr.length;
+                            i += TypeWriterEffectThreshold
+                        ) {
+                            onContentMessage(
+                                chunkTextArr
+                                    .slice(i, i + TypeWriterEffectThreshold)
+                                    .join(""),
+                                false
+                            );
+                            await asyncSleep(Math.random() * 600 + 300);
+                        }
+                    } else {
+                        onContentMessage(chunkText, false);
                     }
-                } else {
-                    onContentMessage(chunkText, false);
                 }
-            }
+            );
             onContentMessage("", true);
         } else {
-            const result = await model.generateContent([
-                prompts,
-                { inlineData },
-            ]);
-            const response = result.response;
-            const text = response.text();
-            if (text.length > TypeWriterEffectThreshold) {
-                const textArr = text.split("");
-                for (
-                    let i = 0;
-                    i < textArr.length;
-                    i += TypeWriterEffectThreshold
-                ) {
-                    onContentMessage(
-                        textArr
-                            .slice(i, i + TypeWriterEffectThreshold)
-                            .join(""),
-                        false
-                    );
-                    await asyncSleep(Math.random() * 600 + 300);
+            await vision(
+                { prompt: prompts, image: inlineData },
+                false,
+                async (text) => {
+                    const chunkText = text;
+                    if (chunkText.length > TypeWriterEffectThreshold) {
+                        const textArr = chunkText.split("");
+                        for (
+                            let i = 0;
+                            i < textArr.length;
+                            i += TypeWriterEffectThreshold
+                        ) {
+                            onContentMessage(
+                                textArr
+                                    .slice(i, i + TypeWriterEffectThreshold)
+                                    .join(""),
+                                false
+                            );
+                            await asyncSleep(Math.random() * 600 + 300);
+                        }
+                    } else {
+                        onContentMessage(chunkText, false);
+                    }
                 }
-            } else {
-                onContentMessage(text, false);
-            }
+            );
             onContentMessage("", true);
         }
     } catch (e) {
