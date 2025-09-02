@@ -64,6 +64,7 @@ async def chat(req: ChatRequest):
     try:
         if req.stream:
             def event_stream():
+                last_text = ""
                 try:
                     for chunk in chat_session.send_message(
                         req.prompt,
@@ -72,13 +73,21 @@ async def chat(req: ChatRequest):
                         safety_settings=safety_settings,
                     ):
                         if chunk.text:
-                            yield f"data: {json.dumps({'text': chunk.text})}\n\n"
+                            text = chunk.text[len(last_text) :]
+                            last_text += text
+                            if text:
+                                yield f"data: {json.dumps({'text': text})}\n\n"
                 finally:
                     # signal the client the stream is complete
                     yield "data: [DONE]\n\n"
 
+            headers = {
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            }
             return StreamingResponse(
-                event_stream(), media_type="text/event-stream"
+                event_stream(), media_type="text/event-stream", headers=headers
             )
         else:
             response = chat_session.send_message(
@@ -104,6 +113,7 @@ async def vision(req: VisionRequest):
     try:
         if req.stream:
             def event_stream():
+                last_text = ""
                 try:
                     for chunk in model.generate_content(
                         [req.prompt, img],
@@ -112,12 +122,20 @@ async def vision(req: VisionRequest):
                         safety_settings=safety_settings,
                     ):
                         if chunk.text:
-                            yield f"data: {json.dumps({'text': chunk.text})}\n\n"
+                            text = chunk.text[len(last_text) :]
+                            last_text += text
+                            if text:
+                                yield f"data: {json.dumps({'text': text})}\n\n"
                 finally:
                     yield "data: [DONE]\n\n"
 
+            headers = {
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            }
             return StreamingResponse(
-                event_stream(), media_type="text/event-stream"
+                event_stream(), media_type="text/event-stream", headers=headers
             )
         else:
             response = model.generate_content(
