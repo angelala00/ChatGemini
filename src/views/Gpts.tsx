@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
+import { useDispatch } from "react-redux";
 import { Container } from "../components/Container";
 import { globalConfig } from "../config/global";
 import pinnedIcon from "../assets/icons/thumbtack-solid.svg";
 import unpinnedIcon from "../assets/icons/map-pin-solid.svg";
+import { onUpdate as updatePinnedGpts } from "../store/gpts";
 
 interface GptsItem {
     readonly id: string;
@@ -54,6 +56,15 @@ const Section = ({ title, items, onToggle }: SectionProps) => (
 
 const Gpts = () => {
     const [items, setItems] = useState<GptsItem[]>([]);
+    const dispatch = useDispatch();
+
+    const refreshSidebar = () => {
+        const base = globalConfig.api ?? "";
+        fetch(`${base}/sidebar`, { headers: { "X-User-ID": "1" } })
+            .then((res) => res.json())
+            .then((data) => dispatch(updatePinnedGpts(data.pinned ?? [])))
+            .catch(() => {});
+    };
 
     useEffect(() => {
         const base = globalConfig.api ?? "";
@@ -63,6 +74,7 @@ const Gpts = () => {
             .then((res) => res.json())
             .then((data) => {
                 setItems(data.items ?? []);
+                refreshSidebar();
             })
             .catch(() => {
                 setItems([]);
@@ -88,6 +100,7 @@ const Gpts = () => {
                             : item
                     )
                 );
+                refreshSidebar();
             })
             .catch(() => {});
     };

@@ -6,8 +6,12 @@ import emptyIcon from "../assets/icons/folder-open-solid.svg";
 import moreIcon from "../assets/icons/ellipsis-solid.svg";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useDispatch, useSelector } from "react-redux";
 import { Sessions } from "../store/sessions";
 import { useTranslation } from "react-i18next";
+import { globalConfig } from "../config/global";
+import { ReduxStoreProps } from "../config/store";
+import { onUpdate as updatePinnedGpts } from "../store/gpts";
 
 interface SidebarProps {
     readonly title: string;
@@ -39,6 +43,10 @@ export const Sidebar = (props: SidebarProps) => {
         onRenameSession,
     } = props;
     const navigate = useNavigate();
+    const dispatch = useDispatch();
+    const pinnedGpts = useSelector(
+        (state: ReduxStoreProps) => state.gpts.pinned
+    );
 
     const [newLocale, setNewLocale] = useState<string | null>(null);
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
@@ -63,6 +71,18 @@ export const Sidebar = (props: SidebarProps) => {
             sessions?: Sessions;
         };
     }>({});
+
+    useEffect(() => {
+        const base = globalConfig.api ?? "";
+        fetch(`${base}/sidebar`, { headers: { "X-User-ID": "1" } })
+            .then((res) => res.json())
+            .then((data) => {
+                dispatch(updatePinnedGpts(data.pinned ?? []));
+            })
+            .catch(() => {
+                dispatch(updatePinnedGpts([]));
+            });
+    }, [dispatch]);
 
     const getCategorizedSessions = (
         sessions: Sessions,
@@ -148,6 +168,15 @@ export const Sidebar = (props: SidebarProps) => {
                 >
                     {"gpts"}
                 </div>
+                {pinnedGpts.map((gpt) => (
+                    <div
+                        key={gpt.id}
+                        className="p-2 mx-3 my-1 py-1 text-sm text-center text-gray-200 hover:bg-slate-600 transition-all rounded-lg cursor-pointer flex items-center justify-start gap-2"
+                        onClick={() => navigate("/gpts")}
+                    >
+                        {gpt.name}
+                    </div>
+                ))}
             </div>
             <div className="flex-1 overflow-auto min-h-0">
                 <div className="flex flex-col space-y-2 p-2 mb-auto">
