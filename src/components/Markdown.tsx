@@ -163,7 +163,12 @@ export const Markdown = (props: MarkdownProps) => {
                     if (lang === "echarts") {
                         try {
                             const trimmed = code.replace(/\n$/, "");
-                            const option = JSON.parse(trimmed);
+                            let option;
+                            try {
+                                option = JSON.parse(trimmed);
+                            } catch {
+                                option = new Function(`return (${trimmed})`)();
+                            }
                             return (
                                 <>
                                     <ECharts option={option} />
