@@ -7,6 +7,11 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 os.makedirs(DATA_DIR, exist_ok=True)
 DB_PATH = os.path.join(DATA_DIR, "pins.db")
 
+# Version configuration
+CONFIG_VERSION = "v0.10.0"
+# GPTS that should be automatically pinned for new versions
+DEFAULT_PIN_GPTS = "g4"
+
 FAKE_GPTS = [
     {"id": "g1", "name": "SQL助手", "desc": "处理 SQL 相关问题"},
     {"id": "g2", "name": "报表生成器", "desc": "自动生成数据报表"},
@@ -15,6 +20,15 @@ FAKE_GPTS = [
 ]
 ID2GPTS = {g["id"]: g for g in FAKE_GPTS}
 LIMIT_PINNED = 8
+
+
+def parse_version(v: str) -> tuple[int, ...]:
+    """Parse a semantic version string like 'v0.10.0' into a tuple."""
+    v = v.lstrip("v")
+    try:
+        return tuple(int(x) for x in v.split("."))
+    except ValueError:
+        return (0,)
 
 HOME_CARDS = {
     "favorites": [
@@ -75,6 +89,10 @@ def init_db():
             );
             CREATE INDEX IF NOT EXISTS idx_user_pinned
               ON user_gpts_state(user_id, pinned_at DESC);
+            CREATE TABLE IF NOT EXISTS user_config_version (
+              user_id TEXT PRIMARY KEY,
+              version TEXT NOT NULL
+            );
             """
         )
     finally:
@@ -126,6 +144,25 @@ def get_sidebar(x_user_id: str | None = Header(None)):
     user_id = require_user(x_user_id)
     conn = get_db()
     try:
+        cfg = conn.execute(
+            "SELECT version FROM user_config_version WHERE user_id=?",
+            (user_id,),
+        ).fetchone()
+        need_init = True
+        if cfg:
+            need_init = parse_version(cfg["version"]) < parse_version(CONFIG_VERSION)
+        if need_init:
+            conn.execute(
+                """INSERT OR IGNORE INTO user_gpts_state(user_id, gpts_id, pinned_at)
+                     VALUES(?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))""",
+                (user_id, DEFAULT_PIN_GPTS),
+            )
+            conn.execute(
+                """INSERT INTO user_config_version(user_id, version)
+                     VALUES(?, ?)
+                     ON CONFLICT(user_id) DO UPDATE SET version=excluded.version""",
+                (user_id, CONFIG_VERSION),
+            )
         rows = conn.execute(
             """SELECT gpts_id, pinned_at
                FROM user_gpts_state
