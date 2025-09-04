@@ -121,7 +121,7 @@ async def toggle_pin(gpts_id: str, request: Request, x_user_id: str | None = Hea
 
     return {"gpts_id": gpts_id, "is_pinned": is_pinned}
 
-@router.get("/sidebar")
+@router.get("/gpts/pined")
 def get_sidebar(x_user_id: str | None = Header(None)):
     user_id = require_user(x_user_id)
     conn = get_db()

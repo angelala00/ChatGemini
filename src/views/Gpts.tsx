@@ -60,7 +60,7 @@ const Gpts = () => {
 
     const refreshSidebar = () => {
         const base = globalConfig.api ?? "";
-        fetch(`${base}/sidebar`, { headers: { "X-User-ID": "1" } })
+        fetch(`${base}/gpts/pined`, { headers: { "X-User-ID": "1" } })
             .then((res) => res.json())
             .then((data) => dispatch(updatePinnedGpts(data.pinned ?? [])))
             .catch(() => {});
