@@ -33,7 +33,11 @@ const Section = ({ title, items, onToggle }: SectionProps) => (
                     <div className="mr-4 flex h-16 w-16 items-center justify-center rounded-lg bg-gray-200 text-2xl">
                         {item.name.slice(0, 1)}
                     </div>
-                    <div className="flex-1">
+                    <div className="flex-1"
+                        onClick={() => {
+                            window.location.href = "#/g/" + item.id;
+                        }}
+                    >
                         <h3 className="text-lg font-medium text-gray-900">{item.name}</h3>
                         <p className="mt-1 text-sm text-gray-600">{item.desc}</p>
                     </div>
