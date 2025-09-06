@@ -19,6 +19,7 @@ FAKE_GPTS = [
     {"id": "g4", "name": "市场分析", "desc": "洞察市场趋势"},
     {"id": "g5", "name": "ECharts 画图助手", "desc": "用 ECharts 绘制可视化图表", "logo": "/gpts/echarts.svg"},
     {"id": "g6", "name": "PPT 大纲生成助手", "desc": "自动生成演示文稿大纲", "logo": "/gpts/ppt.svg"},
+    {"id": "g7", "name": "制度问答助手", "desc": "解答制度相关问题", "logo": "/gpts/policy.svg"},
 ]
 ID2GPTS = {g["id"]: g for g in FAKE_GPTS}
 LIMIT_PINNED = 8
