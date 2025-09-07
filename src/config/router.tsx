@@ -2,6 +2,7 @@ import { LazyExoticComponent, RefObject, lazy } from "react";
 import { RouterMode } from "../components/RouterWrapper";
 
 const Home = lazy(() => import("../views/Home"));
+const HomeGPTsAssistant = lazy(() => import("../views/HomeGPTsAssistant"));
 const Chat = lazy(() => import("../views/Chat"));
 const Gpts = lazy(() => import("../views/Gpts"));
 const NotFound = lazy(() => import("../views/NotFound"));
@@ -10,6 +11,11 @@ export type RouterProp<T> = Record<string, T>;
 
 export interface RouterComponentProps {
     refs?: RouterProp<RefObject<HTMLElement>>;
+    onAbortUpdate?: any;
+    gid?: string;
+    title?: string;
+    logo?: string;
+    subTitle?: string;
 }
 
 export interface RouterConfigRoutes {
@@ -34,6 +40,8 @@ export const routerConfig: RouterConfig = {
         index: { prefix: "/", uri: "", suffix: "", element: Home },
         chat: { prefix: "/chat", uri: "/:id", suffix: "", element: Chat },
         gpts: { prefix: "/gpts", uri: "", suffix: "", element: Gpts },
+        g_index: { prefix: "/g/:gid", uri: "", suffix: "", element: HomeGPTsAssistant },
+        g_chat: { prefix: "/g/:gid/chat", uri: "", suffix: "", element: Chat },
         default: { prefix: "*", uri: "", suffix: "", element: NotFound },
     },
 };

@@ -62,6 +62,11 @@ const App = () => {
 
     const handleSwitchLocale = (locale: string) => setUserLocale(i18n, locale);
 
+    const [pageTitle, setPageTitle] = useState("");
+    const [pageLogo, setPageLogo] = useState("");
+    const [pageName, setPageName] = useState("");
+    const [pageSubTitle, setPageSubTitle] = useState("");
+
     const handleExportSession = (id: string) => {
         const session = sessions[id];
         if (session) {
@@ -300,6 +305,10 @@ const App = () => {
                             suspense={<Skeleton />}
                             routerProps={{
                                 refs: { mainSectionRef, textAreaRef },
+                                // gid: gid,
+                                title: pageTitle,
+                                logo: pageLogo,
+                                subTitle: pageSubTitle,
                             }}
                         />
                         {!isGpts && (

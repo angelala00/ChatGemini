@@ -172,7 +172,7 @@ export const Sidebar = (props: SidebarProps) => {
                     <div
                         key={gpt.id}
                         className="p-2 mx-3 my-1 py-1 text-sm text-center text-gray-200 hover:bg-slate-600 transition-all rounded-lg cursor-pointer flex items-center justify-start gap-2"
-                        onClick={() => navigate("/gpts")}
+                        onClick={() => navigate("g/" + gpt.id)}
                     >
                         {gpt.name}
                     </div>

@@ -4,12 +4,13 @@ import { Toaster } from "react-hot-toast";
 interface ContainerProps {
     readonly toaster?: boolean;
     readonly className?: string;
+    readonly sidebarExpand?: boolean;
     readonly children: ReactNode;
 }
 
 export const Container = forwardRef(
     (props: ContainerProps, ref: ForwardedRef<HTMLDivElement>) => {
-        const { toaster, className, children } = props;
+        const { toaster, className, sidebarExpand, children } = props;
         return (
             <div
                 ref={ref}
