@@ -357,3 +357,5 @@ add test3
 本项目基于 MIT 协议开源，具体请参阅 [LICENSE](https://github.com/bclswl0827/ChatGemini/blob/master/LICENSE)
 
 ![Star History Chart](https://api.star-history.com/svg?repos=bclswl0827/ChatGemini&type=Date)
+
+git push modelscope master:github-master
