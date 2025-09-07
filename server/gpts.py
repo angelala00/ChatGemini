@@ -13,13 +13,128 @@ CONFIG_VERSION = "v0.10.0"
 DEFAULT_PIN_GPTS = "g4"
 
 FAKE_GPTS = [
-    {"id": "g1", "name": "SQL助手", "desc": "处理 SQL 相关问题"},
-    {"id": "g2", "name": "报表生成器", "desc": "自动生成数据报表"},
-    {"id": "g3", "name": "法务审查", "desc": "快速审查合同条款"},
-    {"id": "g4", "name": "市场分析", "desc": "洞察市场趋势"},
-    {"id": "g5", "name": "ECharts 画图助手", "desc": "用 ECharts 绘制可视化图表", "logo": "/gpts/echarts.svg"},
-    {"id": "g6", "name": "PPT 大纲生成助手", "desc": "自动生成演示文稿大纲", "logo": "/gpts/ppt.svg"},
-    {"id": "g7", "name": "制度问答助手", "desc": "解答制度相关问题", "logo": "/gpts/policy.svg"},
+    {
+        "id": "g1",
+        "name": "SQL助手",
+        "desc": "处理 SQL 相关问题",
+        "samples": [
+            {
+                "title": "查询销量前十的商品",
+                "description": "示例 SQL",
+                "prompt": "查询销量前十的商品",
+            },
+            {
+                "title": "统计每日新增用户",
+                "description": "示例 SQL",
+                "prompt": "统计每日新增用户数量",
+            },
+        ],
+    },
+    {
+        "id": "g2",
+        "name": "报表生成器",
+        "desc": "自动生成数据报表",
+        "samples": [
+            {
+                "title": "生成季度销售报表",
+                "description": "示例报表",
+                "prompt": "生成季度销售报表",
+            },
+            {
+                "title": "制作库存汇总表",
+                "description": "示例报表",
+                "prompt": "制作库存汇总表",
+            },
+        ],
+    },
+    {
+        "id": "g3",
+        "name": "法务审查",
+        "desc": "快速审查合同条款",
+        "samples": [
+            {
+                "title": "审查合同风险",
+                "description": "发现潜在风险",
+                "prompt": "审查合同中的潜在风险",
+            },
+            {
+                "title": "检查保密条款",
+                "description": "关注关键条款",
+                "prompt": "检查合同中的保密条款",
+            },
+        ],
+    },
+    {
+        "id": "g4",
+        "name": "市场分析",
+        "desc": "洞察市场趋势",
+        "samples": [
+            {
+                "title": "分析竞争对手",
+                "description": "市场调研",
+                "prompt": "分析主要竞争对手的市场份额",
+            },
+            {
+                "title": "预测产品需求",
+                "description": "趋势分析",
+                "prompt": "预测下季度产品需求",
+            },
+        ],
+    },
+    {
+        "id": "g5",
+        "name": "ECharts 画图助手",
+        "desc": "用 ECharts 绘制可视化图表",
+        "logo": "/gpts/echarts.svg",
+        "samples": [
+            {
+                "title": "绘制饼图",
+                "description": "展示分类占比",
+                "prompt": "使用ECharts绘制销售占比饼图",
+            },
+            {
+                "title": "生成折线图",
+                "description": "展示趋势",
+                "prompt": "使用ECharts生成月度趋势折线图",
+            },
+        ],
+    },
+    {
+        "id": "g6",
+        "name": "PPT 大纲生成助手",
+        "desc": "自动生成演示文稿大纲",
+        "logo": "/gpts/ppt.svg",
+        "samples": [
+            {
+                "title": "创业计划书大纲",
+                "description": "自动生成",
+                "prompt": "生成创业计划书PPT大纲",
+            },
+            {
+                "title": "项目汇报大纲",
+                "description": "自动生成",
+                "prompt": "生成项目汇报PPT大纲",
+            },
+        ],
+    },
+    {
+        "id": "g7",
+        "name": "制度问答助手",
+        "desc": "解答制度相关问题",
+        "logo": "/gpts/policy.svg",
+        "samples": [
+            {
+                "title": "请假制度",
+                "description": "了解公司制度",
+                "prompt": "公司请假制度是什么？",
+            },
+            {
+                "title": "报销流程",
+                "description": "了解公司制度",
+                "prompt": "公司报销流程如何进行？",
+            },
+        ],
+    },
 ]
 ID2GPTS = {g["id"]: g for g in FAKE_GPTS}
 LIMIT_PINNED = 8

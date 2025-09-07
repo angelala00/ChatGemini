@@ -29,6 +29,7 @@ import i18n, { i18nConfig } from "./config/i18n";
 import { setUserLocale } from "./helpers/setUserLocale";
 import { useTranslation } from "react-i18next";
 import { getCurrentLocale } from "./helpers/getCurrentLocale";
+import { LandingSample } from "./components/Landing";
 
 const App = () => {
     const { t } = useTranslation();
@@ -66,6 +67,7 @@ const App = () => {
     const [pageLogo, setPageLogo] = useState("");
     const [pageName, setPageName] = useState("");
     const [pageSubTitle, setPageSubTitle] = useState("");
+    const [pageSamples, setPageSamples] = useState<LandingSample[]>([]);
 
     const handleExportSession = (id: string) => {
         const session = sessions[id];
@@ -272,6 +274,7 @@ const App = () => {
             setPageTitle("");
             setPageLogo("");
             setPageSubTitle("");
+            setPageSamples([]);
             return;
         }
         const base = globalConfig.api ?? "";
@@ -281,11 +284,13 @@ const App = () => {
                 setPageTitle(data.name ?? "");
                 setPageLogo(data.logo ?? "");
                 setPageSubTitle(data.desc ?? "");
+                setPageSamples(data.samples ?? []);
             })
             .catch(() => {
                 setPageTitle("");
                 setPageLogo("");
                 setPageSubTitle("");
+                setPageSamples([]);
             });
     }, [gid]);
 
@@ -344,6 +349,7 @@ const App = () => {
                                 title: pageTitle,
                                 logo: pageLogo,
                                 subTitle: pageSubTitle,
+                                samples: pageSamples,
                             }}
                         />
                         {!isGpts && (
