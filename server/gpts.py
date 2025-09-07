@@ -170,7 +170,7 @@ def get_sidebar(x_user_id: str | None = Header(None)):
             """SELECT gpts_id, pinned_at
                FROM user_gpts_state
                WHERE user_id=?
-               ORDER BY pinned_at DESC
+               ORDER BY pinned_at
                LIMIT ?""",
             (user_id, LIMIT_PINNED),
         ).fetchall()

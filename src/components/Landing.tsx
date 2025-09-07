@@ -20,7 +20,7 @@ export const Landing = (props: LandingProps) => {
     return (
         <div className="py-6 pl-3 mx-auto max-w-[calc(100%)] items-center flex flex-col space-y-8">
             <div className="size-16 animate-ease-in-out animate-wiggle animate-infinite animate-duration-[3000ms]">
-                <img src={wandIcon} alt="" />
+                <img src={logo} alt="" />
             </div>
 
             <h1 className="font-bold text-lg md:text-xl lg:text-2xl text-gray-900">
