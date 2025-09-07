@@ -71,13 +71,5 @@ export const chat = async (
     await request("/chat", payload, stream, onMessage);
 };
 
-export const vision = async (
-    payload: any,
-    stream: boolean,
-    onMessage: OnMessage
-) => {
-    await request("/vision", payload, stream, onMessage);
-};
-
-export default { chat, vision };
+export default { chat };
 

@@ -44,13 +44,7 @@ app.include_router(gpts_router)
 class ChatRequest(BaseModel):
     prompt: str
     history: Optional[List[Dict[str, Any]]] = None
-    options: Optional[Dict[str, Any]] = None
-    stream: bool = False
-
-
-class VisionRequest(BaseModel):
-    prompt: str
-    image_base64: str
+    image_base64: Optional[str] = None
     options: Optional[Dict[str, Any]] = None
     stream: bool = False
 
@@ -69,21 +63,35 @@ async def exception_handler(request: Request, exc: Exception):
 async def chat(req: ChatRequest):
     model_name = req.options.get("model", "gemini-2.5-pro") if req.options else "gemini-2.5-pro"
     model = genai.GenerativeModel(model_name)
-    chat_session = model.start_chat(history=req.history or [])
     generation_config = (req.options or {}).get("generation_config")
     safety_settings = (req.options or {}).get("safety_settings")
+
+    img = None
+    if req.image_base64:
+        image_bytes = base64.b64decode(req.image_base64)
+        img = {"mime_type": "image/png", "data": image_bytes}
 
     try:
         if req.stream:
             def event_stream():
                 last_text = ""
                 try:
-                    for chunk in chat_session.send_message(
-                        req.prompt,
-                        stream=True,
-                        generation_config=generation_config,
-                        safety_settings=safety_settings,
-                    ):
+                    if img:
+                        iterator = model.generate_content(
+                            [req.prompt, img],
+                            stream=True,
+                            generation_config=generation_config,
+                            safety_settings=safety_settings,
+                        )
+                    else:
+                        chat_session = model.start_chat(history=req.history or [])
+                        iterator = chat_session.send_message(
+                            req.prompt,
+                            stream=True,
+                            generation_config=generation_config,
+                            safety_settings=safety_settings,
+                        )
+                    for chunk in iterator:
                         if chunk.text:
                             text = chunk.text[len(last_text) :]
                             last_text += text
@@ -102,60 +110,21 @@ async def chat(req: ChatRequest):
                 event_stream(), media_type="text/event-stream", headers=headers
             )
         else:
-            response = chat_session.send_message(
-                req.prompt,
-                stream=False,
-                generation_config=generation_config,
-                safety_settings=safety_settings,
-            )
-            return {"text": response.text}
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
-
-
-@app.post("/vision")
-async def vision(req: VisionRequest):
-    model_name = req.options.get("model", "gemini-pro-vision") if req.options else "gemini-pro-vision"
-    model = genai.GenerativeModel(model_name)
-    image_bytes = base64.b64decode(req.image_base64)
-    img = {"mime_type": "image/png", "data": image_bytes}
-    generation_config = (req.options or {}).get("generation_config")
-    safety_settings = (req.options or {}).get("safety_settings")
-
-    try:
-        if req.stream:
-            def event_stream():
-                last_text = ""
-                try:
-                    for chunk in model.generate_content(
-                        [req.prompt, img],
-                        stream=True,
-                        generation_config=generation_config,
-                        safety_settings=safety_settings,
-                    ):
-                        if chunk.text:
-                            text = chunk.text[len(last_text) :]
-                            last_text += text
-                            if text:
-                                yield f"data: {json.dumps({'text': text})}\n\n"
-                finally:
-                    yield "data: [DONE]\n\n"
-
-            headers = {
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",
-            }
-            return StreamingResponse(
-                event_stream(), media_type="text/event-stream", headers=headers
-            )
-        else:
-            response = model.generate_content(
-                [req.prompt, img],
-                stream=False,
-                generation_config=generation_config,
-                safety_settings=safety_settings,
-            )
+            if img:
+                response = model.generate_content(
+                    [req.prompt, img],
+                    stream=False,
+                    generation_config=generation_config,
+                    safety_settings=safety_settings,
+                )
+            else:
+                chat_session = model.start_chat(history=req.history or [])
+                response = chat_session.send_message(
+                    req.prompt,
+                    stream=False,
+                    generation_config=generation_config,
+                    safety_settings=safety_settings,
+                )
             return {"text": response.text}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
