@@ -2,18 +2,21 @@ import wandIcon from "../assets/icons/wand-sparkles-solid.svg";
 
 export interface LandingSample {
     readonly title: string;
+    readonly logo?: string;
     readonly description: string;
     readonly prompt: string;
 }
 
 interface LandingProps {
     readonly title: string;
+    readonly logo: string;
+    readonly subTitle: string;
     readonly samples: LandingSample[];
     readonly onSelectSample: (prompt: string) => void;
 }
 
 export const Landing = (props: LandingProps) => {
-    const { title, samples, onSelectSample } = props;
+    const { title, logo, subTitle, samples, onSelectSample } = props;
     return (
         <div className="py-6 pl-3 mx-auto max-w-[calc(100%)] items-center flex flex-col space-y-8">
             <div className="size-16 animate-ease-in-out animate-wiggle animate-infinite animate-duration-[3000ms]">

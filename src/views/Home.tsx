@@ -8,6 +8,8 @@ import { setTextAreaHeight } from "../helpers/setTextAreaHeight";
 import { getCurrentLocale } from "../helpers/getCurrentLocale";
 import i18n, { i18nConfig } from "../config/i18n";
 import { useTranslation } from "react-i18next";
+import wandIcon from "../assets/icons/wand-sparkles-solid.svg";
+
 
 const Home = (props: RouterComponentProps) => {
     const { t } = useTranslation();
@@ -45,6 +47,8 @@ const Home = (props: RouterComponentProps) => {
     return (
         <Landing
             title={landingTitle}
+            logo={wandIcon}
+            subTitle={landingTitle}
             samples={randomSamples}
             onSelectSample={handleSelectSample}
         />
