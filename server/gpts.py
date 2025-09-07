@@ -206,3 +206,24 @@ def list_gpts(x_user_id: str | None = Header(None), query: str | None = None):
             continue
         items.append({**g, "is_pinned": g["id"] in pinned_ids})
     return {"items": items}
+
+
+@router.get("/gpts/{gpts_id}")
+def get_gpts_detail(gpts_id: str, x_user_id: str | None = Header(None)):
+    """Return detail of a single GPTS by id."""
+    user_id = require_user(x_user_id)
+    gpts = ID2GPTS.get(gpts_id)
+    if not gpts:
+        raise HTTPException(404, "GPTS not found or not visible")
+
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM user_gpts_state WHERE user_id=? AND gpts_id=?",
+            (user_id, gpts_id),
+        ).fetchone()
+        is_pinned = row is not None
+    finally:
+        conn.close()
+
+    return {**gpts, "is_pinned": is_pinned}

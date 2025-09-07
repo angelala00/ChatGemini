@@ -254,6 +254,41 @@ const App = () => {
         setCurrentLocaleToState();
     }, [t, hasLogined, passcodes, site]);
 
+    const currentPath = location.hash.replace("#", "") || location.pathname;
+    const matchGIndex = matchPath(
+        { path: `${routes.g_index.prefix}${routes.g_index.uri}${routes.g_index.suffix}` },
+        currentPath
+    );
+    const matchGChat = matchPath(
+        { path: `${routes.g_chat.prefix}${routes.g_chat.uri}${routes.g_chat.suffix}` },
+        currentPath
+    );
+    const gid =
+        (matchGIndex?.params as { gid: string } | undefined)?.gid ||
+        (matchGChat?.params as { gid: string } | undefined)?.gid;
+
+    useEffect(() => {
+        if (!gid) {
+            setPageTitle("");
+            setPageLogo("");
+            setPageSubTitle("");
+            return;
+        }
+        const base = globalConfig.api ?? "";
+        fetch(`${base}/gpts/${gid}`, { headers: { "X-User-ID": "1" } })
+            .then((res) => res.json())
+            .then((data) => {
+                setPageTitle(data.name ?? "");
+                setPageLogo(data.logo ?? "");
+                setPageSubTitle(data.desc ?? "");
+            })
+            .catch(() => {
+                setPageTitle("");
+                setPageLogo("");
+                setPageSubTitle("");
+            });
+    }, [gid]);
+
     const isGpts = !!matchPath(
         { path: `${routes.gpts.prefix}${routes.gpts.uri}${routes.gpts.suffix}` },
         location.hash.replace("#", "") || location.pathname
@@ -305,7 +340,7 @@ const App = () => {
                             suspense={<Skeleton />}
                             routerProps={{
                                 refs: { mainSectionRef, textAreaRef },
-                                // gid: gid,
+                                gid: gid,
                                 title: pageTitle,
                                 logo: pageLogo,
                                 subTitle: pageSubTitle,
