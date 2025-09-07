@@ -12,8 +12,11 @@ import { ReduxStoreProps } from "./config/store";
 import { onUpdate as updateAI } from "./store/ai";
 import { matchPath, useNavigate, useLocation } from "react-router-dom";
 import { saveMdToHtml } from "./helpers/saveMdToHtml";
-import { getAiChats } from "./helpers/getAiChats";
-import { initialSessions, onUpdate as updateSessions, Attachment } from "./store/sessions";
+import {
+    initialSessions,
+    onUpdate as updateSessions,
+    Attachment,
+} from "./store/sessions";
 import { getAiContent } from "./helpers/getAiContent";
 import { getBase64Img } from "./helpers/getBase64Img";
 import { sendUserAlert } from "./helpers/sendUserAlert";
@@ -228,21 +231,13 @@ const App = () => {
             };
             dispatch(updateSessions(_sessions));
         };
-        if (!uploadInlineData.data.length) {
-            await getAiChats(
-                currentSessionHistory,
-                prompt,
-                sse,
-                handler
-            );
-        } else {
-            await getAiContent(
-                prompt,
-                uploadInlineData,
-                sse,
-                handler
-            );
-        }
+        await getAiContent(
+            currentSessionHistory,
+            prompt,
+            uploadInlineData,
+            sse,
+            handler
+        );
         setUploadInlineData({ data: "", mimeType: "" });
     };
 

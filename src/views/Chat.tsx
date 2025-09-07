@@ -7,7 +7,6 @@ import { useDispatch, useSelector } from "react-redux";
 import { ReduxStoreProps } from "../config/store";
 import { onUpdate as updateAI } from "../store/ai";
 import { onUpdate as updateSessions } from "../store/sessions";
-import { getAiChats } from "../helpers/getAiChats";
 import { globalConfig } from "../config/global";
 import { Container } from "../components/Container";
 import { getAiContent } from "../helpers/getAiContent";
@@ -101,22 +100,13 @@ const Chat = (props: RouterComponentProps) => {
                 setChat(_sessions[id]);
                 dispatch(updateSessions(_sessions));
             };
-            if (!_sessions[id][index - 1].attachment?.data.length) {
-                    await getAiChats(
-                        _sessions[id].slice(0, index - 1),
-                        _sessions[id][index - 1].parts,
-                        globalConfig.sse,
-                        handler
-                    );
-                } else {
-                    await getAiContent(
-                        _sessions[id][index - 1].parts,
-                        _sessions[id][index - 1]
-                            .attachment as Attachment,
-                        globalConfig.sse,
-                        handler
-                    );
-                }
+            await getAiContent(
+                _sessions[id].slice(0, index - 1),
+                _sessions[id][index - 1].parts,
+                _sessions[id][index - 1].attachment ?? { data: "", mimeType: "" },
+                globalConfig.sse,
+                handler
+            );
         } else if (ai.busy) {
             sendUserAlert(t("views.Chat.handleRefresh.not_available"), true);
         }
