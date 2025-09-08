@@ -60,6 +60,9 @@
                 "confirm_button": "确认",
                 "cancel_button": "取消",
                 "not_available": "AI 正忙，请稍后尝试删除"
+            },
+            "handleExport": {
+                "not_available": "AI 正忙，请稍后尝试导出"
             }
         }
     },
@@ -67,7 +70,7 @@
         "InputArea": {
             "checkAttachment": {
                 "size_exceed": "文件大小超过 {{ size }} MB 限制",
-                "illegal_format": "仅限上传常见图片格式",
+                "illegal_format": "仅限上传常见文件(pdf,doc,docx)格式",
                 "upload_success": "再次点击图标即可取消上传"
             },
             "setPlaceholderByWidth": {
@@ -81,6 +84,8 @@
             "passcode_label": "通行码",
             "remember_me": "自动登入",
             "login_button": "登入",
+            "logining": "登录中 。。。请稍后",
+            "no_authorized": "未授权",
             "handleLogin": {
                 "invalid_passcode": "通行码有误",
                 "login_success": "登入成功，即将跳转",
@@ -113,7 +118,10 @@
             "today_label": "今天",
             "yesterday_label": "昨天",
             "earlier_label": "更早",
-            "new_chat": "+ 新聊天",
+            "new_chat": "新会话",
+            "gpts": "更多助手",
+            "gpt_assistant": "DeepSeek",
+            "regulation_assistant": "制度助手",
             "load_more": "加载更多...",
             "no_history_chat": "没有历史记录",
             "rename": "重命名",

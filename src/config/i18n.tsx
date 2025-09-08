@@ -1,6 +1,5 @@
 import { createI18n } from "../helpers/createI18n";
 import enUS from "../locales/en-US.json";
-import zhTW from "../locales/zh-TW.json";
 import zhCN from "../locales/zh-CN.json";
 
 export const i18nConfig = {
@@ -8,7 +7,6 @@ export const i18nConfig = {
     fallback: "en-US",
     resources: {
         "en-US": { label: "US English", translation: enUS },
-        "zh-TW": { label: "正體中文", translation: zhTW },
         "zh-CN": { label: "简体中文", translation: zhCN },
     },
 };

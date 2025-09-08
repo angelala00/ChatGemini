@@ -60,6 +60,9 @@
                 "confirm_button": "OK",
                 "cancel_button": "Cancel",
                 "not_available": "AI is currently busy, please try deleting later"
+            },
+            "handleExport": {
+                "not_available": "AI is currently busy, please try exporting later"
             }
         }
     },
@@ -67,7 +70,7 @@
         "InputArea": {
             "checkAttachment": {
                 "size_exceed": "File size exceeds {{ size }} MB limit",
-                "illegal_format": "Only common image formats are allowed to be uploaded",
+                "illegal_format": "Only common file formats(pdf,doc,docx) are allowed to be uploaded",
                 "upload_success": "Click the icon again to cancel uploading"
             },
             "setPlaceholderByWidth": {
@@ -81,6 +84,8 @@
             "passcode_label": "Passcode",
             "remember_me": "Auto login",
             "login_button": "Login",
+            "logining": "Logging in 。。。",
+            "no_authorized": "No Authorized",
             "handleLogin": {
                 "invalid_passcode": "Passcode is incorrect",
                 "login_success": "Login successful, redirecting",
@@ -113,7 +118,10 @@
             "today_label": "Today",
             "yesterday_label": "Yesterday",
             "earlier_label": "Earlier",
-            "new_chat": "+ New chat",
+            "new_chat": "New chat",
+            "gpts": "More GPTs",
+            "gpt_assistant": "DeepSeek",
+            "regulation_assistant": "Regulation Assistant",
             "load_more": "Load more...",
             "no_history_chat": "No history chat",
             "rename": "Rename",

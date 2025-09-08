@@ -19,3 +19,39 @@ body::-webkit-scrollbar {
 .scrollbar-hide::-webkit-scrollbar {
     display: none;
 }
+
+.input-area-border {
+    border-radius: 25px;
+}
+.sub-title {
+    font-size: 14px;
+}
+
+.timeline-container {
+    position: relative;
+    margin-left: 30px;
+    padding-left: 24px;
+    border-left: 2px solid #ccc;
+}
+
+.timeline-container p {
+    position: relative;
+    padding-left: 20px;
+    margin-bottom: 20px;
+}
+
+.timeline-container p::before {
+    content: "";
+    position: absolute;
+    left: -31px;
+    top: 4px;
+    width: 12px;
+    height: 12px;
+    background-color: #4a90e2;
+    border-radius: 50%;
+    border: 2px solid white;
+    box-shadow: 0 0 0 2px #4a90e2;
+}
+.sidebarExpand-headerDropdown{
+    display: none;
+}
