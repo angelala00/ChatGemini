@@ -98,8 +98,7 @@ const App = () => {
         gid = "";
         id = pathParts[2] || "";
     }
-    // console.log("====id:"+ id + " ====gid:"+gid)
-    let r_gid = gid?gid:"gptassistant"
+    // console.log("====id:" + id + " ====gid:" + gid)
 
 
     const handleExportSession = (id: string) => {
@@ -363,8 +362,8 @@ const App = () => {
 
     useEffect(() => {
         // console.log("gid change")
-        if (hasLogined) {
-            const resp =  fetch(getFullPath('/api/gpts/detail/'+r_gid), {
+        if (hasLogined && gid) {
+            fetch(getFullPath('/api/gpts/detail/' + gid), {
                 method: 'GET',
                 credentials: 'include' // 确保带上 HttpOnly Cookie
             }).then(response => {
@@ -380,12 +379,13 @@ const App = () => {
                         setPageName(data.name)
                         // console.log("fileUploadEnabled:" + fileUploadEnabled)
                     })
-                } else {
-                    window.location.href = '/';
+                } else if (response.status === 401 || response.status === 403) {
+                    setIsNoAuthorized(true)
+                    setHasLogined(false)
                 }
             });
         }
-    }, [hasLogined,gid]);
+    }, [hasLogined, gid]);
 
     useEffect(() => {
         // console.log("====="+hasLogined)
