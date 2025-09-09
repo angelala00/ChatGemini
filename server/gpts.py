@@ -187,10 +187,12 @@ HOME_CARDS = {
 
 router = APIRouter()
 
+
 def get_db():
     conn = sqlite3.connect(DB_PATH, isolation_level=None)
     conn.row_factory = sqlite3.Row
     return conn
+
 
 def init_db():
     conn = get_db()
@@ -216,12 +218,13 @@ def init_db():
     finally:
         conn.close()
 
+
 init_db()
 
+
 def require_user(uid: str | None) -> str:
-    if not uid:
-        raise HTTPException(401, "Missing X-User-ID")
-    return uid
+    """Return a user id or fall back to a default demo user."""
+    return uid or "demo-user"
 
 
 @router.get("/gpts/home")
@@ -230,6 +233,7 @@ def get_home_cards():
 
 @router.patch("/gpts/{gpts_id}/pin")
 async def toggle_pin(gpts_id: str, request: Request, x_user_id: str | None = Header(None)):
+    """Pin or unpin a GPTS for the current user."""
     user_id = require_user(x_user_id)
     body = await request.json()
     is_pinned = bool(body.get("is_pinned"))
@@ -255,10 +259,12 @@ async def toggle_pin(gpts_id: str, request: Request, x_user_id: str | None = Hea
     finally:
         conn.close()
 
-    return {"gpts_id": gpts_id, "is_pinned": is_pinned}
+    return {"is_pinned": is_pinned}
+
 
 @router.get("/gpts/pined")
 def get_sidebar(x_user_id: str | None = Header(None)):
+    """Return pinned GPTS for the current user."""
     user_id = require_user(x_user_id)
     conn = get_db()
     try:
@@ -297,11 +303,13 @@ def get_sidebar(x_user_id: str | None = Header(None)):
         gid = r["gpts_id"]
         g = ID2GPTS.get(gid)
         if g:
-            pinned.append({"id": gid, "name": g["name"]})
-    return {"pinned": pinned, "limits": {"pinned": LIMIT_PINNED}}
+            pinned.append({"gid": gid, "name": g["name"], "logo": g.get("logo", "")})
+    return pinned
+
 
 @router.get("/gpts")
 def list_gpts(x_user_id: str | None = Header(None), query: str | None = None):
+    """Return all available GPTS with their pinned status."""
     user_id = require_user(x_user_id)
     conn = get_db()
     try:
@@ -316,29 +324,38 @@ def list_gpts(x_user_id: str | None = Header(None), query: str | None = None):
         conn.close()
 
     items = []
-    for g in FAKE_GPTS:
+    for index, g in enumerate(FAKE_GPTS):
         if query and query.lower() not in g["name"].lower():
             continue
-        items.append({**g, "is_pinned": g["id"] in pinned_ids})
-    return {"items": items}
+        items.append(
+            {
+                "gid": g["id"],
+                "name": g["name"],
+                "sub_title": g.get("desc", ""),
+                "logo": g.get("logo", ""),
+                "is_pinned": g["id"] in pinned_ids,
+                "index": index,
+            }
+        )
+    return items
 
 
-@router.get("/gpts/{gpts_id}")
+@router.get("/gpts/detail/{gpts_id}")
 def get_gpts_detail(gpts_id: str, x_user_id: str | None = Header(None)):
     """Return detail of a single GPTS by id."""
-    user_id = require_user(x_user_id)
+    require_user(x_user_id)  # Ensure DB initialisation for this user
     gpts = ID2GPTS.get(gpts_id)
     if not gpts:
         raise HTTPException(404, "GPTS not found or not visible")
 
-    conn = get_db()
-    try:
-        row = conn.execute(
-            "SELECT 1 FROM user_gpts_state WHERE user_id=? AND gpts_id=?",
-            (user_id, gpts_id),
-        ).fetchone()
-        is_pinned = row is not None
-    finally:
-        conn.close()
-
-    return {**gpts, "is_pinned": is_pinned}
+    return {
+        "gid": gpts_id,
+        "title": gpts["name"],
+        "name": gpts["name"],
+        "sub_title": gpts.get("desc", ""),
+        "samples": gpts.get("samples", []),
+        "logo": gpts.get("logo", ""),
+        "file_upload_enabled": True,
+        "default_model": "mock-model",
+        "models": ["mock-model"],
+    }
