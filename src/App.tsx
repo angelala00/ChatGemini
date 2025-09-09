@@ -404,7 +404,7 @@ const App = () => {
                     response_json.map((gpt_desc:{gid:string, name:string, index:number},_index:number)=>{
                         // console.log("====" + gpt_desc.name + ":::" + gpt_desc.index)
                         if (gpt_desc.index === 0 && gpt_desc.gid !== "gptassistant") {
-                            window.location.href =  location.pathname + "/#/g/" + gpt_desc.gid;  
+                            window.location.href = "#/g/" + gpt_desc.gid;
                         }
                     })
                 });
