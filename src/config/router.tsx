@@ -43,7 +43,7 @@ export const routerConfig: RouterConfig = {
         chat: { prefix: "/chat", uri: "/:id", suffix: "", element: Chat },
         gpts: { prefix: "/gpts", uri: "", suffix: "", element: Gpts },
         g_index: { prefix: "/g/:gid", uri: "", suffix: "", element: HomeGPTsAssistant },
-        g_chat: { prefix: "/g/:gid/chat", uri: "", suffix: "", element: Chat },
+        g_chat: { prefix: "/g/:gid/chat", uri: "/:id", suffix: "", element: Chat },
         default: { prefix: "*", uri: "", suffix: "", element: NotFound },
     },
 };

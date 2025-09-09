@@ -2,14 +2,16 @@ import { useParams } from "react-router-dom";
 import { Markdown } from "../components/Markdown";
 import { Session, SessionEditState, SessionRole } from "../components/Session";
 import { useCallback, useEffect, useState } from "react";
-import { SessionHistory, Sessions, Attachment } from "../store/sessions";
+import { SessionHistory, Sessions } from "../store/sessions";
 import { useDispatch, useSelector } from "react-redux";
 import { ReduxStoreProps } from "../config/store";
 import { onUpdate as updateAI } from "../store/ai";
 import { onUpdate as updateSessions } from "../store/sessions";
+import mappings, { onUpdate as updateMappings } from "../store/mappings";
+import { chatWithAI } from "../helpers/chatWithAI";
 import { globalConfig } from "../config/global";
 import { Container } from "../components/Container";
-import { getAiContent } from "../helpers/getAiContent";
+import { GenerativeContentBlob } from "@google/generative-ai";
 import { getBase64BlobUrl } from "../helpers/getBase64BlobUrl";
 import { ImageView } from "../components/ImageView";
 import { sendUserConfirm } from "../helpers/sendUserConfirm";
@@ -17,6 +19,7 @@ import { sendUserAlert } from "../helpers/sendUserAlert";
 import { RouterComponentProps, routerConfig } from "../config/router";
 import { PyodideInterface } from "pyodide";
 import { useTranslation } from "react-i18next";
+import { stat } from "node:fs/promises";
 
 const Chat = (props: RouterComponentProps) => {
     const { t } = useTranslation();
@@ -25,6 +28,7 @@ const Chat = (props: RouterComponentProps) => {
     const invalidPlaceholder = t("views.Chat.invalid_placeholder");
 
     const mainSectionRef = props.refs?.mainSectionRef.current ?? null;
+    const onAbortUpdate = props.onAbortUpdate;
     const { site: siteTitle } = globalConfig.title;
     const { mode, basename } = routerConfig;
 
@@ -33,7 +37,16 @@ const Chat = (props: RouterComponentProps) => {
         (state: ReduxStoreProps) => state.sessions.sessions
     );
 
+    const mappings = useSelector(
+        (state: ReduxStoreProps) => state.mappings.mappings
+    );
+
+    const sessionExtensions = useSelector(
+        (state: ReduxStoreProps) => state.sessionExtensions.sessionExtensions
+    )
+
     const ai = useSelector((state: ReduxStoreProps) => state.ai.ai);
+
     const { id } = useParams<{ id: keyof typeof sessions }>();
 
     const [chat, setChat] = useState<SessionHistory[]>([]);
@@ -51,14 +64,53 @@ const Chat = (props: RouterComponentProps) => {
     const handlePythonRuntimeCreated = (pyodide: PyodideInterface) =>
         setPythonRuntime(pyodide);
 
+    const [autoScroll, setAutoScroll] = useState(true)
+    
+
+    useEffect(() => {
+        if (mainSectionRef) {
+
+            let interactionTimeout: ReturnType<typeof setTimeout>;
+            const handleUserInteraction = () => {
+                setAutoScroll(false);
+                // console.log('========handleUserInteraction')
+                clearTimeout(interactionTimeout);
+                interactionTimeout = setTimeout(() => {
+                    const isAtBottom = mainSectionRef.scrollHeight - mainSectionRef.scrollTop - mainSectionRef.clientHeight <= 50;
+                    setAutoScroll(isAtBottom);
+                    // console.log('========isAtBottom：' + isAtBottom)
+                }, 1000)
+            };
+
+
+
+            let timeoutId: ReturnType<typeof setTimeout>;
+            const handleScroll = () => {
+                clearTimeout(timeoutId);
+                timeoutId = setTimeout(() => {
+                    const isAtBottom = mainSectionRef.scrollHeight - mainSectionRef.scrollTop - mainSectionRef.clientHeight <= 50;
+                    setAutoScroll(isAtBottom);
+                }, 10)
+            };
+            mainSectionRef.addEventListener("wheel", handleUserInteraction);
+            mainSectionRef.addEventListener("scroll", handleScroll);
+            return () => {
+                clearTimeout(timeoutId);
+                mainSectionRef.removeEventListener("wheel", handleUserInteraction);
+                mainSectionRef.removeEventListener("scroll", handleScroll);
+            }
+        }
+    }, [mainSectionRef]);
+
+
     const scrollToBottom = useCallback(
         (force: boolean = false) =>
-            (ai.busy || force) &&
+            (ai.busy || force) && autoScroll &&
             mainSectionRef?.scrollTo({
                 top: mainSectionRef.scrollHeight,
-                behavior: "smooth",
+                behavior: "auto",
             }),
-        [ai, mainSectionRef]
+        [ai, mainSectionRef, autoScroll]
     );
 
     const handleRefresh = async (index: number, customSessions?: Sessions) => {
@@ -77,7 +129,10 @@ const Chat = (props: RouterComponentProps) => {
             };
             dispatch(updateAI({ ...ai, busy: true }));
             dispatch(updateSessions(_sessions));
-            const handler = (message: string, end: boolean) => {
+            const handler = (message: string, end: boolean, convId: string) => {
+                if (convId !== "") {
+                    dispatch(updateAI({ ...mappings, id, convId}))
+                }
                 if (end) {
                     dispatch(updateAI({ ...ai, busy: false }));
                 }
@@ -99,14 +154,33 @@ const Chat = (props: RouterComponentProps) => {
                 };
                 setChat(_sessions[id]);
                 dispatch(updateSessions(_sessions));
+		        if (!end) {
+                    dispatch(updateAI({ ...ai, busy: true }));
+            	}
             };
-            await getAiContent(
+            let conversationId = id in sessions ? mappings[id] : "";
+            const sessionExtension = sessionExtensions[id];
+            let gid = "";
+            if (sessionExtension && sessionExtension["gid"]) {
+                gid = sessionExtension["gid"]
+            }
+            let selectedModel = "";
+            if (sessionExtension && sessionExtension["selectedModel"]) {
+                selectedModel = sessionExtension["selectedModel"]
+            }
+            const {start, abort} = chatWithAI(
                 _sessions[id].slice(0, index - 1),
                 _sessions[id][index - 1].parts,
-                _sessions[id][index - 1].attachment ?? { data: "", mimeType: "" },
+                _sessions[id][index - 1]
+                    .attachment as GenerativeContentBlob,
                 globalConfig.sse,
-                handler
+                conversationId,
+                gid,
+                handler,
+                selectedModel,
             );
+            onAbortUpdate(abort)
+            await start()
         } else if (ai.busy) {
             sendUserAlert(t("views.Chat.handleRefresh.not_available"), true);
         }
@@ -169,6 +243,21 @@ const Chat = (props: RouterComponentProps) => {
         }
     };
 
+    const handleExport = (index: number) => {
+        if (!ai.busy && id && id in sessions) {
+            const title = sessions[id][0].title ?? sessions[id][0].parts.slice(0, 10);
+            let content = sessions[id][index].parts;
+            // 删除思考部分
+            const thinkRegex = /<think>(.*?)<\/think>/gs;
+            content = content.replace(thinkRegex, "").trim(); // 去除 <think> 部分
+            // 导出
+            // exportMdAsDocx(content, `对话导出 - ${title} - ${new Date().toISOString().slice(0, 16).replace(/[-T:]/g, "_")}.docx`);
+        }
+        else if (ai.busy) {
+            sendUserAlert(t("views.Chat.handleExport.not_available"), true);
+        }
+    };
+
     useEffect(() => {
         if (id && id in sessions) {
             setChat(sessions[id]);
@@ -183,11 +272,12 @@ const Chat = (props: RouterComponentProps) => {
                 { role: "model", parts: invalidPlaceholder, timestamp: 0 },
             ]);
         }
+        // scrollToBottom(true)
         setTimeout(() => scrollToBottom(true), 300);
     }, [t, siteTitle, id, sessions, mainSectionRef, scrollToBottom]);
 
     return (
-        <Container className="max-w-[calc(100%)] py-5 pl-3 mb-auto mx-1 md:mx-[4rem] lg:mx-[8rem]">
+        <Container className="max-w-[1200px] w-full py-5 pl-3 mb-auto mx-auto px-4 md:px-16 lg:px32">
             <ImageView>
                 {chat.map(({ role, parts, attachment, timestamp }, index) => {
                     const { mimeType, data } = attachment ?? {
@@ -239,6 +329,7 @@ const Chat = (props: RouterComponentProps) => {
                             onRefresh={handleRefresh}
                             onDelete={handleDelete}
                             onEdit={handleEdit}
+                            onExport={handleExport}
                             postscript={
                                 !!data.length ? attachmentPostscriptHtml : ""
                             }

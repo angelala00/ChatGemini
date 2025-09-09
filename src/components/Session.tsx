@@ -35,6 +35,7 @@ interface SessionProps {
         state: SessionEditState,
         prompt: string
     ) => void;
+    readonly onExport: (index: number) => void;
 }
 
 export const Session = (props: SessionProps) => {
@@ -49,6 +50,7 @@ export const Session = (props: SessionProps) => {
         onEdit,
         onDelete,
         onRefresh,
+        onExport,
     } = props;
 
     const textAreaRef = useRef<HTMLTextAreaElement>(null);
@@ -173,6 +175,15 @@ export const Session = (props: SessionProps) => {
                         <img src={deleteIcon} className="size-4" alt="" />
                     </button>
                 )}
+                {/* 导出按钮 */}
+                {/* {role === SessionRole.Model && (
+                    <button
+                        className="size-6 rounded-lg hover:bg-gray-200 flex justify-center items-center"
+                        onClick={() => onExport(index)}
+                    >
+                        <ExportIcon className="size-4 text-gray-500" />
+                    </button>
+                )} */}
             </div>
         </div>
     );

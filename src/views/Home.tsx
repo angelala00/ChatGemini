@@ -8,8 +8,7 @@ import { setTextAreaHeight } from "../helpers/setTextAreaHeight";
 import { getCurrentLocale } from "../helpers/getCurrentLocale";
 import i18n, { i18nConfig } from "../config/i18n";
 import { useTranslation } from "react-i18next";
-import wandIcon from "../assets/icons/wand-sparkles-solid.svg";
-
+import logoIcon from "../assets/logo.svg";
 
 const Home = (props: RouterComponentProps) => {
     const { t } = useTranslation();
@@ -30,7 +29,7 @@ const Home = (props: RouterComponentProps) => {
             !!sampleConfig[currentLocale].length &&
                 (data = sampleConfig[currentLocale]);
         }
-        setRandomSamples(getRandomArr(data, 6));
+        // setRandomSamples(getRandomArr(data, 6));
     };
 
     const handleSelectSample = async (message: string) => {
@@ -41,14 +40,14 @@ const Home = (props: RouterComponentProps) => {
 
     useEffect(() => {
         document.title = siteTitle;
-        setRandomSamplesToState();
+        // setRandomSamplesToState();
     }, [t, siteTitle]);
 
     return (
         <Landing
-            title={landingTitle}
-            logo={wandIcon}
-            subTitle={landingTitle}
+            title="我是 GPT助手,　很高兴见到你！"
+            logo={logoIcon}
+            subTitle="我可以帮你写代码、读文件、写作各种创意内容，请把你的任务交给我吧～"
             samples={randomSamples}
             onSelectSample={handleSelectSample}
         />

@@ -16,6 +16,8 @@ import { getPythonResult } from "../helpers/getPythonResult";
 import { PyodideInterface } from "pyodide";
 import { getPythonRuntime } from "../helpers/getPythonRuntime";
 import { useTranslation } from "react-i18next";
+import { ChevronDownIcon, ChevronUpIcon } from "@heroicons/react/24/outline";
+import { getFullPath } from "../helpers/getDomainAndPath";
 import { ECharts } from "./ECharts";
 
 interface MarkdownProps {
@@ -128,193 +130,274 @@ export const Markdown = (props: MarkdownProps) => {
         300
     );
 
+    const [isThinkingExpanded, setIsThinkingExpanded] = useState(false);
+    
+    // 解析 Markdown 中的超链接
+    // 如果为"/api/"开头，是在调用后端的 API 服务，则获取完整路径
+    const resolveMdHref = (href?: string) => {
+        if (!href) return href;
+        console.log("调用中", href, href.startsWith("/api/"), getFullPath(href))
+        if (href.startsWith("/api/")) return getFullPath(href);
+        return href;
+    }
+
+    // const thinkRegex = /^<think>(.*?)<\/think>/s;
+    // const match = children.match(thinkRegex);
+    let markdownContent = children;
+    const thinkRegex = /<think>(.*?)<\/think>/gs;
+    const matches = Array.from(children.matchAll(thinkRegex));
+    let thinkTexts: string[] = [];
+    if (matches.length > 0) {
+        // thinkText = match[1].trim(); // 获取 <think>...</think> 之间的文本
+        thinkTexts = matches.map(m => m[1].trim()); // 获取 <think>...</think> 之间的文本
+        markdownContent = children.replace(thinkRegex, "").trim(); // 去除 <think> 部分
+    }
+    // console.log("children:"+children)
+    // console.log("matches.length" + matches.length)
+    // console.log("thinkTexts.length" + thinkTexts.length)
+    
+    let isThinking = markdownContent.startsWith("<think>");
+    if (isThinking) {
+        thinkTexts.push(markdownContent.replace(/^<think>/, "").replace(typingEffect, "").trim());
+        markdownContent = "";
+    }
+    function extractSteps(str: string){
+        const regex = /<step>([\s\S]*?)(?=<\/step>|$)/g;
+        let match;
+        const steps = [];
+        while ((match = regex.exec(str)) !== null){
+            steps.push(match[1])
+        }
+        return steps;
+    }
+    // console.log('===thinkTexts[0]:'+thinkTexts[0]);
+    let steps = extractSteps(thinkTexts[0]);
+    function parseStep(raw: string){
+        const re = /^<summary>([\s\S]*?)<\/summary>([\s\S]*)$/;
+        const m = re.exec(raw.trim());
+        if (m) {
+            return {"summary":m[1].trim(),"content":m[2].trim()}
+        }
+        return null
+    }
+    let stepData = steps.map(parseStep);
+    // console.log('===stepData:'+stepData.length);
+    let lastStepData = stepData.slice(-1)[0];
+    // console.log('===lastStepData:'+lastStepData);
+    let lastSummary = lastStepData?lastStepData.summary:"...";
+    let lastContent = lastStepData?lastStepData.content:"";
+
+    //兼容老的聊天记录
+    if (stepData.length == 0 && thinkTexts.length > 0){
+        stepData = thinkTexts.map((text, index)=> {
+            return {"summary":text.trim(),"content":text.trim()}
+        });
+        lastSummary = "已思考"
+    }
+
     useEffect(() => {
         setPythonResult({ result: "", startPos: null, endPos: null });
     }, [t, children]);
 
     return (
-        <ReactMarkdown
-            className={`prose text-sm lg:prose-base max-w-[100%] break-words ${
-                className ?? ""
-            }`}
-            children={children}
-            components={{
-                a: ({ node, ...props }) => (
-                    <a
-                        href={props.href}
-                        target="_blank"
-                        rel="noreferrer"
-                        {...props}
+        <div className={`relative ${className ?? ""}`}>
+            {/* 如果有 <think> 标签，则显示思考内容 */}
+            {thinkTexts.length > 0 && (
+                <div className="bg-yellow-100 border-l-4 border-yellow-500 p-3 rounded-lg mb-4">
+                    <div
+                        className="flex items-center justify-between cursor-pointer"
+                        onClick={() => setIsThinkingExpanded(!isThinkingExpanded)}
                     >
-                        {props.children}
-                    </a>
-                ),
-                pre: ({ node, ...props }) => (
-                    <pre className="bg-transparent p-2" {...props} />
-                ),
-                code: ({ className, children, node }) => {
-                    const match = /language-(\w+)/.exec(className ?? "");
-                    const lang = match !== null ? match[1] : "";
-                    const code = (
-                        !!children ? String(children) : TypingEffectPlaceholder
-                    ).replace(typingEffect, TypingEffectPlaceholder);
-                    const startPos = node?.position?.start ?? null;
-                    const endPos = node?.position?.end ?? null;
-                    if (lang === "echarts") {
-                        try {
-                            const trimmed = code.replace(/\n$/, "");
-                            let option;
+                        <span className="font-semibold text-yellow-800">{t("components.Markdown.thinking_title", isThinking ? lastSummary : "已思考")}</span>
+                        {isThinkingExpanded ? (
+                            <ChevronUpIcon className="w-5 h-5 text-yellow-600" />
+                        ) : (
+                            <ChevronDownIcon className="w-5 h-5 text-yellow-600" />
+                        )}
+                    </div>
+                    {!isThinkingExpanded && lastSummary == "思考中" &&(
+                        <span className="text-yellow-800">{lastContent}</span>
+                    )}
+                    {isThinkingExpanded && (
+                        <div className="timeline-container">
+                            {stepData.map((step, index) => (
+                                <p key={index} className="text-yellow-700 mt-2">{step?.content}</p>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+        
+            <ReactMarkdown
+                className={`prose text-sm lg:prose-base max-w-[100%] break-words ${
+                    className ?? ""
+                }`}
+                children={markdownContent}
+                components={{
+                    // 对回复（Markdown）中的超链接进行处理：
+                    // 如果是相对地址（`/api`开头），则为调用后端的 API 链接，故用 getFullPath 添加上后端的 API 域名
+                    a: ({ node, ...props }) => (
+                        <a
+                            {...props}
+                            href={resolveMdHref(props.href)}
+                            target="_blank"
+                            rel="noreferrer"
+                        >
+                            {props.children}
+                        </a>
+                    ),
+                    pre: ({ node, ...props }) => (
+                        <pre className="bg-transparent p-2" {...props} />
+                    ),
+                    code: ({ className, children, node }) => {
+                        const match = /language-(\w+)/.exec(className ?? "");
+                        const lang = match !== null ? match[1] : "";
+                        const code = (
+                            !!children ? String(children) : TypingEffectPlaceholder
+                        ).replace(typingEffect, TypingEffectPlaceholder);
+                        const startPos = node?.position?.start ?? null;
+                        const endPos = node?.position?.end ?? null;
+                        if (lang === "echarts") {
                             try {
-                                option = JSON.parse(trimmed);
-                            } catch {
-                                option = new Function(`return (${trimmed})`)();
-                            }
-                            return (
-                                <>
-                                    <ECharts option={option} />
-                                    {/* <Prism
-                                        PreTag={"div"}
-                                        style={style}
-                                        language="json"
-                                        showLineNumbers={true}
-                                        lineNumberStyle={{ opacity: 0.5 }}
-                                        children={trimmed}
-                                    />
-                                    <div className="flex gap-2">
-                                        <button
-                                            className="text-gray-700/100 text-xs hover:opacity-50"
-                                            onClick={({ currentTarget }) =>
-                                                handleCopyCode(trimmed, currentTarget)
-                                            }
-                                        >
-                                            {t("components.Markdown.copy_code")}
-                                        </button>
-                                    </div> */}
-                                </>
-                            );
-                        } catch (e) {
-                            const isIncomplete =
-                                code.includes(TypingEffectPlaceholder);
-                            return (
-                                <code
-                                    className={
-                                        isIncomplete ? "text-gray-700" : "text-red-700"
-                                    }
-                                >
-                                    {isIncomplete
-                                        ? t("components.Markdown.echarts_rendering")
-                                        : t(
-                                              "components.Markdown.echarts_render_failed"
-                                          )}
-                                </code>
-                            );
-                        }
-                    }
-                    return match ? (
-                        <>
-                            <Prism
-                                PreTag={"div"}
-                                style={style}
-                                language={lang}
-                                showLineNumbers={true}
-                                lineNumberStyle={{ opacity: 0.5 }}
-                                children={code.replace(/\n$/, "")}
-                            />
-                            <div className="flex gap-2">
-                                <button
-                                    className="text-gray-700/100 text-xs hover:opacity-50"
-                                    onClick={({ currentTarget }) =>
-                                        handleCopyCode(code, currentTarget)
-                                    }
-                                >
-                                    {t("components.Markdown.copy_code")}
-                                </button>
-                                {!code.includes(TypingEffectPlaceholder) &&
-                                    lang === "python" && (
-                                        <button
-                                            className="text-gray-700/100 text-xs hover:opacity-50"
-                                            onClick={({ currentTarget }) =>
-                                                handleRunPython(
-                                                    startPos,
-                                                    endPos,
-                                                    code,
-                                                    currentTarget
-                                                )
-                                            }
-                                        >
-                                            {t(
-                                                "components.Markdown.run_script"
-                                            )}
-                                        </button>
-                                    )}
-                            </div>
-                            {isObjectEqual(
-                                pythonResult.startPos ?? {},
-                                startPos ?? {}
-                            ) &&
-                                isObjectEqual(
-                                    pythonResult.endPos ?? {},
-                                    endPos ?? {}
-                                ) &&
-                                !!pythonResult.result.length && (
+                                const trimmed = code.replace(/\n$/, "");
+                                // console.log('trimmed:' + trimmed)
+                                let option;
+                                try{
+                                    option = JSON.parse(trimmed);
+                                } catch {
+                                    option = new Function(`return (${trimmed})`)();
+                                }
+                                return (
                                     <>
-                                        <Prism
-                                            language="shell"
-                                            PreTag={"div"}
-                                            style={style}
-                                            children={pythonResult.result.replace(
-                                                /\n$/,
-                                                ""
-                                            )}
-                                        />
-                                        <div className="flex gap-2">
+                                        <ECharts option={option} />
+                                    </>
+                                );
+                            } catch (e) {
+                                console.log(code)
+                                console.log(e)
+                                const isIncomplete =
+                                    code.includes(TypingEffectPlaceholder);
+                                return (
+                                    <code
+                                        className={
+                                            isIncomplete ? "text-gray-700" : "text-red-700"
+                                        }
+                                    >
+                                        {isIncomplete
+                                            ? t("components.Markdown.echarts_rendering")
+                                            : t(
+                                                  "components.Markdown.echarts_render_failed"
+                                              )}
+                                    </code>
+                                );
+                            }
+                        }
+                        return match ? (
+                            <>
+                                <Prism
+                                    PreTag={"div"}
+                                    style={style}
+                                    language={lang}
+                                    showLineNumbers={true}
+                                    lineNumberStyle={{ opacity: 0.5 }}
+                                    children={code.replace(/\n$/, "")}
+                                />
+                                <div className="flex gap-2">
+                                    <button
+                                        className="text-gray-700/100 text-xs hover:opacity-50"
+                                        onClick={({ currentTarget }) =>
+                                            handleCopyCode(code, currentTarget)
+                                        }
+                                    >
+                                        {t("components.Markdown.copy_code")}
+                                    </button>
+                                    {!code.includes(TypingEffectPlaceholder) &&
+                                        lang === "python" && (
                                             <button
                                                 className="text-gray-700/100 text-xs hover:opacity-50"
                                                 onClick={({ currentTarget }) =>
-                                                    handleCopyCode(
-                                                        pythonResult.result,
+                                                    handleRunPython(
+                                                        startPos,
+                                                        endPos,
+                                                        code,
                                                         currentTarget
                                                     )
                                                 }
                                             >
                                                 {t(
-                                                    "components.Markdown.copy_result"
+                                                    "components.Markdown.run_script"
                                                 )}
                                             </button>
-                                            <button
-                                                className="text-gray-700/100 text-xs hover:opacity-50"
-                                                onClick={() =>
-                                                    setPythonResult({
-                                                        result: "",
-                                                        startPos: null,
-                                                        endPos: null,
-                                                    })
-                                                }
-                                            >
-                                                {t(
-                                                    "components.Markdown.close_window"
+                                        )}
+                                </div>
+                                {isObjectEqual(
+                                    pythonResult.startPos ?? {},
+                                    startPos ?? {}
+                                ) &&
+                                    isObjectEqual(
+                                        pythonResult.endPos ?? {},
+                                        endPos ?? {}
+                                    ) &&
+                                    !!pythonResult.result.length && (
+                                        <>
+                                            <Prism
+                                                language="shell"
+                                                PreTag={"div"}
+                                                style={style}
+                                                children={pythonResult.result.replace(
+                                                    /\n$/,
+                                                    ""
                                                 )}
-                                            </button>
-                                        </div>
-                                    </>
-                                )}
-                        </>
-                    ) : (
-                        <code className="text-gray-700">
-                            {code.replace(/\n$/, "")}
-                        </code>
-                    );
-                },
-                table: ({ node, ...props }) => (
-                    <table
-                        className="overflow-x-auto block whitespace-nowrap"
-                        {...props}
-                    />
-                ),
-            }}
-            urlTransform={(url) => url}
-            rehypePlugins={[rehypeKatex, rehypeRaw]}
-            remarkPlugins={[remarkGfm, remarkMath]}
-        />
+                                            />
+                                            <div className="flex gap-2">
+                                                <button
+                                                    className="text-gray-700/100 text-xs hover:opacity-50"
+                                                    onClick={({ currentTarget }) =>
+                                                        handleCopyCode(
+                                                            pythonResult.result,
+                                                            currentTarget
+                                                        )
+                                                    }
+                                                >
+                                                    {t(
+                                                        "components.Markdown.copy_result"
+                                                    )}
+                                                </button>
+                                                <button
+                                                    className="text-gray-700/100 text-xs hover:opacity-50"
+                                                    onClick={() =>
+                                                        setPythonResult({
+                                                            result: "",
+                                                            startPos: null,
+                                                            endPos: null,
+                                                        })
+                                                    }
+                                                >
+                                                    {t(
+                                                        "components.Markdown.close_window"
+                                                    )}
+                                                </button>
+                                            </div>
+                                        </>
+                                    )}
+                            </>
+                        ) : (
+                            <code className="text-gray-700">
+                                {code.replace(/\n$/, "")}
+                            </code>
+                        );
+                    },
+                    table: ({ node, ...props }) => (
+                        <table
+                            className="overflow-x-auto block whitespace-nowrap"
+                            {...props}
+                        />
+                    ),
+                }}
+                urlTransform={(url) => url}
+                rehypePlugins={[rehypeKatex, rehypeRaw]}
+                remarkPlugins={[remarkGfm, remarkMath]}
+            />
+        </div>
     );
 };

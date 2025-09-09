@@ -1,5 +1,3 @@
-import wandIcon from "../assets/icons/wand-sparkles-solid.svg";
-
 export interface LandingSample {
     readonly title: string;
     readonly logo?: string;
@@ -20,12 +18,15 @@ export const Landing = (props: LandingProps) => {
     return (
         <div className="py-6 pl-3 mx-auto max-w-[calc(100%)] items-center flex flex-col space-y-8">
             <div className="size-16 animate-ease-in-out animate-wiggle animate-infinite animate-duration-[3000ms]">
-                <img src={logo} alt="" />
+                <img src={logo} alt="" className="w-50 h-50 object-contain" />
             </div>
 
             <h1 className="font-bold text-lg md:text-xl lg:text-2xl text-gray-900">
                 {title}
             </h1>
+            <div className="sub-title">
+                {subTitle}
+            </div>
 
             <div className="grid grid-cols-2 md:grid-cols-3 gap-2 pr-2">
                 {samples.map(({ title, description, prompt }, index) => (

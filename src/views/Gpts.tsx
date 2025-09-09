@@ -4,14 +4,16 @@ import { Container } from "../components/Container";
 import { globalConfig } from "../config/global";
 import pinnedIcon from "../assets/icons/thumbtack-solid.svg";
 import unpinnedIcon from "../assets/icons/map-pin-solid.svg";
+import { getFullPath } from "../helpers/getDomainAndPath";
 import { onUpdate as updatePinnedGpts } from "../store/gpts";
+import { Link, useNavigate } from "react-router-dom";
 
 interface GptsItem {
-    readonly id: string;
+    readonly gid: string;
     readonly name: string;
-    readonly desc: string;
+    readonly sub_title: string;
     readonly is_pinned: boolean;
-    readonly logo?: string;
+    readonly logo: string;
 }
 
 interface SectionProps {
@@ -28,10 +30,10 @@ const Section = ({ title, items, onToggle }: SectionProps) => (
         <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
             {items.map((item) => (
                 <div
-                    key={item.id}
+                    key={item.gid}
                     className="relative flex items-start p-6 rounded-xl bg-gray-50 hover:bg-gray-100 border transition-colors cursor-pointer"
                     onClick={() => {
-                        window.location.href = "#/g/" + item.id;
+                        window.location.href = "#/g/"+item.gid;
                     }}
                 >
                     <div className="mr-4 flex h-16 w-16 items-center justify-center rounded-lg bg-gray-200 text-2xl overflow-hidden">
@@ -43,13 +45,13 @@ const Section = ({ title, items, onToggle }: SectionProps) => (
                     </div>
                     <div className="flex-1">
                         <h3 className="text-lg font-medium text-gray-900">{item.name}</h3>
-                        <p className="mt-1 text-sm text-gray-600">{item.desc}</p>
+                        <p className="mt-1 text-sm text-gray-600">{item.sub_title}</p>
                     </div>
                     <button
                         className="absolute top-2 right-2 p-1 rounded hover:bg-gray-200 cursor-pointer"
                         onClick={(e) => {
                             e.stopPropagation();
-                            onToggle(item.id, item.is_pinned);
+                            onToggle(item.gid, item.is_pinned);
                         }}
                         aria-label={item.is_pinned ? "取消置顶" : "置顶"}
                     >
@@ -70,21 +72,18 @@ const Gpts = () => {
     const dispatch = useDispatch();
 
     const refreshSidebar = () => {
-        const base = globalConfig.api ?? "";
-        fetch(`${base}/gpts/pined`, { headers: { "X-User-ID": "1" } })
+        // console.log("refreshSidebar:")
+        fetch(getFullPath('/api/gpts/pined'), {})
             .then((res) => res.json())
-            .then((data) => dispatch(updatePinnedGpts(data.pinned ?? [])))
+            .then((data) => dispatch(updatePinnedGpts(data ?? [])))
             .catch(() => {});
     };
 
     useEffect(() => {
-        const base = globalConfig.api ?? "";
-        fetch(`${base}/gpts`, {
-            headers: { "X-User-ID": "1" },
-        })
+        fetch(getFullPath('/api/gpts'), {})
             .then((res) => res.json())
             .then((data) => {
-                setItems(data.items ?? []);
+                setItems(data ?? []);
                 refreshSidebar();
             })
             .catch(() => {
@@ -93,20 +92,16 @@ const Gpts = () => {
     }, []);
 
     const handleToggle = (id: string, is_pinned: boolean) => {
-        const base = globalConfig.api ?? "";
-        fetch(`${base}/gpts/${id}/pin`, {
+        fetch(getFullPath(`/api/gpts/${id}/pin`), {
             method: "PATCH",
-            headers: {
-                "Content-Type": "application/json",
-                "X-User-ID": "1",
-            },
+            headers: {},
             body: JSON.stringify({ is_pinned: !is_pinned }),
         })
             .then((res) => res.json())
             .then((data) => {
                 setItems((prev) =>
                     prev.map((item) =>
-                        item.id === id
+                        item.gid === id
                             ? { ...item, is_pinned: data.is_pinned }
                             : item
                     )

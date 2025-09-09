@@ -1,7 +1,7 @@
 import { createSlice } from "@reduxjs/toolkit";
 
 export interface PinnedGpt {
-    readonly id: string;
+    readonly gid: string;
     readonly name: string;
     readonly logo: string;
 }

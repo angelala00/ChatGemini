@@ -1,23 +1,28 @@
-import exportIcon from "../assets/icons/file-export-solid.svg";
+import exportIcon from "../assets/icons/file-export-solid-white.svg"
 import deleteIcon from "../assets/icons/trash-can-solid.svg";
 import renameIcon from "../assets/icons/file-pen-solid.svg";
 import submitIcon from "../assets/icons/circle-check-solid.svg";
 import emptyIcon from "../assets/icons/folder-open-solid.svg";
 import moreIcon from "../assets/icons/ellipsis-solid.svg";
+import regulationIcon from "../assets/icons/zhidu_logo.svg";
+import wandIcon from "../assets/icons/ds-logo.svg";
+import logoIcon from "../assets/logo.svg";
+import editIcon from "../assets/icons/pen-to-square-solid.svg";
+import appsIcon from "../assets/icons/apps.svg";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { Sessions } from "../store/sessions";
 import { useTranslation } from "react-i18next";
-import { globalConfig } from "../config/global";
 import { ReduxStoreProps } from "../config/store";
 import { onUpdate as updatePinnedGpts } from "../store/gpts";
+import { handleRequest } from "../helpers/handleRequest";
+import { getFullPath } from "../helpers/getDomainAndPath";
 
 interface SidebarProps {
     readonly title: string;
     readonly expand: boolean;
     readonly limitation?: number;
-    readonly newChatUrl: string;
     readonly sessions: Sessions;
     readonly locales: Record<string, string>;
     readonly currentLocale: string;
@@ -33,7 +38,6 @@ export const Sidebar = (props: SidebarProps) => {
         title,
         expand,
         limitation,
-        newChatUrl,
         sessions,
         locales,
         currentLocale,
@@ -47,16 +51,7 @@ export const Sidebar = (props: SidebarProps) => {
     const pinnedGpts = useSelector(
         (state: ReduxStoreProps) => state.gpts.pinned
     );
-
-    const [newLocale, setNewLocale] = useState<string | null>(null);
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
-
-    const handleSelectChange = ({
-        target,
-    }: React.ChangeEvent<HTMLSelectElement>) => {
-        setNewLocale(target.value);
-        onSwitchLocale(target.value);
-    };
 
     const [renamingChatTitle, setRenamingChatTitle] = useState<{
         id: string;
@@ -72,18 +67,7 @@ export const Sidebar = (props: SidebarProps) => {
         };
     }>({});
 
-    useEffect(() => {
-        const base = globalConfig.api ?? "";
-        fetch(`${base}/gpts/pined`, { headers: { "X-User-ID": "1" } })
-            .then((res) => res.json())
-            .then((data) => {
-                dispatch(updatePinnedGpts(data.pinned ?? []));
-            })
-            .catch(() => {
-                dispatch(updatePinnedGpts([]));
-            });
-    }, [dispatch]);
-
+    // const [pinnedGpts, setPinnedGpts] = useState([]);
     const getCategorizedSessions = (
         sessions: Sessions,
         filter: (value: number, index: number, array: number[]) => boolean
@@ -120,6 +104,14 @@ export const Sidebar = (props: SidebarProps) => {
             ).toLocaleDateString();
 
     useEffect(() => {
+        handleRequest('GET', getFullPath('/api/gpts/pined') ).then(response_json => {
+            // console.log("1111:"+response_json)
+            // setPinnedGpts(response_json)
+            dispatch(updatePinnedGpts(response_json ?? []));
+        });
+    }, [dispatch]);
+        
+    useEffect(() => {
         const today = getCategorizedSessions(sessions, isTimestampToday);
         const yesterday = getCategorizedSessions(
             sessions,
@@ -142,6 +134,9 @@ export const Sidebar = (props: SidebarProps) => {
         });
     }, [t, sessions]);
 
+    const sessionExtensions = useSelector(
+        (state: ReduxStoreProps) => state.sessionExtensions.sessionExtensions
+    )
     return (
         <nav
             className={`bg-slate-900 flex flex-col h-screen overflow-hidden ${
@@ -150,36 +145,47 @@ export const Sidebar = (props: SidebarProps) => {
         >
             <div className="sticky top-0 bg-slate-900">
                 <div className="py-4 flex justify-center items-center font-semibold text-gray-100 border-b border-gray-400">
-                    <span>{title}</span>
+                    <img src={logoIcon} className="w-8 h-8 object-contain"/>
                 </div>
-                {!Object.values(sessionsCategory)
-                    .map(({ sessions }) => sessions ?? {})
-                    .every((sessions) => !Object.keys(sessions).length) && (
-                    <div
-                        className="mx-3 my-5 py-1 border border-dashed text-sm text-center text-gray-200 hover:bg-slate-600 transition-all rounded-sm cursor-pointer"
-                        onClick={() => navigate(newChatUrl)}
-                    >
-                        {t("components.Sidebar.new_chat")}
-                    </div>
-                )}
                 <div
                     className="p-2 mx-3 my-1 py-1 text-sm text-center text-gray-200 hover:bg-slate-600 transition-all rounded-lg cursor-pointer flex items-center justify-start gap-2"
-                    onClick={() => navigate("/gpts")}
+                    onClick={() => {
+                        navigate("/")
+                    }}
                 >
-                    {"gpts"}
+                    <img src={editIcon} className="w-8 h-8 object-contain"/>
+                    {t("components.Sidebar.new_chat")}
                 </div>
-                {pinnedGpts.map((gpt) => (
-                    <div
-                        key={gpt.id}
-                        className="p-2 mx-3 my-1 py-1 text-sm text-center text-gray-200 hover:bg-slate-600 transition-all rounded-lg cursor-pointer flex items-center justify-start gap-2"
-                        onClick={() => navigate("g/" + gpt.id)}
-                    >
-                        {gpt.name}
-                    </div>
-                ))}
+                <div
+                    className="p-1 mx-3 my-1 py-1 text-sm text-center text-gray-200 hover:bg-slate-600 transition-all rounded-lg cursor-pointer flex items-center justify-start gap-2"
+                    onClick={() => {
+                        navigate("/gpts")
+                    }}
+                >
+                    <img src={appsIcon} className="w-8 h-8 object-contain"/>
+                    {t("components.Sidebar.gpts")}
+                </div>
             </div>
             <div className="flex-1 overflow-auto min-h-0">
-                <div className="flex flex-col space-y-2 p-2 mb-auto">
+            {pinnedGpts.map(({ gid, name, logo }, index) => {
+                console.log
+                if (gid === "gptassistant") {
+                    return
+                }
+                return (
+                    <div
+                        key={gid}
+                        className="mx-3 my-1 py-1 text-sm text-center text-gray-200 hover:bg-slate-600 transition-all rounded-lg cursor-pointer flex items-center justify-start gap-2"
+                        onClick={() => {
+                            navigate("/g/"+gid)
+                        }}
+                    >
+                        <img src={logo ? logo : regulationIcon} className="w-9 h-9 object-contain"/>
+                        {name}
+                    </div>
+                )
+            })}
+            <div className="flex flex-col space-y-2 p-2 mb-auto">
                 {Object.keys(sessionsCategory).map((key, index, arr) => {
                     const currentLabel = sessionsCategory[key].label;
                     const currentSessions =
@@ -208,10 +214,17 @@ export const Sidebar = (props: SidebarProps) => {
                                             !!currentSession?.title?.length
                                                 ? currentSession.title
                                                 : currentSession.parts;
+                                        let path;
+                                        const sessionExtension = sessionExtensions[id];
+                                        if (sessionExtension && sessionExtension["gid"]) {
+                                            path = `/g/${sessionExtension["gid"]}/chat/${id}`
+                                        } else {
+                                            path = `/chat/${id}`
+                                        }
                                         return (
                                             <div
                                                 key={_index}
-                                                className="flex rounded-lg items-center justify-between p-2 text-gray-200 hover:bg-slate-600 transition-all space-x-2 group"
+                                                className="group relative flex rounded-lg items-center justify-between p-2 text-gray-200 hover:bg-slate-600 transition-all space-x-2"
                                                 onMouseLeave={() =>
                                                     setActiveMenu(null)
                                                 }
@@ -223,7 +236,7 @@ export const Sidebar = (props: SidebarProps) => {
                                                             ? "hidden"
                                                             : ""
                                                     }`}
-                                                    to={`/chat/${id}`}
+                                                    to={`${path}`}
                                                 >
                                                     {currentSessionTitle}
                                                 </Link>
@@ -361,18 +374,7 @@ export const Sidebar = (props: SidebarProps) => {
             )}
             </div>
             <div className="sticky bottom-0 bg-slate-900 py-1 flex justify-center items-center text-xs text-gray-100 border-gray-400 border-t">
-                <select
-                    className="text-gray-300/50 text-center bg-transparent w-full outline-none m-1"
-                    onChange={handleSelectChange}
-                    value={newLocale ?? currentLocale}
-                >
-                    <option disabled>Choose Language</option>
-                    {Object.entries(locales).map(([key, value]) => (
-                        <option key={key} value={key} className="text-gray-800">
-                            {value}
-                        </option>
-                    ))}
-                </select>
+		技术支持@abcc
             </div>
         </nav>
     );
