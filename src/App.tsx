@@ -99,6 +99,7 @@ const App = () => {
         id = pathParts[2] || "";
     }
     // console.log("====id:" + id + " ====gid:" + gid)
+    let r_gid = gid?gid:"gptassistant"
 
 
     const handleExportSession = (id: string) => {
@@ -362,8 +363,8 @@ const App = () => {
 
     useEffect(() => {
         // console.log("gid change")
-        if (hasLogined && gid) {
-            fetch(getFullPath('/api/gpts/detail/' + gid), {
+        if (hasLogined) {
+             fetch(getFullPath('/api/gpts/detail/' + r_gid), {
                 method: 'GET',
                 credentials: 'include' // 确保带上 HttpOnly Cookie
             }).then(response => {
@@ -379,9 +380,9 @@ const App = () => {
                         setPageName(data.name)
                         // console.log("fileUploadEnabled:" + fileUploadEnabled)
                     })
-                } else if (response.status === 401 || response.status === 403) {
-                    setIsNoAuthorized(true)
-                    setHasLogined(false)
+                } else {
+                    console.log("====")
+                    window.location.href = '/';
                 }
             });
         }
@@ -399,16 +400,18 @@ const App = () => {
     useEffect(() => {
         if (hasLogined) {
             document.title = site;
-            if (!gid) {
-                handleRequest('GET', getFullPath('/api/gpts')).then(response_json => {
-                    response_json.map((gpt_desc:{gid:string, name:string, index:number},_index:number)=>{
-                        // console.log("====" + gpt_desc.name + ":::" + gpt_desc.index)
-                        if (gpt_desc.index === 0 && gpt_desc.gid !== "gptassistant") {
-                            window.location.href = "#/g/" + gpt_desc.gid;
-                        }
-                    })
-                });
-            }
+            // window.location.href = '/';
+            // if (!gid) {
+            //     handleRequest('GET', getFullPath('/api/gpts')).then(response_json => {
+            //         response_json.map((gpt_desc:{gid:string, name:string, index:number},_index:number)=>{
+            //             // console.log("====" + gpt_desc.name + ":::" + gpt_desc.index)
+            //             if (gpt_desc.index === 0 && gpt_desc.gid !== "gptassistant") {
+            //                 // window.location.href = "#/g/" + gpt_desc.gid;
+            //                 window.location.href =  location.pathname + "/#/g/" + gpt_desc.gid;  
+            //             }
+            //         })
+            //     });
+            // }
         }
     }, [hasLogined]);
 

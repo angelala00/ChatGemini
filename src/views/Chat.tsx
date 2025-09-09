@@ -20,6 +20,7 @@ import { RouterComponentProps, routerConfig } from "../config/router";
 import { PyodideInterface } from "pyodide";
 import { useTranslation } from "react-i18next";
 import { stat } from "node:fs/promises";
+// import { exportMdAsDocx } from "../helpers/exportMdAsDocx";
 
 const Chat = (props: RouterComponentProps) => {
     const { t } = useTranslation();
