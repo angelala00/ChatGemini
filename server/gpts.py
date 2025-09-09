@@ -14,6 +14,18 @@ DEFAULT_PIN_GPTS = "g4"
 
 FAKE_GPTS = [
     {
+        "id": "gptassistant",
+        "name": "GPT 助手",
+        "desc": "通用对话助手",
+        "samples": [
+            {
+                "title": "基本对话",
+                "description": "询问通用问题",
+                "prompt": "你好",
+            }
+        ],
+    },
+    {
         "id": "g1",
         "name": "SQL助手",
         "desc": "处理 SQL 相关问题",
@@ -136,6 +148,8 @@ FAKE_GPTS = [
         ],
     },
 ]
+HIDDEN_GPT_IDS = {"gptassistant"}
+VISIBLE_GPTS = [g for g in FAKE_GPTS if g["id"] not in HIDDEN_GPT_IDS]
 ID2GPTS = {g["id"]: g for g in FAKE_GPTS}
 LIMIT_PINNED = 8
 
@@ -302,7 +316,7 @@ def get_sidebar(x_user_id: str | None = Header(None)):
     for r in rows:
         gid = r["gpts_id"]
         g = ID2GPTS.get(gid)
-        if g:
+        if g and gid not in HIDDEN_GPT_IDS:
             pinned.append({"gid": gid, "name": g["name"], "logo": g.get("logo", "")})
     return pinned
 
@@ -324,7 +338,7 @@ def list_gpts(x_user_id: str | None = Header(None), query: str | None = None):
         conn.close()
 
     items = []
-    for index, g in enumerate(FAKE_GPTS):
+    for index, g in enumerate(VISIBLE_GPTS):
         if query and query.lower() not in g["name"].lower():
             continue
         items.append(
