@@ -1,31 +1,24 @@
-import base64
+import asyncio
 import json
 import os
-from typing import Any, Dict, List, Optional
+import uuid
+from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel
 from dotenv import load_dotenv
-import google.generativeai as genai
-# NOTE:
-# ``server`` and ``gpts`` live in the same folder.  When ``uvicorn`` imports
-# ``server.main`` as a module, Python does not automatically put this directory
-# on ``sys.path`` for absolute imports.  The previous absolute import
-# ``from gpts import router as gpts_router`` therefore failed with
-# ``ModuleNotFoundError`` when launching the application.  Using a relative
-# import ensures the router module is loaded correctly regardless of how the
-# package is executed.
+
 from .gpts import router as gpts_router
 
-# Load environment variables
+# Load environment variables (kept for future extensibility)
 load_dotenv()
-API_KEY = os.getenv("GEMINI_API_KEY")
-BASE_URL = os.getenv("GOOGLE_API_BASE_URL")
 
-if API_KEY:
-    genai.configure(api_key=API_KEY, client_options={"api_endpoint": BASE_URL} if BASE_URL else None)
+# Directories for storing temporary data such as uploads
+BASE_DIR = os.path.dirname(os.path.dirname(__file__))
+DATA_DIR = os.path.join(BASE_DIR, "data")
+UPLOAD_DIR = os.path.join(DATA_DIR, "uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 app = FastAPI()
 
@@ -38,15 +31,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# GPTS endpoints
-app.include_router(gpts_router)
-
-class ChatRequest(BaseModel):
-    prompt: str
-    history: Optional[List[Dict[str, Any]]] = None
-    image_base64: Optional[str] = None
-    options: Optional[Dict[str, Any]] = None
-    stream: bool = False
+# Include GPTS related endpoints under the /api prefix
+app.include_router(gpts_router, prefix="/api")
 
 
 @app.exception_handler(HTTPException)
@@ -59,72 +45,64 @@ async def exception_handler(request: Request, exc: Exception):
     return JSONResponse(status_code=500, content={"error": {"message": str(exc)}})
 
 
-@app.post("/chat")
-async def chat(req: ChatRequest):
-    model_name = req.options.get("model", "gemini-2.5-pro") if req.options else "gemini-2.5-pro"
-    model = genai.GenerativeModel(model_name)
-    generation_config = (req.options or {}).get("generation_config")
-    safety_settings = (req.options or {}).get("safety_settings")
+# ------------------------- Authentication -------------------------
 
-    img = None
-    if req.image_base64:
-        image_bytes = base64.b64decode(req.image_base64)
-        img = {"mime_type": "image/png", "data": image_bytes}
+@app.get("/api/auth/status")
+async def auth_status() -> dict[str, Any]:
+    """Mock login status endpoint used by the front-end."""
+    return {"name": "Mock User"}
 
-    try:
-        if req.stream:
-            def event_stream():
-                last_text = ""
-                try:
-                    if img:
-                        iterator = model.generate_content(
-                            [req.prompt, img],
-                            stream=True,
-                            generation_config=generation_config,
-                            safety_settings=safety_settings,
-                        )
-                    else:
-                        chat_session = model.start_chat(history=req.history or [])
-                        iterator = chat_session.send_message(
-                            req.prompt,
-                            stream=True,
-                            generation_config=generation_config,
-                            safety_settings=safety_settings,
-                        )
-                    for chunk in iterator:
-                        if chunk.text:
-                            text = chunk.text[len(last_text) :]
-                            last_text += text
-                            if text:
-                                yield f"data: {json.dumps({'text': text})}\n\n"
-                finally:
-                    # signal the client the stream is complete
-                    yield "data: [DONE]\n\n"
 
-            headers = {
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",
-            }
-            return StreamingResponse(
-                event_stream(), media_type="text/event-stream", headers=headers
-            )
-        else:
-            if img:
-                response = model.generate_content(
-                    [req.prompt, img],
-                    stream=False,
-                    generation_config=generation_config,
-                    safety_settings=safety_settings,
-                )
-            else:
-                chat_session = model.start_chat(history=req.history or [])
-                response = chat_session.send_message(
-                    req.prompt,
-                    stream=False,
-                    generation_config=generation_config,
-                    safety_settings=safety_settings,
-                )
-            return {"text": response.text}
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+@app.get("/api/auth/get-provider")
+async def auth_get_provider() -> dict[str, Any]:
+    """Return a fake SSO provider so the front-end can redirect."""
+    return {"provider": {"name": "MockSSO", "param": "mock"}}
+
+
+@app.post("/api/auth/logout")
+async def auth_logout() -> dict[str, Any]:
+    """Logout endpoint – always succeeds in this mock server."""
+    return {"result": "ok"}
+
+
+# --------------------------- File Upload --------------------------
+
+@app.post("/api/upload")
+async def upload_file(file: UploadFile = File(...)) -> dict[str, Any]:
+    """Accept a file and store it locally.  Returns a generated file id."""
+    file_id = str(uuid.uuid4())
+    dest = os.path.join(UPLOAD_DIR, file_id)
+    with open(dest, "wb") as f:
+        f.write(await file.read())
+    return {"file_id": file_id, "original_filename": file.filename}
+
+
+# ----------------------------- Chat -------------------------------
+
+async def _mock_chat_stream(query: str, conversation_id: str):
+    """Generate a mock streaming response that echoes the query."""
+    message = f"Mock response: {query}" or ""
+    for word in message.split():
+        payload = {"event": "message", "answer": f"{word} ", "conversation_id": conversation_id}
+        yield f"data: {json.dumps(payload)}\n\n"
+        await asyncio.sleep(0.05)
+    yield f"data: {json.dumps({'event': 'message_end', 'conversation_id': conversation_id})}\n\n"
+
+
+async def _handle_chat_request(req: Request) -> StreamingResponse:
+    body = await req.json()
+    query = body.get("query", "")
+    conversation_id = body.get("conversation_id") or str(uuid.uuid4())
+    return StreamingResponse(_mock_chat_stream(query, conversation_id), media_type="text/event-stream")
+
+
+@app.post("/api/chat")
+async def chat(req: Request) -> StreamingResponse:
+    """Chat endpoint used for the default assistant."""
+    return await _handle_chat_request(req)
+
+
+@app.post("/api/{gpt_id}/chat-messages")
+async def chat_messages(gpt_id: str, req: Request) -> StreamingResponse:
+    """Chat endpoint for GPT specific conversations."""
+    return await _handle_chat_request(req)
