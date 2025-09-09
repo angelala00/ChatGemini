@@ -33,7 +33,7 @@ export const globalConfig = {
     title: {
         site: !!env["REACT_APP_TITLE_SITE"]?.length
             ? env["REACT_APP_TITLE_SITE"]
-            : "网联大模型AI助手",
+            : "大模型AI助手",
         header: !!env["REACT_APP_TITLE_HEADER"]?.length
             ? env["REACT_APP_TITLE_HEADER"]
             : "Chat",
