@@ -106,6 +106,35 @@ def _fast_model_route(query: str, has_image: bool) -> str | None:
     return None
 
 
+def _normalise_file_ids(file_ids_raw: Any) -> list[str]:
+    """Convert ``file_ids`` from the request body into a list of strings."""
+    if isinstance(file_ids_raw, str):
+        return [f for f in file_ids_raw.split(",") if f]
+    if isinstance(file_ids_raw, list):
+        return [str(f) for f in file_ids_raw if f]
+    return []
+
+
+def _extract_file_text(file_ids: list[str]) -> str:
+    """Very small helper to read text from uploaded files.
+
+    This mock implementation simply concatenates the contents of the files
+    treating them as UTF-8 text, ignoring errors.  Real systems would use
+    proper document parsers.
+    """
+    texts: list[str] = []
+    for fid in file_ids:
+        path = os.path.join(UPLOAD_DIR, fid)
+        if not os.path.exists(path):
+            continue
+        try:
+            with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                texts.append(f.read())
+        except Exception:
+            continue
+    return "\n".join(texts)
+
+
 def _route_auto_model(query: str, body: dict[str, Any]) -> str:
     """Route requests to an appropriate mock model based on input files.
 
@@ -120,16 +149,8 @@ def _route_auto_model(query: str, body: dict[str, Any]) -> str:
     * A fast routing model can be used if available with hard logic as a
       fallback.
     """
-    file_ids_raw = body.get("file_ids")
+    file_ids = _normalise_file_ids(body.get("file_ids"))
     q = query.lower()
-
-    # ``file_ids`` may be a comma separated string or list; normalise it.
-    if isinstance(file_ids_raw, str):
-        file_ids = [f for f in file_ids_raw.split(",") if f]
-    elif isinstance(file_ids_raw, list):
-        file_ids = [str(f) for f in file_ids_raw if f]
-    else:
-        file_ids = []
 
     fast_route = _fast_model_route(query, bool(file_ids))
     if fast_route:
@@ -177,6 +198,12 @@ async def _handle_chat_request(req: Request) -> StreamingResponse:
     model = body.get("model", "mock-model")
     if model == "auto":
         model = _route_auto_model(query, body)
+    if model in {"file_extract_then_think", "file_extract_then_instruct"}:
+        file_ids = _normalise_file_ids(body.get("file_ids"))
+        extracted = _extract_file_text(file_ids)
+        if extracted:
+            query = f"{query}\n\n{extracted}"
+        model = "think" if model.endswith("_think") else "instruct"
     return StreamingResponse(
         _mock_chat_stream(query, conversation_id, model),
         media_type="text/event-stream",
