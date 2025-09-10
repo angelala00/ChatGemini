@@ -99,13 +99,13 @@ ChatGemini 是一个基于 Google Gemini 的网页客户端，对标 ChatGPT 3.5
    cp .env.example .env
    ```
    > 在 `.env` 中填入 `REACT_APP_BACKEND_URL` 等环境变量。
-   REACT_APP_BACKEND_URL=http://localhost:8000
+   REACT_APP_BACKEND_URL=http://localhost:5008
    REACT_APP_GEMINI_API_SSE=true
 3. 启动服务
    ```bash
-   uvicorn server.main:app --reload --host 0.0.0.0 --port 8000
+   uvicorn server.main:app --reload --host 0.0.0.0 --port 5008
    ```
-   后端默认运行在 `http://localhost:8000`。
+   后端默认运行在 `http://localhost:5008`。
 
 ## 应用部署
 

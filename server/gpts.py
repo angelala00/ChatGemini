@@ -28,44 +28,6 @@ FAKE_GPTS = [
         ],
     },
     {
-        "id": "g1",
-        "name": "SQL助手",
-        "desc": "处理 SQL 相关问题",
-        "default_model": "mock-model",
-        "models": ["mock-model"],
-        "samples": [
-            {
-                "title": "查询销量前十的商品",
-                "description": "示例 SQL",
-                "prompt": "查询销量前十的商品",
-            },
-            {
-                "title": "统计每日新增用户",
-                "description": "示例 SQL",
-                "prompt": "统计每日新增用户数量",
-            },
-        ],
-    },
-    {
-        "id": "g2",
-        "name": "报表生成器",
-        "desc": "自动生成数据报表",
-        "default_model": "mock-model",
-        "models": ["mock-model"],
-        "samples": [
-            {
-                "title": "生成季度销售报表",
-                "description": "示例报表",
-                "prompt": "生成季度销售报表",
-            },
-            {
-                "title": "制作库存汇总表",
-                "description": "示例报表",
-                "prompt": "制作库存汇总表",
-            },
-        ],
-    },
-    {
         "id": "g3",
         "name": "法务审查",
         "desc": "快速审查合同条款",
@@ -81,25 +43,6 @@ FAKE_GPTS = [
                 "title": "检查保密条款",
                 "description": "关注关键条款",
                 "prompt": "检查合同中的保密条款",
-            },
-        ],
-    },
-    {
-        "id": "g4",
-        "name": "市场分析",
-        "desc": "洞察市场趋势",
-        "default_model": "mock-model",
-        "models": ["mock-model"],
-        "samples": [
-            {
-                "title": "分析竞争对手",
-                "description": "市场调研",
-                "prompt": "分析主要竞争对手的市场份额",
-            },
-            {
-                "title": "预测产品需求",
-                "description": "趋势分析",
-                "prompt": "预测下季度产品需求",
             },
         ],
     },
