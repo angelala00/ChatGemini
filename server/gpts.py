@@ -17,6 +17,8 @@ FAKE_GPTS = [
         "id": "gptassistant",
         "name": "GPT 助手",
         "desc": "通用对话助手",
+        "default_model": "mock-model",
+        "models": ["mock-model"],
         "samples": [
             {
                 "title": "基本对话",
@@ -29,6 +31,8 @@ FAKE_GPTS = [
         "id": "g1",
         "name": "SQL助手",
         "desc": "处理 SQL 相关问题",
+        "default_model": "mock-model",
+        "models": ["mock-model"],
         "samples": [
             {
                 "title": "查询销量前十的商品",
@@ -46,6 +50,8 @@ FAKE_GPTS = [
         "id": "g2",
         "name": "报表生成器",
         "desc": "自动生成数据报表",
+        "default_model": "mock-model",
+        "models": ["mock-model"],
         "samples": [
             {
                 "title": "生成季度销售报表",
@@ -63,6 +69,8 @@ FAKE_GPTS = [
         "id": "g3",
         "name": "法务审查",
         "desc": "快速审查合同条款",
+        "default_model": "mock-model",
+        "models": ["mock-model"],
         "samples": [
             {
                 "title": "审查合同风险",
@@ -80,6 +88,8 @@ FAKE_GPTS = [
         "id": "g4",
         "name": "市场分析",
         "desc": "洞察市场趋势",
+        "default_model": "mock-model",
+        "models": ["mock-model"],
         "samples": [
             {
                 "title": "分析竞争对手",
@@ -98,6 +108,8 @@ FAKE_GPTS = [
         "name": "ECharts 画图助手",
         "desc": "用 ECharts 绘制可视化图表",
         "logo": "/gpts/echarts.svg",
+        "default_model": "mock-model",
+        "models": ["mock-model"],
         "samples": [
             {
                 "title": "绘制饼图",
@@ -116,6 +128,8 @@ FAKE_GPTS = [
         "name": "PPT 大纲生成助手",
         "desc": "自动生成演示文稿大纲",
         "logo": "/gpts/ppt.svg",
+        "default_model": "mock-model",
+        "models": ["mock-model"],
         "samples": [
             {
                 "title": "创业计划书大纲",
@@ -134,6 +148,8 @@ FAKE_GPTS = [
         "name": "制度问答助手",
         "desc": "解答制度相关问题",
         "logo": "/gpts/policy.svg",
+        "default_model": "mock-model",
+        "models": ["mock-model"],
         "samples": [
             {
                 "title": "请假制度",
@@ -370,6 +386,6 @@ def get_gpts_detail(gpts_id: str, x_user_id: str | None = Header(None)):
         "samples": gpts.get("samples", []),
         "logo": gpts.get("logo", ""),
         "file_upload_enabled": True,
-        "default_model": "mock-model",
-        "models": ["mock-model"],
+        "default_model": gpts.get("default_model", ""),
+        "models": gpts.get("models", []),
     }
