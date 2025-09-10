@@ -107,17 +107,18 @@ def _fast_model_route(query: str, has_image: bool) -> str | None:
 
 
 def _route_auto_model(query: str, body: dict[str, Any]) -> str:
-    """Route requests to an appropriate mock model.
+    """Route requests to an appropriate mock model based on input files.
 
-    * If images are supplied we always begin with the ``vl`` model.
-      Simple queries are answered directly.  For harder problems the
-      VL model is used to extract details and a second model is invoked
-      (represented here by a pipeline string).
-    * Non-image files (e.g., documents) trigger a separate routing path
-      that simulates extracting the file's text before responding.
-    * When no files are present we fall back to text heuristics.
-    * A fast routing model can be used if available with hard logic as
-      a safe fallback.
+    * Only images – answer with ``vl`` or, for complex questions, extract
+      details before invoking ``think``.
+    * Images together with other documents – extract from both sources and
+      hand off to ``think``.
+    * Only documents – extract text then choose between ``instruct`` and
+      ``think`` depending on question complexity.
+    * No files – route between ``instruct`` and ``think`` using text
+      heuristics.
+    * A fast routing model can be used if available with hard logic as a
+      fallback.
     """
     file_ids_raw = body.get("file_ids")
     q = query.lower()
@@ -133,10 +134,6 @@ def _route_auto_model(query: str, body: dict[str, Any]) -> str:
     fast_route = _fast_model_route(query, bool(file_ids))
     if fast_route:
         return fast_route
-
-    def needs_function_call() -> bool:
-        keywords = ["search", "calculate", "调用", "function", "api"]
-        return any(k in q for k in keywords)
 
     def is_complex() -> bool:
         complex_keywords = ["why", "how", "分析", "复杂", "reason"]
@@ -162,21 +159,14 @@ def _route_auto_model(query: str, body: dict[str, Any]) -> str:
             else:
                 has_other = True
 
+        if has_image:
+            if has_other:
+                return "vl_and_file_extract_then_think"
+            return "vl_extract_then_think" if is_complex() else "vl"
+
         if has_other:
-            if needs_function_call():
-                return "file_extract_then_instruct"
-            if is_complex():
-                return "file_extract_then_think"
-            return "file"
+            return "file_extract_then_think" if is_complex() else "file_extract_then_instruct"
 
-        if needs_function_call():
-            return "vl_extract_then_instruct"
-        if is_complex():
-            return "vl_extract_then_think"
-        return "vl"
-
-    if needs_function_call():
-        return "instruct"
     return "think" if is_complex() else "instruct"
 
 
