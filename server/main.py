@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import uuid
+import imghdr
 from typing import Any
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
@@ -112,12 +113,22 @@ def _route_auto_model(query: str, body: dict[str, Any]) -> str:
       Simple queries are answered directly.  For harder problems the
       VL model is used to extract details and a second model is invoked
       (represented here by a pipeline string).
-    * When no images are present we fall back to text heuristics.
+    * Non-image files (e.g., documents) trigger a separate routing path
+      that simulates extracting the file's text before responding.
+    * When no files are present we fall back to text heuristics.
     * A fast routing model can be used if available with hard logic as
       a safe fallback.
     """
-    file_ids = body.get("file_ids")
+    file_ids_raw = body.get("file_ids")
     q = query.lower()
+
+    # ``file_ids`` may be a comma separated string or list; normalise it.
+    if isinstance(file_ids_raw, str):
+        file_ids = [f for f in file_ids_raw.split(",") if f]
+    elif isinstance(file_ids_raw, list):
+        file_ids = [str(f) for f in file_ids_raw if f]
+    else:
+        file_ids = []
 
     fast_route = _fast_model_route(query, bool(file_ids))
     if fast_route:
@@ -132,6 +143,32 @@ def _route_auto_model(query: str, body: dict[str, Any]) -> str:
         return len(query) > 60 or any(k in q for k in complex_keywords)
 
     if file_ids:
+        def is_image(fid: str) -> bool:
+            path = os.path.join(UPLOAD_DIR, fid)
+            if not os.path.exists(path):
+                return False
+            try:
+                with open(path, "rb") as f:
+                    header = f.read(32)
+                return imghdr.what(None, header) is not None
+            except Exception:
+                return False
+
+        has_image = False
+        has_other = False
+        for fid in file_ids:
+            if is_image(fid):
+                has_image = True
+            else:
+                has_other = True
+
+        if has_other:
+            if needs_function_call():
+                return "file_extract_then_instruct"
+            if is_complex():
+                return "file_extract_then_think"
+            return "file"
+
         if needs_function_call():
             return "vl_extract_then_instruct"
         if is_complex():
