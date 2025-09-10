@@ -18,7 +18,7 @@ FAKE_GPTS = [
         "name": "GPT 助手",
         "desc": "通用对话助手",
         "default_model": "mock-model",
-        "models": ["mock-model"],
+        "models": ["auto", "mock-model2", "mock-model3"],
         "samples": [
             {
                 "title": "基本对话",
