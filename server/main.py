@@ -93,10 +93,35 @@ async def _mock_chat_stream(query: str, conversation_id: str, model: str):
     yield f"data: {json.dumps({'event': 'message_end', 'conversation_id': conversation_id})}\n\n"
 
 
+def _fast_model_route(query: str, has_image: bool) -> str | None:
+    """Placeholder for using a lightweight model to choose a route.
+
+    In a real system this could call a small model (e.g. 3B) to predict
+    which backend model to use.  Returning ``None`` falls back to the
+    hand written heuristics below.
+    """
+
+    # For now the demo always falls back to heuristics.
+    return None
+
+
 def _route_auto_model(query: str, body: dict[str, Any]) -> str:
-    """Simple heuristic router for the mock server."""
+    """Route requests to an appropriate mock model.
+
+    * If images are supplied we always begin with the ``vl`` model.
+      Simple queries are answered directly.  For harder problems the
+      VL model is used to extract details and a second model is invoked
+      (represented here by a pipeline string).
+    * When no images are present we fall back to text heuristics.
+    * A fast routing model can be used if available with hard logic as
+      a safe fallback.
+    """
     file_ids = body.get("file_ids")
     q = query.lower()
+
+    fast_route = _fast_model_route(query, bool(file_ids))
+    if fast_route:
+        return fast_route
 
     def needs_function_call() -> bool:
         keywords = ["search", "calculate", "调用", "function", "api"]
@@ -106,13 +131,12 @@ def _route_auto_model(query: str, body: dict[str, Any]) -> str:
         complex_keywords = ["why", "how", "分析", "复杂", "reason"]
         return len(query) > 60 or any(k in q for k in complex_keywords)
 
-    def is_simple_image_question() -> bool:
-        return len(query) <= 30 and not is_complex() and not needs_function_call()
-
     if file_ids:
-        if is_simple_image_question():
-            return "vl"
-        return "instruct" if needs_function_call() else "think"
+        if needs_function_call():
+            return "vl_extract_then_instruct"
+        if is_complex():
+            return "vl_extract_then_think"
+        return "vl"
 
     if needs_function_call():
         return "instruct"
