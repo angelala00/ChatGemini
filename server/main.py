@@ -79,21 +79,57 @@ async def upload_file(file: UploadFile = File(...)) -> dict[str, Any]:
 
 # ----------------------------- Chat -------------------------------
 
-async def _mock_chat_stream(query: str, conversation_id: str):
+async def _mock_chat_stream(query: str, conversation_id: str, model: str):
     """Generate a mock streaming response that echoes the query."""
-    message = f"Mock response: {query}" or ""
+    message = f"[{model}] Mock response: {query}" or ""
     for word in message.split():
-        payload = {"event": "message", "answer": f"{word} ", "conversation_id": conversation_id}
+        payload = {
+            "event": "message",
+            "answer": f"{word} ",
+            "conversation_id": conversation_id,
+        }
         yield f"data: {json.dumps(payload)}\n\n"
         await asyncio.sleep(0.05)
     yield f"data: {json.dumps({'event': 'message_end', 'conversation_id': conversation_id})}\n\n"
+
+
+def _route_auto_model(query: str, body: dict[str, Any]) -> str:
+    """Simple heuristic router for the mock server."""
+    file_ids = body.get("file_ids")
+    q = query.lower()
+
+    def needs_function_call() -> bool:
+        keywords = ["search", "calculate", "调用", "function", "api"]
+        return any(k in q for k in keywords)
+
+    def is_complex() -> bool:
+        complex_keywords = ["why", "how", "分析", "复杂", "reason"]
+        return len(query) > 60 or any(k in q for k in complex_keywords)
+
+    def is_simple_image_question() -> bool:
+        return len(query) <= 30 and not is_complex() and not needs_function_call()
+
+    if file_ids:
+        if is_simple_image_question():
+            return "vl"
+        return "instruct" if needs_function_call() else "think"
+
+    if needs_function_call():
+        return "instruct"
+    return "think" if is_complex() else "instruct"
 
 
 async def _handle_chat_request(req: Request) -> StreamingResponse:
     body = await req.json()
     query = body.get("query", "")
     conversation_id = body.get("conversation_id") or str(uuid.uuid4())
-    return StreamingResponse(_mock_chat_stream(query, conversation_id), media_type="text/event-stream")
+    model = body.get("model", "mock-model")
+    if model == "auto":
+        model = _route_auto_model(query, body)
+    return StreamingResponse(
+        _mock_chat_stream(query, conversation_id, model),
+        media_type="text/event-stream",
+    )
 
 
 @app.post("/api/chat")
