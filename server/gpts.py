@@ -17,7 +17,7 @@ FAKE_GPTS = [
         "id": "gptassistant",
         "name": "GPT 助手",
         "desc": "通用对话助手",
-        "default_model": "mock-model",
+        "default_model": "auto",
         "models": ["auto", "mock-model2", "mock-model3"],
         "samples": [
             {
@@ -31,8 +31,6 @@ FAKE_GPTS = [
         "id": "g3",
         "name": "法务审查",
         "desc": "快速审查合同条款",
-        "default_model": "mock-model",
-        "models": ["mock-model"],
         "samples": [
             {
                 "title": "审查合同风险",
@@ -51,8 +49,6 @@ FAKE_GPTS = [
         "name": "ECharts 画图助手",
         "desc": "用 ECharts 绘制可视化图表",
         "logo": "/gpts/echarts.svg",
-        "default_model": "mock-model",
-        "models": ["mock-model"],
         "samples": [
             {
                 "title": "绘制饼图",
@@ -71,8 +67,6 @@ FAKE_GPTS = [
         "name": "PPT 大纲生成助手",
         "desc": "自动生成演示文稿大纲",
         "logo": "/gpts/ppt.svg",
-        "default_model": "mock-model",
-        "models": ["mock-model"],
         "samples": [
             {
                 "title": "创业计划书大纲",
@@ -91,8 +85,6 @@ FAKE_GPTS = [
         "name": "制度问答助手",
         "desc": "解答制度相关问题",
         "logo": "/gpts/policy.svg",
-        "default_model": "mock-model",
-        "models": ["mock-model"],
         "samples": [
             {
                 "title": "请假制度",

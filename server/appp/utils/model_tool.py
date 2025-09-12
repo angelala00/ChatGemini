@@ -1,0 +1,50 @@
+import os
+import base64
+from typing import Union, List
+import imghdr
+
+
+MODEL_NAME_VL = "Qwen2.5-VL-7B-Instruct"
+MODEL_NAME_INSTRUCT = "Qwen3-30B-A3B-Instruct-2507"
+MODEL_NAME_THINKING = "Qwen2.5-VL-7B-Instruct"
+MODEL_NAME_QWQ = "QwQ-32B"
+MODEL_NAME_DS = "deepseek-r1-distill-qwen-32b"
+
+
+def convert_image_message(file_path: Union[str, List[str]], query):
+    if isinstance(file_path, str):
+        file_path = [file_path]
+    if not file_path:
+        raise ValueError("file_path is None")
+    message_content = []
+    for path in file_path:
+        img_base64_str = get_image_base64(path)
+        if img_base64_str:
+            message_content.append({"type": "image_url", "image_url": img_base64_str})
+    message_content.append({"type": "text", "text": query})
+    return message_content
+
+
+def get_image_base64(file_path: str):
+    if not os.path.exists(file_path):
+        print(f"FilePath:{file_path} not found")
+        return None
+    with open(file_path, "rb") as image_file:
+        encoded_bytes = base64.b64encode(image_file.read())
+        encoded_str = encoded_bytes.decode("utf-8")
+        return encoded_str
+
+
+def is_image_only(file_paths: str):
+    if not file_paths:
+        return False
+    for file_path in file_paths:
+        if not os.path.exists(file_path):
+            print(f"file_path:{file_path} is not found")
+            continue
+        with open(file_path, "rb") as f:
+            header = f.read(32)
+        if imghdr.what(None, header) is None:
+            return False
+    return True
+
