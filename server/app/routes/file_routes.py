@@ -210,7 +210,7 @@ async def extract_text_from_file(file_id: str, user: dict = Depends(get_current_
 
     # print(f"file_path:{file_path}")
     extension = file_mapping[file_id]['fileExtension']
-    result = extract_text.extract_text_from_file(file_path, extension)
+    result = await extract_text.extract_text_from_file(file_path, extension)
     return JSONResponse({"text": result})
 
 

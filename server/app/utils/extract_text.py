@@ -4,7 +4,6 @@ import imghdr
 from openpyxl import load_workbook
 from docx import Document
 from PyPDF2 import PdfReader
-from app.chat_service import _ask_once_stream
 from app.utils.model_tool import convert_image_message, MODEL_NAME_VL
 
 
@@ -25,6 +24,8 @@ async def extract_text_from_file(file_path: str, file_type: str):
     #     raise Exception(f"UnSupport file type:{file_type}")
 
     if imghdr.what(file_path) is not None:
+        from app.chat_service import _ask_once_stream
+
         query = "提取图片信息"
         messages = [{"role": "user", "content": convert_image_message(file_path, query)}]
         # print(f"messages:{messages}")
