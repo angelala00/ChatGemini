@@ -1,9 +1,10 @@
 import os
 import time
+import json
 from fastapi import APIRouter, Request, Depends, HTTPException, status
 from app.auth.auth_routes import get_current_user
 from app.logger import gpt_logger
-from app.gpts.config_gpts import gpts, fetch_gpts
+from app.gpts.config_gpts import gpts, fetch_gpts, refresh_gpts, BUILTIN_GIDS
 import sqlite3
 from typing import Tuple
 from app.base_config import model_config
@@ -54,6 +55,7 @@ init_db()
 @router.get("/gpts")
 async def get_gpts(user: dict = Depends(get_current_user)):
     gpt_logger.info(f"path=get_gpts user={user['email']} at={time.strftime('%Y-%m-%d %H:%M:%S')}")
+    refresh_gpts()
     conn = get_db()
     try:
         pinned_ids = {
@@ -76,7 +78,7 @@ async def get_gpts(user: dict = Depends(get_current_user)):
 async def toggle_pin(gid: str, request: Request, user: dict = Depends(get_current_user)):
     body = await request.json()
     is_pinned = bool(body.get("is_pinned"))
-
+    refresh_gpts()
     if gid not in gpts:
         raise HTTPException(404, "GPTS not found or not visible")
 
@@ -120,6 +122,7 @@ def parse_version(v: str) -> Tuple[int, ...]:
 @router.get("/gpts/pined")
 async def gpts_pined(user: dict = Depends(get_current_user)):
     gpt_logger.info(f"path=gpts_pined user={user['email']} at={time.strftime('%Y-%m-%d %H:%M:%S')}")
+    refresh_gpts()
     conn = get_db()
     user_id = user['sub']
     try:
@@ -168,12 +171,75 @@ async def gpts_pined(user: dict = Depends(get_current_user)):
 @router.get("/gpts/detail/{gid}")
 async def get_gpts_detail(gid: str, user: dict = Depends(get_current_user)):
     gpt_logger.info(f"path=get_gpts_detail user={user['email']} at={time.strftime('%Y-%m-%d %H:%M:%S')}")
+    refresh_gpts()
     if gid not in gpts:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "gid not found")
     if not auth_ok(gpts[gid], user['email']):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "No Authorized")
     gpts_detail = {k: v for k, v in gpts[gid].items() if k not in {"system_prompt", "model_name", "auth"}}
     return gpts_detail
+
+
+@router.post("/gpts")
+async def create_gpt(request: Request, user: dict = Depends(get_current_user)):
+    body = await request.json()
+    gid = body.get("gid")
+    if not gid:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "gid required")
+    refresh_gpts()
+    if gid in BUILTIN_GIDS or gid in gpts:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "gid already exists")
+    if "auth" not in body:
+        body["auth"] = {"type": "all"}
+    conn = get_db()
+    try:
+        conn.execute(
+            "INSERT INTO custom_gpts(gid, config) VALUES(?, ?)",
+            (gid, json.dumps(body)),
+        )
+    finally:
+        conn.close()
+    refresh_gpts()
+    return {"gid": gid}
+
+
+@router.put("/gpts/{gid}")
+async def update_gpt(gid: str, request: Request, user: dict = Depends(get_current_user)):
+    refresh_gpts()
+    if gid in BUILTIN_GIDS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "builtin gpts cannot be modified")
+    if gid not in gpts:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "gid not found")
+    body = await request.json()
+    if "auth" not in body:
+        body["auth"] = {"type": "all"}
+    conn = get_db()
+    try:
+        conn.execute(
+            "UPDATE custom_gpts SET config=? WHERE gid=?",
+            (json.dumps(body), gid),
+        )
+    finally:
+        conn.close()
+    refresh_gpts()
+    return {"gid": gid}
+
+
+@router.delete("/gpts/{gid}")
+async def delete_gpt(gid: str, user: dict = Depends(get_current_user)):
+    refresh_gpts()
+    if gid in BUILTIN_GIDS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "builtin gpts cannot be deleted")
+    if gid not in gpts:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "gid not found")
+    conn = get_db()
+    try:
+        conn.execute("DELETE FROM custom_gpts WHERE gid=?", (gid,))
+        conn.execute("DELETE FROM user_gpts_state WHERE gpts_id=?", (gid,))
+    finally:
+        conn.close()
+    refresh_gpts()
+    return {"gid": gid}
 
 
 def auth_ok(gpt_dict: dict, user: str):
