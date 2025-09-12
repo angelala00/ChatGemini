@@ -6,8 +6,9 @@ from app.logger import gpt_logger
 from app.gpts.config_gpts import gpts, fetch_gpts
 import sqlite3
 from typing import Tuple
+from app.base_config import model_config
 
-DATA_DIR = os.path.join("/", "data/appFiles/gptassistant/")
+DATA_DIR = os.path.join("", f"{model_config.FILE_BASE}/gptassistant/")
 os.makedirs(DATA_DIR, exist_ok=True)
 DB_PATH = os.path.join(DATA_DIR, "pins.db")
 
