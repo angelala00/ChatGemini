@@ -12,7 +12,7 @@ const MyGpts = () => {
     const [items, setItems] = useState<GptsItem[]>([]);
 
     useEffect(() => {
-        fetch(getFullPath('/api/gpts/pined'), {})
+        fetch(getFullPath('/api/gpts/created'), {})
             .then((res) => res.json())
             .then((data) => setItems(data ?? []))
             .catch(() => setItems([]));
