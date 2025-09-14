@@ -415,9 +415,18 @@ const App = () => {
     }, [hasLogined]);
 
     // console.log("=====22222"+hasLogined)
-    const isGpts = !!matchPath(
-        { path: `${routes.gpts.prefix}${routes.gpts.uri}${routes.gpts.suffix}`},
-        location.hash.replace("#", "") || location.pathname
+    const gptsRoutes: Array<keyof typeof routes> = [
+        "gpts",
+        "my_gpts",
+        "gpts_create",
+    ];
+    const isGptsPage = gptsRoutes.some((key) =>
+        matchPath(
+            {
+                path: `${routes[key].prefix}${routes[key].uri}${routes[key].suffix}`,
+            },
+            location.hash.replace("#", "") || location.pathname
+        )
     );
     return (
         <Container
@@ -442,12 +451,12 @@ const App = () => {
                     />
                     <Container
                         ref={mainSectionRef}
-                        className={`min-w-full overflow-y-auto overflow-x-hidden flex flex-col h-screen ${isGpts ? "" : "justify-between "}
+                        className={`min-w-full overflow-y-auto overflow-x-hidden flex flex-col h-screen ${isGptsPage ? "" : "justify-between "}
                         ${
                             !sidebarExpand ? "col-span-2" : ""
                         }`}
                     >
-                        {!isGpts && (
+                        {!isGptsPage && (
                             <Header
                                 userName={userName}
                                 logoutIcon={!!passcodes.length}
@@ -477,7 +486,7 @@ const App = () => {
                                 samples: pageSamples,
                             }}
                         />
-                        {!isGpts && (
+                        {!isGptsPage && (
                             <>
                                 <InputArea
                                     minHeight={45}
