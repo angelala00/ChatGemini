@@ -5,7 +5,7 @@ from fastapi import APIRouter, Request, Depends, HTTPException, status
 from app.auth.auth_routes import get_current_user
 from app.logger import gpt_logger
 from app.gpts.config_gpts import gpts, fetch_gpts, refresh_gpts, BUILTIN_GIDS
-from typing import Tuple
+from typing import Tuple, Optional
 from app.db import get_db
 
 router = APIRouter(prefix="/api", tags=["gpts"])
@@ -59,7 +59,7 @@ async def get_gpts(user: dict = Depends(get_current_user)):
 
     gpts_list = [{"gid": key, **{k: v for k, v in value.items() if k not in {"system_prompt", "model_name", "auth"}},
                   "is_pinned": key in pinned_ids} for key, value in fetch_gpts().items() if
-                 auth_ok(value, user['email']) and key != 'gptassistant']
+                 auth_ok(value, user['email'], user['sub']) and key != 'gptassistant']
     return gpts_list
 
 
@@ -149,7 +149,7 @@ async def gpts_pined(user: dict = Depends(get_current_user)):
     for r in rows:
         gid = r["gpts_id"]
         g = gpts.get(gid)
-        if g and auth_ok(g, user['email']):
+        if g and auth_ok(g, user['email'], user['sub']):
             if "logo" in g:
                 pinned.append({"gid": gid, "name": g["name"], "logo": g["logo"]})
             else:
@@ -165,11 +165,12 @@ async def gpts_created(user: dict = Depends(get_current_user)):
     for gid, data in gpts.items():
         if gid in BUILTIN_GIDS:
             continue
-        if auth_ok(data, user['email']):
-            item = {"gid": gid, "name": data["name"]}
-            if "logo" in data:
-                item["logo"] = data["logo"]
-            created.append(item)
+        if data.get("owner") != user['sub']:
+            continue
+        item = {"gid": gid, "name": data["name"]}
+        if "logo" in data:
+            item["logo"] = data["logo"]
+        created.append(item)
     return created
 
 
@@ -179,7 +180,7 @@ async def get_gpts_detail(gid: str, user: dict = Depends(get_current_user)):
     refresh_gpts()
     if gid not in gpts:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "gid not found")
-    if not auth_ok(gpts[gid], user['email']):
+    if not auth_ok(gpts[gid], user['email'], user['sub']):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "No Authorized")
     gpts_detail = {k: v for k, v in gpts[gid].items() if k not in {"system_prompt", "model_name", "auth"}}
     return gpts_detail
@@ -196,6 +197,7 @@ async def create_gpt(request: Request, user: dict = Depends(get_current_user)):
     while gid in BUILTIN_GIDS or gid in gpts:
         gid = uuid.uuid4().hex
     body["gid"] = gid
+    body["owner"] = user['sub']
     if "auth" not in body:
         body["auth"] = {"type": "all"}
     conn = get_db()
@@ -217,9 +219,12 @@ async def update_gpt(gid: str, request: Request, user: dict = Depends(get_curren
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "builtin gpts cannot be modified")
     if gid not in gpts:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "gid not found")
+    if gpts[gid].get("owner") != user['sub']:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "No Authorized")
     body = await request.json()
     if "auth" not in body:
         body["auth"] = {"type": "all"}
+    body["owner"] = gpts[gid].get("owner", user['sub'])
     conn = get_db()
     try:
         conn.execute(
@@ -239,6 +244,8 @@ async def delete_gpt(gid: str, user: dict = Depends(get_current_user)):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "builtin gpts cannot be deleted")
     if gid not in gpts:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "gid not found")
+    if gpts[gid].get("owner") != user['sub']:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "No Authorized")
     conn = get_db()
     try:
         conn.execute("DELETE FROM custom_gpts WHERE gid=?", (gid,))
@@ -249,7 +256,9 @@ async def delete_gpt(gid: str, user: dict = Depends(get_current_user)):
     return {"gid": gid}
 
 
-def auth_ok(gpt_dict: dict, user: str):
+def auth_ok(gpt_dict: dict, user: str, user_id: Optional[str] = None):
+    if user_id and gpt_dict.get("owner") == user_id:
+        return True
     if gpt_dict['auth']['type'] == "all":
         return True
     if gpt_dict['auth']['type'] == "white":
