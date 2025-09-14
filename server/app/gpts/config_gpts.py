@@ -42,65 +42,7 @@ def init_db() -> None:
 init_db()
 
 
-builtin_gpts: Dict[str, Dict[str, Any]] = {
-    "gptassistant": {
-        "name": "GPT Assistant",
-        "desc": "通用对话助手",
-        "system_prompt": "You are a helpful assistant.",
-        "model_name": "auto",
-        "auth": {"type": "all"},
-        "samples": ["你好"],
-    },
-    "g3": {
-        "name": "法务审查",
-        "desc": "快速审查合同条款",
-        "system_prompt": "",
-        "model_name": "auto",
-        "auth": {"type": "all"},
-        "samples": [
-            "审查合同中的潜在风险",
-            "检查合同中的保密条款",
-        ],
-    },
-    "g5": {
-        "logo": "/gpts/echarts.svg",
-        "name": "ECharts 画图助手",
-        "desc": "用 ECharts 绘制可视化图表",
-        "system_prompt": "",
-        "samples": [
-            "使用ECharts绘制销售占比饼图",
-            "使用ECharts生成月度趋势折线图",
-        ],
-        "model_name": "auto",
-        # 知识库
-        # 工具
-        "auth": {"type": "all"},
-    },
-    "g6": {
-        "name": "PPT 大纲生成助手",
-        "desc": "自动生成演示文稿大纲",
-        "logo": "/gpts/ppt.svg",
-        "system_prompt": "",
-        "model_name": "auto",
-        "auth": {"type": "all"},
-        "samples": [
-            "生成创业计划书PPT大纲",
-            "生成项目汇报PPT大纲",
-        ],
-    },
-    "g7": {
-        "name": "制度问答助手",
-        "desc": "解答制度相关问题",
-        "logo": "/gpts/policy.svg",
-        "system_prompt": "",
-        "model_name": "auto",
-        "auth": {"type": "all"},
-        "samples": [
-            "公司请假制度是什么？",
-            "公司报销流程如何进行？",
-        ],
-    },
-}
+builtin_gpts: Dict[str, Dict[str, Any]] = {}
 
 BUILTIN_GIDS = set(builtin_gpts.keys())
 
@@ -119,7 +61,8 @@ def fetch_gpts() -> Dict[str, Dict[str, Any]]:
 
     combined = builtin_gpts.copy()
     combined.update(load_custom_gpts())
-    return combined
+    sorted_data = dict(sorted(combined.items(), key=lambda kv: kv[1].get("sort", float("inf"))))
+    return sorted_data
 
 
 gpts: Dict[str, Dict[str, Any]] = {}
@@ -135,3 +78,6 @@ refresh_gpts()
 
 __all__ = ["gpts", "fetch_gpts", "refresh_gpts", "BUILTIN_GIDS"]
 
+
+def register_gpts(congfig):
+    builtin_gpts.update(congfig)

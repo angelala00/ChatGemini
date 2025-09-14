@@ -107,7 +107,7 @@ async def toggle_pin(gid: str, request: Request, user: dict = Depends(get_curren
 # Version configuration
 CONFIG_VERSION = "v0.10.0"
 # GPTS that should be automatically pinned for new versions
-DEFAULT_PIN_GPTS = "g7"
+DEFAULT_PIN_GPTS = "regulationassistant"
 
 
 def parse_version(v: str) -> Tuple[int, ...]:
