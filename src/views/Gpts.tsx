@@ -1,12 +1,11 @@
 import { useEffect, useState } from "react";
 import { useDispatch } from "react-redux";
 import { Container } from "../components/Container";
-import { globalConfig } from "../config/global";
 import pinnedIcon from "../assets/icons/thumbtack-solid.svg";
 import unpinnedIcon from "../assets/icons/map-pin-solid.svg";
 import { getFullPath } from "../helpers/getDomainAndPath";
 import { onUpdate as updatePinnedGpts } from "../store/gpts";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 
 interface GptsItem {
     readonly gid: string;
@@ -117,7 +116,17 @@ const Gpts = () => {
     return (
         <Container className="flex-1 w-full overflow-y-auto bg-white text-gray-900">
             <div className="max-w-5xl mx-auto px-6 pb-16">
-                <header className="py-10 text-3xl font-semibold">探索 GPTs</header>
+                <header className="py-10 flex items-center justify-between">
+                    <div className="text-3xl font-semibold">探索 GPTs</div>
+                    <div className="space-x-4 text-sm">
+                        <Link to="/my-gpts" className="text-blue-600 hover:underline">
+                            我的GPTs
+                        </Link>
+                        <Link to="/gpts/create" className="text-blue-600 hover:underline">
+                            创建
+                        </Link>
+                    </div>
+                </header>
                 <Section title="置顶" items={pinned} onToggle={handleToggle} />
                 <Section title="全部" items={others} onToggle={handleToggle} />
             </div>
