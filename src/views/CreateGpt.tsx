@@ -7,8 +7,26 @@ const CreateGpt = () => {
     const [name, setName] = useState("");
     const [desc, setDesc] = useState("");
     const [systemPrompt, setSystemPrompt] = useState("");
+    const [samples, setSamples] = useState<string[]>([""]);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const navigate = useNavigate();
+
+    const MAX_SAMPLES = 5;
+
+    const handleAddSample = () => {
+        if (samples.length >= MAX_SAMPLES) return;
+        setSamples([...samples, ""]);
+    };
+
+    const handleSampleChange = (index: number, value: string) => {
+        const newSamples = [...samples];
+        newSamples[index] = value;
+        setSamples(newSamples);
+    };
+
+    const handleRemoveSample = (index: number) => {
+        setSamples(samples.filter((_, i) => i !== index));
+    };
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -19,6 +37,10 @@ const CreateGpt = () => {
             desc,
             system_prompt: systemPrompt,
         };
+        const sanitizedSamples = samples.map((s) => s.trim()).filter(Boolean);
+        if (sanitizedSamples.length > 0) {
+            body.samples = sanitizedSamples;
+        }
         fetch(getFullPath("/api/gpts"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -29,6 +51,7 @@ const CreateGpt = () => {
                 setName("");
                 setDesc("");
                 setSystemPrompt("");
+                setSamples([""]);
                 navigate("/my-gpts");
             })
             .catch(() => {})
@@ -67,6 +90,36 @@ const CreateGpt = () => {
                             className="mt-1 w-full rounded-md border-gray-300 shadow-sm"
                             required
                         />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">示例问题</label>
+                        {samples.map((sample, index) => (
+                            <div key={index} className="flex mt-1">
+                                <input
+                                    type="text"
+                                    value={sample}
+                                    onChange={(e) =>
+                                        handleSampleChange(index, e.target.value)
+                                    }
+                                    className="flex-1 rounded-md border-gray-300 shadow-sm"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => handleRemoveSample(index)}
+                                    className="ml-2 px-2 py-1 text-sm text-white bg-red-500 rounded-md"
+                                >
+                                    删除
+                                </button>
+                            </div>
+                        ))}
+                        <button
+                            type="button"
+                            onClick={handleAddSample}
+                            disabled={samples.length >= MAX_SAMPLES}
+                            className="mt-2 px-2 py-1 text-sm text-white bg-green-500 rounded-md disabled:opacity-50"
+                        >
+                            添加示例
+                        </button>
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700">
