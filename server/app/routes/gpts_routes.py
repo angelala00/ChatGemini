@@ -1,22 +1,20 @@
 import time
 import json
 import uuid
-import os
+from typing import Tuple, Optional
 from fastapi import APIRouter, Request, Depends, HTTPException, status
 from app.auth.auth_routes import get_current_user
 from app.logger import gpt_logger
 from app.gpts.config_gpts import gpts, fetch_gpts, refresh_gpts, BUILTIN_GIDS
-from typing import Tuple, Optional
 from app.db import get_db
+from app.base_config import model_config
 
 router = APIRouter(prefix="/api", tags=["gpts"])
 
 LIMIT_PINNED = 8
 MAX_SAMPLES = 5
 
-GPTS_WHITE_LIST = {
-    email.strip() for email in os.getenv("GPTS_WHITE_LIST", "").split(",") if email.strip()
-}
+GPTS_WHITE_LIST = model_config.GPTS_WHITE_LIST
 
 
 @router.get("/gpts/permission")
