@@ -1,27 +1,15 @@
-import os
 import time
 import json
 from fastapi import APIRouter, Request, Depends, HTTPException, status
 from app.auth.auth_routes import get_current_user
 from app.logger import gpt_logger
 from app.gpts.config_gpts import gpts, fetch_gpts, refresh_gpts, BUILTIN_GIDS
-import sqlite3
 from typing import Tuple
-from app.base_config import model_config
-
-DATA_DIR = os.path.join("", f"{model_config.FILE_BASE}/gptassistant/")
-os.makedirs(DATA_DIR, exist_ok=True)
-DB_PATH = os.path.join(DATA_DIR, "pins.db")
+from app.db import get_db
 
 router = APIRouter(prefix="/api", tags=["gpts"])
 
 LIMIT_PINNED = 8
-
-
-def get_db():
-    conn = sqlite3.connect(DB_PATH, isolation_level=None)
-    conn.row_factory = sqlite3.Row
-    return conn
 
 
 def init_db():

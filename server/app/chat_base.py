@@ -3,6 +3,7 @@ import openai
 import httpx
 import asyncio
 from app.base_config import model_config
+from app.db import get_db
 
 
 client = openai.AsyncOpenAI(
@@ -15,13 +16,33 @@ client = openai.AsyncOpenAI(
 )
 
 
-SAVE_FILE = f"{model_config.FILE_BASE}/gptassistant/match_history.json"
 match_history = {}
+
+conn = get_db(check_same_thread=False)
+conn.execute(
+    "CREATE TABLE IF NOT EXISTS session_history (conversation_id TEXT PRIMARY KEY, history TEXT)"
+)
+
+
+def load_match_history():
+    cur = conn.execute("SELECT conversation_id, history FROM session_history")
+    for cid, history in cur:
+        try:
+            match_history[cid] = json.loads(history)
+        except Exception:
+            match_history[cid] = []
+
+
+load_match_history()
 
 
 def save_match_history():
-    with open(SAVE_FILE, "w", encoding="utf-8") as f:
-        json.dump(match_history, f, ensure_ascii=False)
+    with conn:
+        for cid, history in match_history.items():
+            conn.execute(
+                "REPLACE INTO session_history (conversation_id, history) VALUES (?, ?)",
+                (cid, json.dumps(history, ensure_ascii=False)),
+            )
 
 
 async def chat():
