@@ -363,7 +363,7 @@ const App = () => {
     useEffect(() => {
         // console.log("gid change")
         if (hasLogined) {
-             fetch(getFullPath('/api/gpts/detail/' + r_gid), {
+            fetch(getFullPath('/api/gpts/detail/' + r_gid), {
                 method: 'GET',
                 credentials: 'include' // 确保带上 HttpOnly Cookie
             }).then(response => {
