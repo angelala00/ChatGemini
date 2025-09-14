@@ -181,9 +181,16 @@ async def get_gpts_detail(gid: str, user: dict = Depends(get_current_user)):
     refresh_gpts()
     if gid not in gpts:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "gid not found")
-    if not auth_ok(gpts[gid], user['email'], user['sub']):
+
+    gpt_item = gpts[gid]
+    if not auth_ok(gpt_item, user['email'], user['sub']):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "No Authorized")
-    gpts_detail = {k: v for k, v in gpts[gid].items() if k not in {"system_prompt", "model_name", "auth"}}
+
+    exclude_fields = {"model_name", "auth"}
+    if gpt_item.get("owner") != user['sub']:
+        exclude_fields.add("system_prompt")
+
+    gpts_detail = {k: v for k, v in gpt_item.items() if k not in exclude_fields}
     return gpts_detail
 
 
