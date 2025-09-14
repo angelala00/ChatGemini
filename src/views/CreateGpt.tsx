@@ -1,5 +1,5 @@
-import { useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useRef, useState, useEffect } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Container } from "../components/Container";
 import { getFullPath } from "../helpers/getDomainAndPath";
 
@@ -11,6 +11,8 @@ const CreateGpt = () => {
     const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const gid = searchParams.get("gid");
 
     const MAX_SAMPLES = 5;
 
@@ -52,6 +54,21 @@ const CreateGpt = () => {
         }, 0);
     };
 
+    useEffect(() => {
+        if (gid) {
+            fetch(getFullPath(`/api/gpts/detail/${gid}`), {})
+                .then((res) => res.json())
+                .then((data) => {
+                    setName(data.name ?? "");
+                    setDesc(data.desc ?? "");
+                    setSystemPrompt(data.system_prompt ?? "");
+                    const sampleData = data.samples ?? [];
+                    setSamples(sampleData.length ? [...sampleData, ""] : [""]);
+                })
+                .catch(() => {});
+        }
+    }, [gid]);
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (isSubmitting) return;
@@ -65,8 +82,12 @@ const CreateGpt = () => {
         if (sanitizedSamples.length > 0) {
             body.samples = sanitizedSamples;
         }
-        fetch(getFullPath("/api/gpts"), {
-            method: "POST",
+        const method = gid ? "PUT" : "POST";
+        const url = gid
+            ? getFullPath(`/api/gpts/${gid}`)
+            : getFullPath("/api/gpts");
+        fetch(url, {
+            method,
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
         })
@@ -85,7 +106,9 @@ const CreateGpt = () => {
     return (
         <Container className="flex-1 w-full overflow-y-auto bg-white text-gray-900">
             <div className="max-w-3xl mx-auto px-6 pb-16">
-                <header className="py-10 text-3xl font-semibold">创建 GPT</header>
+                <header className="py-10 text-3xl font-semibold">
+                    {gid ? "编辑 GPT" : "创建 GPT"}
+                </header>
                 <form onSubmit={handleSubmit} className="space-y-6">
                     <div>
                         <label className="block text-sm font-medium text-gray-700">名称</label>
