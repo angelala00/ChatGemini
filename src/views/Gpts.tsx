@@ -10,7 +10,7 @@ import { Link } from "react-router-dom";
 interface GptsItem {
     readonly gid: string;
     readonly name: string;
-    readonly sub_title: string;
+    readonly desc: string;
     readonly is_pinned: boolean;
     readonly logo: string;
 }
@@ -44,7 +44,7 @@ const Section = ({ title, items, onToggle }: SectionProps) => (
                     </div>
                     <div className="flex-1">
                         <h3 className="text-lg font-medium text-gray-900">{item.name}</h3>
-                        <p className="mt-1 text-sm text-gray-600">{item.sub_title}</p>
+                        <p className="mt-1 text-sm text-gray-600">{item.desc}</p>
                     </div>
                     <button
                         className="absolute top-2 right-2 p-1 rounded hover:bg-gray-200 cursor-pointer"

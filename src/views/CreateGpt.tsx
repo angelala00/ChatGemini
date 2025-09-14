@@ -3,17 +3,17 @@ import { Container } from "../components/Container";
 import { getFullPath } from "../helpers/getDomainAndPath";
 
 const CreateGpt = () => {
-    const [gid, setGid] = useState("");
     const [name, setName] = useState("");
-    const [subTitle, setSubTitle] = useState("");
-    const [logo, setLogo] = useState("");
+    const [desc, setDesc] = useState("");
+    const [systemPrompt, setSystemPrompt] = useState("");
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        const body: Record<string, any> = { gid, name, sub_title: subTitle };
-        if (logo) {
-            body.logo = logo;
-        }
+        const body: Record<string, any> = {
+            name,
+            desc,
+            system_prompt: systemPrompt,
+        };
         fetch(getFullPath("/api/gpts"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -21,10 +21,9 @@ const CreateGpt = () => {
         })
             .then((res) => res.json())
             .then(() => {
-                setGid("");
                 setName("");
-                setSubTitle("");
-                setLogo("");
+                setDesc("");
+                setSystemPrompt("");
             })
             .catch(() => {});
     };
@@ -34,16 +33,6 @@ const CreateGpt = () => {
             <div className="max-w-3xl mx-auto px-6 pb-16">
                 <header className="py-10 text-3xl font-semibold">创建 GPT</header>
                 <form onSubmit={handleSubmit} className="space-y-6">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">GID</label>
-                        <input
-                            type="text"
-                            value={gid}
-                            onChange={(e) => setGid(e.target.value)}
-                            className="mt-1 w-full rounded-md border-gray-300 shadow-sm"
-                            required
-                        />
-                    </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700">名称</label>
                         <input
@@ -55,21 +44,21 @@ const CreateGpt = () => {
                         />
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-gray-700">副标题</label>
+                        <label className="block text-sm font-medium text-gray-700">描述</label>
                         <input
                             type="text"
-                            value={subTitle}
-                            onChange={(e) => setSubTitle(e.target.value)}
+                            value={desc}
+                            onChange={(e) => setDesc(e.target.value)}
                             className="mt-1 w-full rounded-md border-gray-300 shadow-sm"
                         />
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-gray-700">Logo URL</label>
-                        <input
-                            type="text"
-                            value={logo}
-                            onChange={(e) => setLogo(e.target.value)}
+                        <label className="block text-sm font-medium text-gray-700">系统提示词</label>
+                        <textarea
+                            value={systemPrompt}
+                            onChange={(e) => setSystemPrompt(e.target.value)}
                             className="mt-1 w-full rounded-md border-gray-300 shadow-sm"
+                            required
                         />
                     </div>
                     <button type="submit" className="px-4 py-2 bg-blue-500 text-white rounded-md">

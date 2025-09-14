@@ -372,7 +372,7 @@ const App = () => {
                         setFileUploadEnabled(data.file_upload_enabled)
                         setDefaultModel(data.default_model)
                         setModels(data.models)
-                        setPageSubTitle(data.sub_title)
+                        setPageSubTitle(data.desc)
                         setPageSamples(data.samples ?? [])
                         setPageLogo(data.logo)
                         setPageTitle(data.title)
