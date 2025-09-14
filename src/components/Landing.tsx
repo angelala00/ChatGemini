@@ -1,15 +1,8 @@
-export interface LandingSample {
-    readonly title: string;
-    readonly logo?: string;
-    readonly description: string;
-    readonly prompt: string;
-}
-
 interface LandingProps {
     readonly title: string;
     readonly logo: string;
     readonly subTitle: string;
-    readonly samples: LandingSample[];
+    readonly samples: string[];
     readonly onSelectSample: (prompt: string) => void;
 }
 
@@ -29,17 +22,14 @@ export const Landing = (props: LandingProps) => {
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-3 gap-2 pr-2">
-                {samples.map(({ title, description, prompt }, index) => (
+                {samples.map((prompt, index) => (
                     <button
                         key={index}
-                        className="p-3 rounded-lg hover:bg-gray-100 border"
+                        className="p-3 rounded-lg hover:bg-gray-100 border text-left"
                         onClick={() => onSelectSample(prompt)}
                     >
-                        <div className="font-semibold md:text-md text-sm text-gray-800/80">
-                            {title}
-                        </div>
-                        <div className="text-gray-800/40 md:text-md text-xs">
-                            {description}
+                        <div className="md:text-md text-sm text-gray-800/80">
+                            {prompt}
                         </div>
                     </button>
                 ))}
