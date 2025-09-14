@@ -11,6 +11,7 @@ from app.db import get_db
 router = APIRouter(prefix="/api", tags=["gpts"])
 
 LIMIT_PINNED = 8
+MAX_SAMPLES = 5
 
 
 def init_db():
@@ -192,6 +193,11 @@ async def create_gpt(request: Request, user: dict = Depends(get_current_user)):
     for field in ("name", "desc", "system_prompt"):
         if not body.get(field):
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"{field} required")
+    samples = body.get("samples", [])
+    if not isinstance(samples, list) or any(not isinstance(s, str) for s in samples):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "samples must be list of strings")
+    if len(samples) > MAX_SAMPLES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "samples limit exceeded")
     refresh_gpts()
     gid = uuid.uuid4().hex
     while gid in BUILTIN_GIDS or gid in gpts:
@@ -224,6 +230,11 @@ async def update_gpt(gid: str, request: Request, user: dict = Depends(get_curren
     body = await request.json()
     if "auth" not in body:
         body["auth"] = {"type": "all"}
+    samples = body.get("samples", [])
+    if not isinstance(samples, list) or any(not isinstance(s, str) for s in samples):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "samples must be list of strings")
+    if len(samples) > MAX_SAMPLES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "samples limit exceeded")
     body["owner"] = gpts[gid].get("owner", user['sub'])
     conn = get_db()
     try:
