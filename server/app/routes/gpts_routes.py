@@ -157,6 +157,22 @@ async def gpts_pined(user: dict = Depends(get_current_user)):
     return pinned
 
 
+@router.get("/gpts/created")
+async def gpts_created(user: dict = Depends(get_current_user)):
+    gpt_logger.info(f"path=gpts_created user={user['email']} at={time.strftime('%Y-%m-%d %H:%M:%S')}")
+    refresh_gpts()
+    created = []
+    for gid, data in gpts.items():
+        if gid in BUILTIN_GIDS:
+            continue
+        if auth_ok(data, user['email']):
+            item = {"gid": gid, "name": data["name"]}
+            if "logo" in data:
+                item["logo"] = data["logo"]
+            created.append(item)
+    return created
+
+
 @router.get("/gpts/detail/{gid}")
 async def get_gpts_detail(gid: str, user: dict = Depends(get_current_user)):
     gpt_logger.info(f"path=get_gpts_detail user={user['email']} at={time.strftime('%Y-%m-%d %H:%M:%S')}")
