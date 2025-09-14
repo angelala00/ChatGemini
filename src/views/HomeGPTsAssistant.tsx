@@ -1,4 +1,4 @@
-import { Landing, LandingSample } from "../components/Landing";
+import { Landing } from "../components/Landing";
 import { getRandomArr } from "../helpers/getRandomArr";
 import { useEffect, useState } from "react";
 import { globalConfig } from "../config/global";
@@ -13,7 +13,7 @@ const Home = (props: RouterComponentProps) => {
     const textAreaRef =
         (props.refs?.textAreaRef.current as HTMLTextAreaElement) ?? null;
     const {gid, title, logo, subTitle, samples = []} = props;
-    const [randomSamples, setRandomSamples] = useState<LandingSample[]>([]);
+    const [randomSamples, setRandomSamples] = useState<string[]>([]);
 
     const handleSelectSample = async (message: string) => {
         textAreaRef.focus();

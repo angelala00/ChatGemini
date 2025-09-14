@@ -31,7 +31,6 @@ import { setUserLocale } from "./helpers/setUserLocale";
 import { useTranslation } from "react-i18next";
 import { getCurrentLocale } from "./helpers/getCurrentLocale";
 import { getFullPath } from "./helpers/getDomainAndPath";
-import { LandingSample } from "./components/Landing";
 
 
 const App = () => {
@@ -84,7 +83,7 @@ const App = () => {
     const [pageLogo, setPageLogo] = useState("");
     const [pageName, setPageName] = useState("");
     const [pageSubTitle, setPageSubTitle] = useState("");
-    const [pageSamples, setPageSamples] = useState<LandingSample[]>([]);
+    const [pageSamples, setPageSamples] = useState<string[]>([]);
     const [isNoAuthorized, setIsNoAuthorized] = useState(false);
     
     const pathParts = location.pathname.split("/")

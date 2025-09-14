@@ -1,6 +1,5 @@
 import { LazyExoticComponent, RefObject, lazy } from "react";
 import { RouterMode } from "../components/RouterWrapper";
-import { LandingSample } from "../components/Landing";
 
 const Home = lazy(() => import("../views/Home"));
 const HomeGPTsAssistant = lazy(() => import("../views/HomeGPTsAssistant"));
@@ -17,7 +16,7 @@ export interface RouterComponentProps {
     title?: string;
     logo?: string;
     subTitle?: string;
-    samples?: LandingSample[];
+    samples?: string[];
 }
 
 export interface RouterConfigRoutes {

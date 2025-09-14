@@ -49,13 +49,7 @@ builtin_gpts: Dict[str, Dict[str, Any]] = {
         "system_prompt": "You are a helpful assistant.",
         "model_name": "auto",
         "auth": {"type": "all"},
-        "samples": [
-            {
-                "title": "基本对话",
-                "description": "询问通用问题",
-                "prompt": "你好",
-            }
-        ],
+        "samples": ["你好"],
     },
     "g3": {
         "name": "法务审查",
@@ -64,16 +58,8 @@ builtin_gpts: Dict[str, Dict[str, Any]] = {
         "model_name": "auto",
         "auth": {"type": "all"},
         "samples": [
-            {
-                "title": "审查合同风险",
-                "description": "发现潜在风险",
-                "prompt": "审查合同中的潜在风险",
-            },
-            {
-                "title": "检查保密条款",
-                "description": "关注关键条款",
-                "prompt": "检查合同中的保密条款",
-            },
+            "审查合同中的潜在风险",
+            "检查合同中的保密条款",
         ],
     },
     "g5": {
@@ -84,16 +70,8 @@ builtin_gpts: Dict[str, Dict[str, Any]] = {
         "model_name": "auto",
         "auth": {"type": "all"},
         "samples": [
-            {
-                "title": "绘制饼图",
-                "description": "展示分类占比",
-                "prompt": "使用ECharts绘制销售占比饼图",
-            },
-            {
-                "title": "生成折线图",
-                "description": "展示趋势",
-                "prompt": "使用ECharts生成月度趋势折线图",
-            },
+            "使用ECharts绘制销售占比饼图",
+            "使用ECharts生成月度趋势折线图",
         ],
     },
     "g6": {
@@ -104,16 +82,8 @@ builtin_gpts: Dict[str, Dict[str, Any]] = {
         "model_name": "auto",
         "auth": {"type": "all"},
         "samples": [
-            {
-                "title": "创业计划书大纲",
-                "description": "自动生成",
-                "prompt": "生成创业计划书PPT大纲",
-            },
-            {
-                "title": "项目汇报大纲",
-                "description": "自动生成",
-                "prompt": "生成项目汇报PPT大纲",
-            },
+            "生成创业计划书PPT大纲",
+            "生成项目汇报PPT大纲",
         ],
     },
     "g7": {
@@ -124,16 +94,8 @@ builtin_gpts: Dict[str, Dict[str, Any]] = {
         "model_name": "auto",
         "auth": {"type": "all"},
         "samples": [
-            {
-                "title": "请假制度",
-                "description": "了解公司制度",
-                "prompt": "公司请假制度是什么？",
-            },
-            {
-                "title": "报销流程",
-                "description": "了解公司制度",
-                "prompt": "公司报销流程如何进行？",
-            },
+            "公司请假制度是什么？",
+            "公司报销流程如何进行？",
         ],
     },
 }
