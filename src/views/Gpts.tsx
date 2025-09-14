@@ -68,6 +68,7 @@ const Section = ({ title, items, onToggle }: SectionProps) => (
 
 const Gpts = () => {
     const [items, setItems] = useState<GptsItem[]>([]);
+    const [canManage, setCanManage] = useState(false);
     const dispatch = useDispatch();
 
     const refreshSidebar = () => {
@@ -88,6 +89,10 @@ const Gpts = () => {
             .catch(() => {
                 setItems([]);
             });
+        fetch(getFullPath('/api/gpts/permission'), {})
+            .then((res) => res.json())
+            .then((data) => setCanManage(Boolean(data.allowed)))
+            .catch(() => setCanManage(false));
     }, []);
 
     const handleToggle = (id: string, is_pinned: boolean) => {
@@ -119,12 +124,16 @@ const Gpts = () => {
                 <header className="py-10 flex items-center justify-between">
                     <div className="text-3xl font-semibold">探索 GPTs</div>
                     <div className="space-x-4 text-sm">
-                        <Link to="/my-gpts" className="text-blue-600 hover:underline">
-                            我的GPTs
-                        </Link>
-                        <Link to="/gpts/create" className="text-blue-600 hover:underline">
-                            创建
-                        </Link>
+                        {canManage && (
+                            <>
+                                <Link to="/my-gpts" className="text-blue-600 hover:underline">
+                                    我的GPTs
+                                </Link>
+                                <Link to="/gpts/create" className="text-blue-600 hover:underline">
+                                    创建
+                                </Link>
+                            </>
+                        )}
                     </div>
                 </header>
                 <Section title="置顶" items={pinned} onToggle={handleToggle} />

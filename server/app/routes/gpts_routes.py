@@ -1,6 +1,7 @@
 import time
 import json
 import uuid
+import os
 from fastapi import APIRouter, Request, Depends, HTTPException, status
 from app.auth.auth_routes import get_current_user
 from app.logger import gpt_logger
@@ -12,6 +13,16 @@ router = APIRouter(prefix="/api", tags=["gpts"])
 
 LIMIT_PINNED = 8
 MAX_SAMPLES = 5
+
+GPTS_WHITE_LIST = {
+    email.strip() for email in os.getenv("GPTS_WHITE_LIST", "").split(",") if email.strip()
+}
+
+
+@router.get("/gpts/permission")
+async def gpts_permission(user: dict = Depends(get_current_user)):
+    allowed = not GPTS_WHITE_LIST or user["email"] in GPTS_WHITE_LIST
+    return {"allowed": allowed}
 
 
 def init_db():
