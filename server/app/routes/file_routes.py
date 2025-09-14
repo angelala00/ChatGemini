@@ -1,7 +1,6 @@
 import time
 import os
 import uuid
-import json
 from apscheduler.schedulers.background import BackgroundScheduler
 from ..utils import extract_text
 from fastapi import APIRouter, Request, Depends, File, UploadFile, HTTPException, status
@@ -11,6 +10,7 @@ import mimetypes
 from app.auth.auth_routes import get_current_user
 from app.logger import gpt_logger
 from app.base_config import model_config
+from app.db import get_db
 
 router = APIRouter(prefix="/api", tags=["auth"])
 
@@ -23,42 +23,80 @@ ALLOWED_EXTENSIONS = {'txt', 'pdf', 'doc', 'docx', 'xlsx', 'jpg', 'png'}
 FILE_LIFETIME_DAYS = 7  # 可配置的过期时间，单位为天
 
 
-# 用于存储文件的ID、文件路径和原始文件名的映射的文件路径
-def get_gid_file_mapping_path(gid: str) -> str:
-    return f"{model_config.FILE_BASE}/{gid}/file_mapping.json"
-
-
 # 判断文件扩展名是否允许
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
-# 加载文件映射
+def init_db():
+    conn = get_db()
+    try:
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS file_mapping (
+              file_id TEXT PRIMARY KEY,
+              filename TEXT NOT NULL,
+              fileExtension TEXT NOT NULL,
+              path TEXT NOT NULL,
+              uploadTime TEXT NOT NULL,
+              gid TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_file_mapping_gid ON file_mapping(gid);
+            """
+        )
+    finally:
+        conn.close()
+
+
+init_db()
+
+
 def load_gid_file_mapping(gid):
-    if os.path.exists(get_gid_file_mapping_path(gid)):
-        with open(get_gid_file_mapping_path(gid), 'r') as f:
-            return json.load(f)
-    return {}
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            "SELECT file_id, filename, fileExtension, path, uploadTime FROM file_mapping WHERE gid=?",
+            (gid,),
+        ).fetchall()
+    finally:
+        conn.close()
+    return {
+        row["file_id"]: {
+            "filename": row["filename"],
+            "fileExtension": row["fileExtension"],
+            "path": row["path"],
+            "uploadTime": row["uploadTime"],
+        }
+        for row in rows
+    }
 
 
-# 加载文件映射
 def load_file_mapping():
-    if os.path.exists(get_gid_file_mapping_path("gptassistant")):
-        with open(get_gid_file_mapping_path("gptassistant"), 'r') as f:
-            return json.load(f)
-    return {}
+    return load_gid_file_mapping("gptassistant")
 
 
-# 保存文件映射
-def save_file_mapping(file_mapping):
-    with open(get_gid_file_mapping_path("gptassistant"), 'w') as f:
-        json.dump(file_mapping, f)
+def insert_file_mapping(file_id, filename, file_extension, path, gid="gptassistant"):
+    conn = get_db()
+    try:
+        conn.execute(
+            "INSERT INTO file_mapping(file_id, filename, fileExtension, path, uploadTime, gid) VALUES(?, ?, ?, ?, ?, ?)",
+            (file_id, filename, file_extension, path, datetime.now().isoformat(), gid),
+        )
+    finally:
+        conn.close()
+
+
+def delete_file_mapping(file_id):
+    conn = get_db()
+    try:
+        conn.execute("DELETE FROM file_mapping WHERE file_id=?", (file_id,))
+    finally:
+        conn.close()
 
 
 @router.post("/upload")
 async def upload_file(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
     gpt_logger.info(f"path=upload_file user={user['email']} at={time.strftime('%Y-%m-%d %H:%M:%S')}")
-    file_mapping = load_file_mapping()
 
     if not file:
         raise HTTPException(
@@ -89,10 +127,7 @@ async def upload_file(file: UploadFile = File(...), user: dict = Depends(get_cur
             buffer.write(file_content)
 
         # 存储文件ID、文件路径和原始文件名的映射
-        file_mapping[file_id] = {'filename': file.filename, 'fileExtension': file_extension, 'path': file_path,
-                                 'uploadTime': datetime.now().isoformat()}
-
-        save_file_mapping(file_mapping)
+        insert_file_mapping(file_id, file.filename, file_extension, file_path)
 
         return JSONResponse(
             {"message": "File successfully uploaded", "file_id": file_id, "original_filename": file.filename})
@@ -183,11 +218,8 @@ def delete_expired_files():
             file_age = now - os.path.getmtime(file_path)
             if file_age > FILE_LIFETIME_DAYS * 86400:  # 86400是一天的秒数
                 os.remove(file_path)
-                del file_mapping[file_id]
+                delete_file_mapping(file_id)
                 print(f"Deleted expired file: {file_id}")
-
-    # 删除过期文件后保存文件映射
-    save_file_mapping(file_mapping)
 
 
 # 启动定时任务
