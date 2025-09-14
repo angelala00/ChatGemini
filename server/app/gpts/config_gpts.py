@@ -63,16 +63,18 @@ builtin_gpts: Dict[str, Dict[str, Any]] = {
         ],
     },
     "g5": {
+        "logo": "/gpts/echarts.svg",
         "name": "ECharts 画图助手",
         "desc": "用 ECharts 绘制可视化图表",
-        "logo": "/gpts/echarts.svg",
         "system_prompt": "",
-        "model_name": "auto",
-        "auth": {"type": "all"},
         "samples": [
             "使用ECharts绘制销售占比饼图",
             "使用ECharts生成月度趋势折线图",
         ],
+        "model_name": "auto",
+        # 知识库
+        # 工具
+        "auth": {"type": "all"},
     },
     "g6": {
         "name": "PPT 大纲生成助手",
