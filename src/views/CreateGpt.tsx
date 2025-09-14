@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Container } from "../components/Container";
 import { getFullPath } from "../helpers/getDomainAndPath";
@@ -7,25 +7,49 @@ const CreateGpt = () => {
     const [name, setName] = useState("");
     const [desc, setDesc] = useState("");
     const [systemPrompt, setSystemPrompt] = useState("");
-    const [samples, setSamples] = useState<string[]>([""]);
+    const [samples, setSamples] = useState<string[]>([""]); 
+    const inputRefs = useRef<HTMLInputElement[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const navigate = useNavigate();
 
     const MAX_SAMPLES = 5;
 
-    const handleAddSample = () => {
-        if (samples.length >= MAX_SAMPLES) return;
-        setSamples([...samples, ""]);
-    };
-
     const handleSampleChange = (index: number, value: string) => {
+        const prevValue = samples[index];
         const newSamples = [...samples];
         newSamples[index] = value;
+        if (
+            index === samples.length - 1 &&
+            value !== "" &&
+            samples.length < MAX_SAMPLES
+        ) {
+            newSamples.push("");
+        } else if (value === "" && prevValue !== "") {
+            newSamples.splice(index, 1);
+            setSamples(newSamples);
+            setTimeout(() => {
+                const nextIndex = Math.min(index, newSamples.length - 1);
+                inputRefs.current[nextIndex]?.focus();
+            }, 0);
+            return;
+        }
         setSamples(newSamples);
     };
 
     const handleRemoveSample = (index: number) => {
-        setSamples(samples.filter((_, i) => i !== index));
+        const newSamples = samples.filter((_, i) => i !== index);
+        if (
+            newSamples.length === 0 ||
+            (newSamples[newSamples.length - 1] !== "" &&
+                newSamples.length < MAX_SAMPLES)
+        ) {
+            newSamples.push("");
+        }
+        setSamples(newSamples);
+        setTimeout(() => {
+            const nextIndex = Math.min(index, newSamples.length - 1);
+            inputRefs.current[nextIndex]?.focus();
+        }, 0);
     };
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -94,8 +118,9 @@ const CreateGpt = () => {
                     <div>
                         <label className="block text-sm font-medium text-gray-700">示例问题</label>
                         {samples.map((sample, index) => (
-                            <div key={index} className="flex mt-1">
+                            <div key={index} className="flex items-center mt-1">
                                 <input
+                                    ref={(el) => (inputRefs.current[index] = el)}
                                     type="text"
                                     value={sample}
                                     onChange={(e) =>
@@ -103,23 +128,17 @@ const CreateGpt = () => {
                                     }
                                     className="flex-1 rounded-md border-gray-300 shadow-sm"
                                 />
-                                <button
-                                    type="button"
-                                    onClick={() => handleRemoveSample(index)}
-                                    className="ml-2 px-2 py-1 text-sm text-white bg-red-500 rounded-md"
-                                >
-                                    删除
-                                </button>
+                                {(index !== samples.length - 1 || sample !== "") && (
+                                    <button
+                                        type="button"
+                                        onClick={() => handleRemoveSample(index)}
+                                        className="ml-2 text-xl leading-none text-gray-400 hover:text-red-500"
+                                    >
+                                        &times;
+                                    </button>
+                                )}
                             </div>
                         ))}
-                        <button
-                            type="button"
-                            onClick={handleAddSample}
-                            disabled={samples.length >= MAX_SAMPLES}
-                            className="mt-2 px-2 py-1 text-sm text-white bg-green-500 rounded-md disabled:opacity-50"
-                        >
-                            添加示例
-                        </button>
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700">
