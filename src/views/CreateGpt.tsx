@@ -7,8 +7,8 @@ const CreateGpt = () => {
     const [name, setName] = useState("");
     const [desc, setDesc] = useState("");
     const [systemPrompt, setSystemPrompt] = useState("");
-    const [samples, setSamples] = useState<string[]>([""]); 
-    const inputRefs = useRef<HTMLInputElement[]>([]);
+    const [samples, setSamples] = useState<string[]>([""]);
+    const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const navigate = useNavigate();
 
@@ -120,7 +120,9 @@ const CreateGpt = () => {
                         {samples.map((sample, index) => (
                             <div key={index} className="flex items-center mt-1">
                                 <input
-                                    ref={(el) => (inputRefs.current[index] = el)}
+                                    ref={(el) => {
+                                        inputRefs.current[index] = el;
+                                    }}
                                     type="text"
                                     value={sample}
                                     onChange={(e) =>
