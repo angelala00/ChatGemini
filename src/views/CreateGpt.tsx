@@ -93,7 +93,7 @@ const CreateGpt = () => {
                             type="text"
                             value={name}
                             onChange={(e) => setName(e.target.value)}
-                            className="mt-1 w-full rounded-md border-gray-300 shadow-sm"
+                            className="mt-1 w-full rounded-md border border-gray-300 bg-gray-50 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                             required
                         />
                     </div>
@@ -103,7 +103,7 @@ const CreateGpt = () => {
                             type="text"
                             value={desc}
                             onChange={(e) => setDesc(e.target.value)}
-                            className="mt-1 w-full rounded-md border-gray-300 shadow-sm"
+                            className="mt-1 w-full rounded-md border border-gray-300 bg-gray-50 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                         />
                     </div>
                     <div>
@@ -111,7 +111,7 @@ const CreateGpt = () => {
                         <textarea
                             value={systemPrompt}
                             onChange={(e) => setSystemPrompt(e.target.value)}
-                            className="mt-1 w-full rounded-md border-gray-300 shadow-sm"
+                            className="mt-1 w-full rounded-md border border-gray-300 bg-gray-50 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                             required
                         />
                     </div>
@@ -128,7 +128,7 @@ const CreateGpt = () => {
                                     onChange={(e) =>
                                         handleSampleChange(index, e.target.value)
                                     }
-                                    className="flex-1 rounded-md border-gray-300 shadow-sm"
+                                    className="flex-1 rounded-md border border-gray-300 bg-gray-50 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                                 />
                                 {(index !== samples.length - 1 || sample !== "") && (
                                     <button
@@ -149,7 +149,7 @@ const CreateGpt = () => {
                         <input
                             type="file"
                             disabled
-                            className="mt-1 w-full rounded-md border-gray-300 shadow-sm"
+                            className="mt-1 w-full rounded-md border border-gray-300 bg-gray-50 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                         />
                     </div>
                     <button
