@@ -9,21 +9,9 @@ configuration.
 from __future__ import annotations
 
 import json
-import os
-import sqlite3
 from typing import Any, Dict
 
-from app.base_config import model_config
-
-DATA_DIR = os.path.join("", f"{model_config.FILE_BASE}/gptassistant/")
-os.makedirs(DATA_DIR, exist_ok=True)
-DB_PATH = os.path.join(DATA_DIR, "pins.db")
-
-
-def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+from app.db import get_db
 
 
 def init_db() -> None:
