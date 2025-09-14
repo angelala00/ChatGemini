@@ -1,5 +1,6 @@
 import time
 import json
+import uuid
 from fastapi import APIRouter, Request, Depends, HTTPException, status
 from app.auth.auth_routes import get_current_user
 from app.logger import gpt_logger
@@ -171,12 +172,14 @@ async def get_gpts_detail(gid: str, user: dict = Depends(get_current_user)):
 @router.post("/gpts")
 async def create_gpt(request: Request, user: dict = Depends(get_current_user)):
     body = await request.json()
-    gid = body.get("gid")
-    if not gid:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "gid required")
+    for field in ("name", "desc", "system_prompt"):
+        if not body.get(field):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"{field} required")
     refresh_gpts()
-    if gid in BUILTIN_GIDS or gid in gpts:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "gid already exists")
+    gid = uuid.uuid4().hex
+    while gid in BUILTIN_GIDS or gid in gpts:
+        gid = uuid.uuid4().hex
+    body["gid"] = gid
     if "auth" not in body:
         body["auth"] = {"type": "all"}
     conn = get_db()
