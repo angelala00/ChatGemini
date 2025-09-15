@@ -195,9 +195,9 @@ async def get_gpts_detail(gid: str, user: dict = Depends(get_current_user)):
     if not auth_ok(gpt_item, user['email'], user['sub']):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "No Authorized")
 
-    exclude_fields = {"model_name", "auth"}
+    exclude_fields = {"model_name"}
     if gpt_item.get("owner") != user['sub']:
-        exclude_fields.add("system_prompt")
+        exclude_fields.update({"system_prompt", "auth"})
 
     gpts_detail = {k: v for k, v in gpt_item.items() if k not in exclude_fields}
     return gpts_detail
@@ -220,8 +220,14 @@ async def create_gpt(request: Request, user: dict = Depends(get_current_user)):
         gid = uuid.uuid4().hex
     body["gid"] = gid
     body["owner"] = user['sub']
-    if "auth" not in body:
-        body["auth"] = {"type": "all"}
+    auth = body.get("auth", {"type": "all"})
+    if auth.get("type") == "white":
+        users = auth.get("user", [])
+        if not isinstance(users, list) or any(not isinstance(u, str) for u in users):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "auth.user must be list of strings")
+    elif auth.get("type") not in {"all", "self"}:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid auth type")
+    body["auth"] = auth
     conn = get_db()
     try:
         conn.execute(
@@ -244,8 +250,14 @@ async def update_gpt(gid: str, request: Request, user: dict = Depends(get_curren
     if gpts[gid].get("owner") != user['sub']:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "No Authorized")
     body = await request.json()
-    if "auth" not in body:
-        body["auth"] = {"type": "all"}
+    auth = body.get("auth", {"type": "all"})
+    if auth.get("type") == "white":
+        users = auth.get("user", [])
+        if not isinstance(users, list) or any(not isinstance(u, str) for u in users):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "auth.user must be list of strings")
+    elif auth.get("type") not in {"all", "self"}:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid auth type")
+    body["auth"] = auth
     samples = body.get("samples", [])
     if not isinstance(samples, list) or any(not isinstance(s, str) for s in samples):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "samples must be list of strings")
@@ -291,4 +303,6 @@ def auth_ok(gpt_dict: dict, user: str, user_id: Optional[str] = None):
     if gpt_dict['auth']['type'] == "white":
         if user in gpt_dict['auth']['user']:
             return True
+    if gpt_dict['auth']['type'] == "self":
+        return False
     return False

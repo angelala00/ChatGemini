@@ -10,6 +10,8 @@ const CreateGpt = () => {
     const [samples, setSamples] = useState<string[]>([""]);
     const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [authType, setAuthType] = useState<"self" | "white" | "all">("all");
+    const [authUsers, setAuthUsers] = useState("");
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const gid = searchParams.get("gid");
@@ -64,6 +66,12 @@ const CreateGpt = () => {
                     setSystemPrompt(data.system_prompt ?? "");
                     const sampleData = data.samples ?? [];
                     setSamples(sampleData.length ? [...sampleData, ""] : [""]);
+                    if (data.auth) {
+                        setAuthType(data.auth.type ?? "all");
+                        if (data.auth.type === "white") {
+                            setAuthUsers((data.auth.user || []).join(","));
+                        }
+                    }
                 })
                 .catch(() => {});
         }
@@ -82,6 +90,17 @@ const CreateGpt = () => {
         if (sanitizedSamples.length > 0) {
             body.samples = sanitizedSamples;
         }
+        let auth: Record<string, any> = { type: authType };
+        if (authType === "white") {
+            auth = {
+                type: "white",
+                user: authUsers
+                    .split(",")
+                    .map((u) => u.trim())
+                    .filter(Boolean),
+            };
+        }
+        body.auth = auth;
         const method = gid ? "PUT" : "POST";
         const url = gid
             ? getFullPath(`/api/gpts/${gid}`)
@@ -171,9 +190,28 @@ const CreateGpt = () => {
                         ))}
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-gray-700">
-                            上传文件（即将开放）
-                        </label>
+                        <label className="block text-sm font-medium text-gray-700">权限</label>
+                        <select
+                            value={authType}
+                            onChange={(e) => setAuthType(e.target.value as "self" | "white" | "all")}
+                            className="mt-1 w-full rounded-md border border-gray-300 bg-gray-50 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                        >
+                            <option value="self">仅自己可见</option>
+                            <option value="white">部分人可见</option>
+                            <option value="all">所有人可见</option>
+                        </select>
+                        {authType === "white" && (
+                            <input
+                                type="text"
+                                value={authUsers}
+                                onChange={(e) => setAuthUsers(e.target.value)}
+                                placeholder="请输入可见人邮箱，逗号分隔"
+                                className="mt-2 w-full rounded-md border border-gray-300 bg-gray-50 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                            />
+                        )}
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">上传文件（即将开放）</label>
                         <input
                             type="file"
                             disabled
