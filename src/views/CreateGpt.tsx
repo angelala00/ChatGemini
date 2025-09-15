@@ -117,6 +117,7 @@ const CreateGpt = () => {
                             value={name}
                             onChange={(e) => setName(e.target.value)}
                             className="mt-1 w-full rounded-md border border-gray-300 bg-gray-50 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                            placeholder="请输入名称"
                             required
                         />
                     </div>
@@ -127,6 +128,7 @@ const CreateGpt = () => {
                             value={desc}
                             onChange={(e) => setDesc(e.target.value)}
                             className="mt-1 w-full rounded-md border border-gray-300 bg-gray-50 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                            placeholder="请输入描述"
                         />
                     </div>
                     <div>
@@ -135,6 +137,8 @@ const CreateGpt = () => {
                             value={systemPrompt}
                             onChange={(e) => setSystemPrompt(e.target.value)}
                             className="mt-1 w-full rounded-md border border-gray-300 bg-gray-50 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                            rows={6}
+                            placeholder="请填写系统提示词"
                             required
                         />
                     </div>
@@ -152,6 +156,7 @@ const CreateGpt = () => {
                                         handleSampleChange(index, e.target.value)
                                     }
                                     className="flex-1 rounded-md border border-gray-300 bg-gray-50 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                    placeholder="请输入示例问题"
                                 />
                                 {(index !== samples.length - 1 || sample !== "") && (
                                     <button
