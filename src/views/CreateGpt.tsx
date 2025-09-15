@@ -198,7 +198,7 @@ const CreateGpt = () => {
                         />
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-gray-700">添加工具（即将开放）</label>
+                        <label className="block text-sm font-medium text-gray-700">添加工具（开发中）</label>
                         <input
                             type="text"
                             disabled
