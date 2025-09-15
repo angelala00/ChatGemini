@@ -46,9 +46,9 @@ const Section = ({ title, items, onToggle }: SectionProps) => (
                     <div className="flex-1">
                         <h3 className="text-lg font-medium text-gray-900">{item.name}</h3>
                         <p className="mt-1 text-sm text-gray-600">{item.desc}</p>
-                        {item.owner && (
-                            <p className="mt-1 text-xs text-gray-500">来自 {item.owner}</p>
-                        )}
+                        <p className="mt-1 text-xs text-gray-500">
+                            {item.owner ? `来自 ${item.owner}` : "官方内建"}
+                        </p>
                     </div>
                     <button
                         className="absolute top-2 right-2 p-1 rounded hover:bg-gray-200 cursor-pointer"
