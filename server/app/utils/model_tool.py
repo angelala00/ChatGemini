@@ -6,7 +6,7 @@ import imghdr
 
 MODEL_NAME_VL = "Qwen2.5-VL-7B-Instruct"
 MODEL_NAME_INSTRUCT = "Qwen3-30B-A3B-Instruct-2507"
-MODEL_NAME_THINKING = "Qwen2.5-VL-7B-Instruct"
+MODEL_NAME_THINKING = "Qwen3-30B-A3B-Thinking-2507"
 MODEL_NAME_QWQ = "QwQ-32B"
 MODEL_NAME_DS = "deepseek-r1-distill-qwen-32b"
 

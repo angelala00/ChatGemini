@@ -8,6 +8,7 @@ from .gpts_routes import gpts
 from .file_routes import extract_text_from_file_ids
 from app.logger import gpt_logger
 from app.chat_service import chat_with_react_as_function_call, chat_with_gpt
+from app.utils.model_tool import MODEL_NAME_THINKING
 
 
 router = APIRouter(prefix="/api", tags=["chat"])
@@ -53,7 +54,9 @@ async def chat_with_gpts(request: QueryRequest, gid: str, user: dict = Depends(g
     if gid not in gpts:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "gid not found")
     system_prompt = gpts[gid]["system_prompt"]
-    model_name = gpts[gid]["model_name"]
+    model_name = MODEL_NAME_THINKING
+    if "model_name" in gpts[gid]:
+        model_name = gpts[gid]["model_name"]
     user_prompt = request.query
     if request.file_ids:
         user_prompt += await extract_text_from_file_ids(request.file_ids)
