@@ -67,5 +67,5 @@ refresh_gpts()
 __all__ = ["gpts", "fetch_gpts", "refresh_gpts", "BUILTIN_GIDS"]
 
 
-def register_gpts(congfig):
+def register_gpt(congfig):
     builtin_gpts.update(congfig)

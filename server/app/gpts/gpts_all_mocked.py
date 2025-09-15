@@ -1,7 +1,7 @@
-from .config_gpts import register_gpts
+from .config_gpts import register_gpt
 
 
-register_gpts({
+register_gpt({
     "gptassistant": {
         "name": "GPT Assistant",
         "desc": "通用对话助手",
