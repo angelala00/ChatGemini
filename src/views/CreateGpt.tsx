@@ -190,6 +190,23 @@ const CreateGpt = () => {
                         ))}
                     </div>
                     <div>
+                        <label className="block text-sm font-medium text-gray-700">上传文件（即将开放）</label>
+                        <input
+                            type="file"
+                            disabled
+                            className="mt-1 w-full rounded-md border border-gray-300 bg-gray-50 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">添加工具（即将开放）</label>
+                        <input
+                            type="text"
+                            disabled
+                            className="mt-1 w-full rounded-md border border-gray-300 bg-gray-50 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                            placeholder="请选择工具"
+                        />
+                    </div>
+                    <div>
                         <label className="block text-sm font-medium text-gray-700">权限</label>
                         <div className="mt-1 flex space-x-4">
                             <label className="flex items-center">
@@ -232,14 +249,6 @@ const CreateGpt = () => {
                                 className="mt-2 w-full rounded-md border border-gray-300 bg-gray-50 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                             />
                         )}
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">上传文件（即将开放）</label>
-                        <input
-                            type="file"
-                            disabled
-                            className="mt-1 w-full rounded-md border border-gray-300 bg-gray-50 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                        />
                     </div>
                     <button
                         type="submit"
