@@ -21,11 +21,11 @@ export const Landing = (props: LandingProps) => {
                 {subTitle}
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 pr-2">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 pr-2 justify-items-center">
                 {samples.map((prompt, index) => (
                     <button
                         key={index}
-                        className="p-3 rounded-lg hover:bg-gray-100 border text-left"
+                        className="p-3 rounded-lg hover:bg-gray-100 border text-left w-full max-w-[250px]"
                         onClick={() => onSelectSample(prompt)}
                     >
                         <div className="md:text-md text-sm text-gray-800/80">
