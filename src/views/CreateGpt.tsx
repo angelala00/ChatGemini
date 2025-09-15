@@ -191,7 +191,7 @@ const CreateGpt = () => {
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700">权限</label>
-                        <div className="mt-1 space-y-2">
+                        <div className="mt-1 flex space-x-4">
                             <label className="flex items-center">
                                 <input
                                     type="radio"
