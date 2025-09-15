@@ -191,15 +191,38 @@ const CreateGpt = () => {
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-700">权限</label>
-                        <select
-                            value={authType}
-                            onChange={(e) => setAuthType(e.target.value as "self" | "white" | "all")}
-                            className="mt-1 w-full rounded-md border border-gray-300 bg-gray-50 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                        >
-                            <option value="self">仅自己可见</option>
-                            <option value="white">部分人可见</option>
-                            <option value="all">所有人可见</option>
-                        </select>
+                        <div className="mt-1 space-y-2">
+                            <label className="flex items-center">
+                                <input
+                                    type="radio"
+                                    value="self"
+                                    checked={authType === "self"}
+                                    onChange={() => setAuthType("self")}
+                                    className="text-blue-600 focus:ring-blue-500"
+                                />
+                                <span className="ml-2">仅自己可见</span>
+                            </label>
+                            <label className="flex items-center">
+                                <input
+                                    type="radio"
+                                    value="white"
+                                    checked={authType === "white"}
+                                    onChange={() => setAuthType("white")}
+                                    className="text-blue-600 focus:ring-blue-500"
+                                />
+                                <span className="ml-2">部分人可见</span>
+                            </label>
+                            <label className="flex items-center">
+                                <input
+                                    type="radio"
+                                    value="all"
+                                    checked={authType === "all"}
+                                    onChange={() => setAuthType("all")}
+                                    className="text-blue-600 focus:ring-blue-500"
+                                />
+                                <span className="ml-2">所有人可见</span>
+                            </label>
+                        </div>
                         {authType === "white" && (
                             <input
                                 type="text"
