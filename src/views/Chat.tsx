@@ -20,7 +20,7 @@ import { RouterComponentProps, routerConfig } from "../config/router";
 import { PyodideInterface } from "pyodide";
 import { useTranslation } from "react-i18next";
 import { stat } from "node:fs/promises";
-// import { exportMdAsDocx } from "../helpers/exportMdAsDocx";
+import { exportMdAsDocx } from "../helpers/exportMdAsDocx";
 
 const Chat = (props: RouterComponentProps) => {
     const { t } = useTranslation();
@@ -252,7 +252,7 @@ const Chat = (props: RouterComponentProps) => {
             const thinkRegex = /<think>(.*?)<\/think>/gs;
             content = content.replace(thinkRegex, "").trim(); // 去除 <think> 部分
             // 导出
-            // exportMdAsDocx(content, `对话导出 - ${title} - ${new Date().toISOString().slice(0, 16).replace(/[-T:]/g, "_")}.docx`);
+            exportMdAsDocx(content, `对话导出 - ${title} - ${new Date().toISOString().slice(0, 16).replace(/[-T:]/g, "_")}.docx`);
         }
         else if (ai.busy) {
             sendUserAlert(t("views.Chat.handleExport.not_available"), true);

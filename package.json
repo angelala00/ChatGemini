@@ -12,6 +12,7 @@
         "@reduxjs/toolkit": "^2.1.0",
         "crypto-js": "^4.2.0",
         "dify-client": "^2.3.1",
+        "echarts": "^5.5.0",
         "file-saver": "^2.0.5",
         "html-docx-js-typescript": "^0.1.5",
         "i18next": "^23.8.2",
@@ -20,7 +21,6 @@
         "localforage": "^1.10.0",
         "node-fetch": "^2.7.0",
         "pyodide": "^0.23.4",
-        "echarts": "^5.5.0",
         "react": "^18.2.0",
         "react-dom": "^18.2.0",
         "react-hot-toast": "^2.4.1",
@@ -38,9 +38,11 @@
         "rehype-stringify": "^10.0.1",
         "remark-gfm": "^4.0.0",
         "remark-math": "^6.0.0",
+        "remark-parse": "^11.0.0",
         "remark-rehype": "^11.1.2",
         "remarkable": "^2.0.1",
         "superb": "^4.0.0",
+        "unified": "^11.0.5",
         "uuid": "^9.0.0"
     },
     "scripts": {
