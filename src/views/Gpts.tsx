@@ -14,6 +14,8 @@ interface GptsItem {
     readonly is_pinned: boolean;
     readonly logo: string;
     readonly owner?: string;
+    readonly usage_count?: number;
+    readonly pinned_user_count?: number;
 }
 
 interface SectionProps {
@@ -43,12 +45,18 @@ const Section = ({ title, items, onToggle }: SectionProps) => (
                             item.name.slice(0, 1)
                         )}
                     </div>
-                    <div className="flex-1">
+                    <div className="flex-1 flex flex-col">
                         <h3 className="text-lg font-medium text-gray-900">{item.name}</h3>
-                        <p className="mt-1 text-sm text-gray-600">{item.desc}</p>
-                        <p className="mt-1 text-xs text-gray-500">
-                            {item.owner ? `来自 ${item.owner}` : "官方内建"}
-                        </p>
+                        <p className="mt-2 text-sm text-gray-600">{item.desc}</p>
+                        <div className="mt-4 flex items-center justify-between">
+                            <span className="inline-flex items-center rounded-full bg-gray-200 px-2 py-1 text-[11px] font-medium text-gray-600">
+                                {item.owner ? `来自 ${item.owner}` : "官方"}
+                            </span>
+                            <div className="flex gap-4 text-[11px] text-gray-400">
+                                <span>使用 {item.usage_count ?? 0}</span>
+                                <span>置顶 {item.pinned_user_count ?? 0}</span>
+                            </div>
+                        </div>
                     </div>
                     <button
                         className="absolute top-2 right-2 p-1 rounded hover:bg-gray-200 cursor-pointer"
