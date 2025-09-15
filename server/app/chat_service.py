@@ -334,57 +334,6 @@ async def chat_with_agent(query, conversation_id, system_prompt, model_name, gid
             yield f"data: {json.dumps(temp)}\n\n"
 
 
-async def chat_with_vl_model(query, conversation_id, system_prompt, model_name, gid, file_ids):
-    # 获取当前对话历史（如果不存在则创建）
-    messages = match_history.setdefault(conversation_id, [])
-    # 确保 system prompt 只添加一次
-    if not messages or messages[0]["role"] != "system":
-        messages.insert(0, {"role": "system", "content": system_prompt})
-        # 添加当前用户的提问
-    messages.append({"role": "user", "content": query})
-    print(f"messages:{messages}")
-    try:
-        summary = None
-        async for event in _ask_once_stream(messages, None, model_name):
-            if event.get("type") == "tool.calls":
-                summary = event
-                yield event
-                break
-            else:
-                yield event
-    except Exception as e:
-        traceback.print_exc()
-        yield {"type": "error", "data": {"message": f"stream error: {e}"}}
-    if summary is None:
-        yield {"type": "assistant.final", "data": {"text": ""}}
-        return
-    calls = summary["data"]["calls"]
-    assistant_tool_calls_msg = {
-        "role": "assistant",
-        "tool_calls": [
-            {"id": c["id"], "type": "function",
-             "function": {"name": c["name"] or "", "arguments": c["arguments"] or "{}"}} for c in calls
-        ]
-    }
-    messages.append(assistant_tool_calls_msg)
-    tool_result_msgs = []
-    for call in calls:
-        fn_name = call["name"]
-        args_str = call["arguments"] or "{}"
-        try:
-            args = json.loads(args_str)
-        except Exception:
-            args = {}
-        result = await dispatch_tool(fn_name, args)
-        tool_result_msgs.append({
-            "tool_call_id": call["id"],
-            "role": "tool",
-            "name": fn_name,
-            "content": json.dumps(result, ensure_ascii=False),
-        })
-    messages.extend(tool_result_msgs)
-
-
 def is_complex(query) -> bool:
     complex_keywords = ["why", "how", "分析", "复杂", "reason", "认真", "仔细"]
     return len(query) > 60 or any(k in query for k in complex_keywords)
