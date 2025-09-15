@@ -13,6 +13,7 @@ interface GptsItem {
     readonly desc: string;
     readonly is_pinned: boolean;
     readonly logo: string;
+    readonly owner?: string;
 }
 
 interface SectionProps {
@@ -45,6 +46,9 @@ const Section = ({ title, items, onToggle }: SectionProps) => (
                     <div className="flex-1">
                         <h3 className="text-lg font-medium text-gray-900">{item.name}</h3>
                         <p className="mt-1 text-sm text-gray-600">{item.desc}</p>
+                        {item.owner && (
+                            <p className="mt-1 text-xs text-gray-500">来自 {item.owner}</p>
+                        )}
                     </div>
                     <button
                         className="absolute top-2 right-2 p-1 rounded hover:bg-gray-200 cursor-pointer"
