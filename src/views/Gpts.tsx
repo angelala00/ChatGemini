@@ -6,6 +6,7 @@ import unpinnedIcon from "../assets/icons/map-pin-solid.svg";
 import { getFullPath } from "../helpers/getDomainAndPath";
 import { onUpdate as updatePinnedGpts } from "../store/gpts";
 import { Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 
 interface GptsItem {
     readonly gid: string;
@@ -24,7 +25,10 @@ interface SectionProps {
     readonly onToggle: (id: string, is_pinned: boolean) => void;
 }
 
-const Section = ({ title, items, onToggle }: SectionProps) => (
+const Section = ({ title, items, onToggle }: SectionProps) => {
+    const { t } = useTranslation();
+
+    return (
     <section className="mb-16">
         <h2 className="mb-6 text-sm font-semibold text-gray-500 tracking-wide uppercase">
             {title}
@@ -53,11 +57,21 @@ const Section = ({ title, items, onToggle }: SectionProps) => (
                     </div>
                     <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-3 text-xs text-gray-400">
                         <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500 whitespace-nowrap">
-                            {item.owner ? `来自 ${item.owner}` : "官方"}
+                            {item.owner
+                                ? t("views.Gpts.owner_user", { owner: item.owner })
+                                : t("views.Gpts.owner_official")}
                         </span>
                         <div className="flex items-center gap-3">
-                            <span className="whitespace-nowrap">使用 {item.usage_count ?? 0}</span>
-                            <span className="whitespace-nowrap">置顶 {item.pinned_user_count ?? 0}</span>
+                            <span className="whitespace-nowrap">
+                                {t("views.Gpts.usage_count", {
+                                    count: item.usage_count ?? 0,
+                                })}
+                            </span>
+                            <span className="whitespace-nowrap">
+                                {t("views.Gpts.pinned_count", {
+                                    count: item.pinned_user_count ?? 0,
+                                })}
+                            </span>
                         </div>
                     </div>
                     <button
@@ -66,7 +80,11 @@ const Section = ({ title, items, onToggle }: SectionProps) => (
                             e.stopPropagation();
                             onToggle(item.gid, item.is_pinned);
                         }}
-                        aria-label={item.is_pinned ? "取消置顶" : "置顶"}
+                        aria-label={
+                            item.is_pinned
+                                ? t("views.Gpts.unpin")
+                                : t("views.Gpts.pin")
+                        }
                     >
                         <img
                             className="w-5 h-5"
@@ -78,12 +96,14 @@ const Section = ({ title, items, onToggle }: SectionProps) => (
             ))}
         </div>
     </section>
-);
+    );
+};
 
 const Gpts = () => {
     const [items, setItems] = useState<GptsItem[]>([]);
     const [canManage, setCanManage] = useState(false);
     const dispatch = useDispatch();
+    const { t } = useTranslation();
 
     const refreshSidebar = () => {
         // console.log("refreshSidebar:")
@@ -136,22 +156,30 @@ const Gpts = () => {
         <Container className="flex-1 w-full overflow-y-auto bg-white text-gray-900">
             <div className="max-w-5xl mx-auto px-6 pb-16">
                 <header className="py-10 flex items-center justify-between">
-                    <div className="text-3xl font-semibold">探索 GPTs</div>
+                    <div className="text-3xl font-semibold">{t("views.Gpts.page_title")}</div>
                     <div className="space-x-4 text-sm">
                         {canManage && (
                             <>
                                 <Link to="/my-gpts" className="text-blue-600 hover:underline">
-                                    我的GPTs
+                                    {t("views.Gpts.link_my_gpts")}
                                 </Link>
                                 <Link to="/gpts/create" className="text-blue-600 hover:underline">
-                                    创建
+                                    {t("views.Gpts.link_create")}
                                 </Link>
                             </>
                         )}
                     </div>
                 </header>
-                <Section title="置顶" items={pinned} onToggle={handleToggle} />
-                <Section title="全部" items={others} onToggle={handleToggle} />
+                <Section
+                    title={t("views.Gpts.section_pinned")}
+                    items={pinned}
+                    onToggle={handleToggle}
+                />
+                <Section
+                    title={t("views.Gpts.section_all")}
+                    items={others}
+                    onToggle={handleToggle}
+                />
             </div>
         </Container>
     );

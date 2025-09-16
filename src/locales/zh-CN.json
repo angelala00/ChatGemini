@@ -64,6 +64,41 @@
             "handleExport": {
                 "not_available": "AI 正忙，请稍后尝试导出"
             }
+        },
+        "Gpts": {
+            "page_title": "探索 GPTs",
+            "link_my_gpts": "我的GPTs",
+            "link_create": "创建",
+            "section_pinned": "置顶",
+            "section_all": "全部",
+            "owner_user": "来自 {{owner}}",
+            "owner_official": "官方",
+            "usage_count": "使用 {{count}}",
+            "pinned_count": "置顶 {{count}}",
+            "unpin": "取消置顶",
+            "pin": "置顶"
+        },
+        "CreateGpt": {
+            "edit_title": "编辑 GPT",
+            "create_title": "创建 GPT",
+            "name_label": "名称",
+            "name_placeholder": "请输入名称",
+            "desc_label": "描述",
+            "desc_placeholder": "请输入描述",
+            "system_prompt_label": "系统提示词",
+            "system_prompt_placeholder": "请填写系统提示词",
+            "samples_label": "示例问题",
+            "samples_placeholder": "请输入示例问题",
+            "upload_label": "上传文件（开发中）",
+            "tools_label": "添加工具（开发中）",
+            "tools_placeholder": "请选择工具",
+            "permission_label": "权限",
+            "permission_self": "仅自己可见",
+            "permission_white": "部分人可见",
+            "permission_all": "所有人可见",
+            "permission_users_placeholder": "请输入可见人邮箱，逗号分隔",
+            "submitting": "提交中...",
+            "submit": "提交"
         }
     },
     "components": {
