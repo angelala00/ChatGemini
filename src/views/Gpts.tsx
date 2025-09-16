@@ -33,29 +33,31 @@ const Section = ({ title, items, onToggle }: SectionProps) => (
             {items.map((item) => (
                 <div
                     key={item.gid}
-                    className="relative flex items-start p-6 rounded-xl bg-gray-50 hover:bg-gray-100 border transition-colors cursor-pointer"
+                    className="relative flex h-full flex-col rounded-xl border bg-gray-50 p-6 transition-colors hover:bg-gray-100 cursor-pointer"
                     onClick={() => {
                         window.location.href = "#/g/"+item.gid;
                     }}
                 >
-                    <div className="mr-4 flex h-16 w-16 items-center justify-center rounded-lg bg-gray-200 text-2xl overflow-hidden">
-                        {item.logo ? (
-                            <img src={item.logo} alt="" className="h-12 w-12" />
-                        ) : (
-                            item.name.slice(0, 1)
-                        )}
+                    <div className="flex flex-1 gap-4">
+                        <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-gray-200 text-2xl overflow-hidden">
+                            {item.logo ? (
+                                <img src={item.logo} alt="" className="h-12 w-12" />
+                            ) : (
+                                item.name.slice(0, 1)
+                            )}
+                        </div>
+                        <div className="flex flex-1 flex-col">
+                            <h3 className="text-lg font-medium text-gray-900">{item.name}</h3>
+                            <p className="mt-2 text-sm text-gray-600">{item.desc}</p>
+                        </div>
                     </div>
-                    <div className="flex-1 flex flex-col">
-                        <h3 className="text-lg font-medium text-gray-900">{item.name}</h3>
-                        <p className="mt-2 text-sm text-gray-600">{item.desc}</p>
-                        <div className="mt-4 flex items-center justify-between">
-                            <span className="inline-flex items-center rounded-full bg-gray-200 px-2 py-1 text-[11px] font-medium text-gray-600">
-                                {item.owner ? `来自 ${item.owner}` : "官方"}
-                            </span>
-                            <div className="flex gap-4 text-[11px] text-gray-400">
-                                <span>使用 {item.usage_count ?? 0}</span>
-                                <span>置顶 {item.pinned_user_count ?? 0}</span>
-                            </div>
+                    <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 pt-4 text-[11px] text-gray-500">
+                        <span className="inline-flex items-center rounded-full bg-gray-200 px-2 py-1 font-medium text-gray-600 whitespace-nowrap">
+                            {item.owner ? `来自 ${item.owner}` : "官方"}
+                        </span>
+                        <div className="flex items-center gap-4">
+                            <span className="whitespace-nowrap">使用 {item.usage_count ?? 0}</span>
+                            <span className="whitespace-nowrap">置顶 {item.pinned_user_count ?? 0}</span>
                         </div>
                     </div>
                     <button
