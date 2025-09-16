@@ -51,11 +51,11 @@ const Section = ({ title, items, onToggle }: SectionProps) => (
                             <p className="mt-2 text-sm text-gray-600">{item.desc}</p>
                         </div>
                     </div>
-                    <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 pt-4 text-[11px] text-gray-500">
-                        <span className="inline-flex items-center rounded-full bg-gray-200 px-2 py-1 font-medium text-gray-600 whitespace-nowrap">
+                    <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-3 text-xs text-gray-400">
+                        <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500 whitespace-nowrap">
                             {item.owner ? `来自 ${item.owner}` : "官方"}
                         </span>
-                        <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-3">
                             <span className="whitespace-nowrap">使用 {item.usage_count ?? 0}</span>
                             <span className="whitespace-nowrap">置顶 {item.pinned_user_count ?? 0}</span>
                         </div>
