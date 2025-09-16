@@ -37,7 +37,7 @@ const Section = ({ title, items, onToggle }: SectionProps) => {
             {items.map((item) => (
                 <div
                     key={item.gid}
-                    className="relative flex h-full flex-col rounded-xl border bg-gray-50 p-6 transition-colors hover:bg-gray-100 cursor-pointer"
+                    className="relative flex h-full flex-col rounded-xl border bg-gray-50 px-6 pt-6 pb-4 transition-colors hover:bg-gray-100 cursor-pointer"
                     onClick={() => {
                         window.location.href = "#/g/"+item.gid;
                     }}
@@ -55,7 +55,7 @@ const Section = ({ title, items, onToggle }: SectionProps) => {
                             <p className="mt-2 text-sm text-gray-600">{item.desc}</p>
                         </div>
                     </div>
-                    <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-3 text-xs text-gray-400">
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-2 text-xs text-gray-400">
                         <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500 whitespace-nowrap">
                             {item.owner
                                 ? t("views.Gpts.owner_user", { owner: item.owner })
@@ -186,4 +186,3 @@ const Gpts = () => {
 };
 
 export default Gpts;
-

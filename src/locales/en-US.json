@@ -72,7 +72,7 @@
             "section_pinned": "Pinned",
             "section_all": "All",
             "owner_user": "By {{owner}}",
-            "owner_official": "Official",
+            "owner_official": "By Official",
             "usage_count": "Used {{count}}",
             "pinned_count": "Pinned {{count}}",
             "unpin": "Unpin",
