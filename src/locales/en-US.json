@@ -64,6 +64,41 @@
             "handleExport": {
                 "not_available": "AI is currently busy, please try exporting later"
             }
+        },
+        "Gpts": {
+            "page_title": "Explore GPTs",
+            "link_my_gpts": "My GPTs",
+            "link_create": "Create",
+            "section_pinned": "Pinned",
+            "section_all": "All",
+            "owner_user": "By {{owner}}",
+            "owner_official": "Official",
+            "usage_count": "Used {{count}}",
+            "pinned_count": "Pinned {{count}}",
+            "unpin": "Unpin",
+            "pin": "Pin"
+        },
+        "CreateGpt": {
+            "edit_title": "Edit GPT",
+            "create_title": "Create GPT",
+            "name_label": "Name",
+            "name_placeholder": "Enter a name",
+            "desc_label": "Description",
+            "desc_placeholder": "Enter a description",
+            "system_prompt_label": "System prompt",
+            "system_prompt_placeholder": "Enter the system prompt",
+            "samples_label": "Sample questions",
+            "samples_placeholder": "Enter a sample question",
+            "upload_label": "Upload files (in development)",
+            "tools_label": "Add tools (in development)",
+            "tools_placeholder": "Select tools",
+            "permission_label": "Visibility",
+            "permission_self": "Only me",
+            "permission_white": "Specific people",
+            "permission_all": "Everyone",
+            "permission_users_placeholder": "Enter allowed emails, separated by commas",
+            "submitting": "Submitting...",
+            "submit": "Submit"
         }
     },
     "components": {

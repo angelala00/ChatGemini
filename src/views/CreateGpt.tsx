@@ -2,6 +2,7 @@ import { useRef, useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Container } from "../components/Container";
 import { getFullPath } from "../helpers/getDomainAndPath";
+import { useTranslation } from "react-i18next";
 
 const CreateGpt = () => {
     const [name, setName] = useState("");
@@ -15,6 +16,7 @@ const CreateGpt = () => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const gid = searchParams.get("gid");
+    const { t } = useTranslation();
 
     const MAX_SAMPLES = 5;
 
@@ -126,43 +128,53 @@ const CreateGpt = () => {
         <Container className="flex-1 w-full overflow-y-auto bg-white text-gray-900">
             <div className="max-w-3xl mx-auto px-6 pb-16">
                 <header className="py-10 text-3xl font-semibold">
-                    {gid ? "编辑 GPT" : "创建 GPT"}
+                    {gid
+                        ? t("views.CreateGpt.edit_title")
+                        : t("views.CreateGpt.create_title")}
                 </header>
                 <form onSubmit={handleSubmit} className="space-y-6">
                     <div>
-                        <label className="block text-sm font-medium text-gray-700">名称</label>
+                        <label className="block text-sm font-medium text-gray-700">
+                            {t("views.CreateGpt.name_label")}
+                        </label>
                         <input
                             type="text"
                             value={name}
                             onChange={(e) => setName(e.target.value)}
                             className="mt-1 w-full rounded-md border border-gray-300 bg-gray-50 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                            placeholder="请输入名称"
+                            placeholder={t("views.CreateGpt.name_placeholder")}
                             required
                         />
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-gray-700">描述</label>
+                        <label className="block text-sm font-medium text-gray-700">
+                            {t("views.CreateGpt.desc_label")}
+                        </label>
                         <input
                             type="text"
                             value={desc}
                             onChange={(e) => setDesc(e.target.value)}
                             className="mt-1 w-full rounded-md border border-gray-300 bg-gray-50 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                            placeholder="请输入描述"
+                            placeholder={t("views.CreateGpt.desc_placeholder")}
                         />
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-gray-700">系统提示词</label>
+                        <label className="block text-sm font-medium text-gray-700">
+                            {t("views.CreateGpt.system_prompt_label")}
+                        </label>
                         <textarea
                             value={systemPrompt}
                             onChange={(e) => setSystemPrompt(e.target.value)}
                             className="mt-1 w-full rounded-md border border-gray-300 bg-gray-50 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                             rows={6}
-                            placeholder="请填写系统提示词"
+                            placeholder={t("views.CreateGpt.system_prompt_placeholder")}
                             required
                         />
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-gray-700">示例问题</label>
+                        <label className="block text-sm font-medium text-gray-700">
+                            {t("views.CreateGpt.samples_label")}
+                        </label>
                         {samples.map((sample, index) => (
                             <div key={index} className="flex items-center mt-1">
                                 <input
@@ -175,7 +187,7 @@ const CreateGpt = () => {
                                         handleSampleChange(index, e.target.value)
                                     }
                                     className="flex-1 rounded-md border border-gray-300 bg-gray-50 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                                    placeholder="请输入示例问题"
+                                    placeholder={t("views.CreateGpt.samples_placeholder")}
                                 />
                                 {(index !== samples.length - 1 || sample !== "") && (
                                     <button
@@ -190,7 +202,9 @@ const CreateGpt = () => {
                         ))}
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-gray-700">上传文件（开发中）</label>
+                        <label className="block text-sm font-medium text-gray-700">
+                            {t("views.CreateGpt.upload_label")}
+                        </label>
                         <input
                             type="file"
                             disabled
@@ -198,16 +212,20 @@ const CreateGpt = () => {
                         />
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-gray-700">添加工具（开发中）</label>
+                        <label className="block text-sm font-medium text-gray-700">
+                            {t("views.CreateGpt.tools_label")}
+                        </label>
                         <input
                             type="text"
                             disabled
                             className="mt-1 w-full rounded-md border border-gray-300 bg-gray-50 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                            placeholder="请选择工具"
+                            placeholder={t("views.CreateGpt.tools_placeholder")}
                         />
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-gray-700">权限</label>
+                        <label className="block text-sm font-medium text-gray-700">
+                            {t("views.CreateGpt.permission_label")}
+                        </label>
                         <div className="mt-1 flex space-x-4">
                             <label className="flex items-center">
                                 <input
@@ -217,7 +235,9 @@ const CreateGpt = () => {
                                     onChange={() => setAuthType("self")}
                                     className="text-blue-600 focus:ring-blue-500"
                                 />
-                                <span className="ml-2">仅自己可见</span>
+                                <span className="ml-2">
+                                    {t("views.CreateGpt.permission_self")}
+                                </span>
                             </label>
                             <label className="flex items-center">
                                 <input
@@ -227,7 +247,9 @@ const CreateGpt = () => {
                                     onChange={() => setAuthType("white")}
                                     className="text-blue-600 focus:ring-blue-500"
                                 />
-                                <span className="ml-2">部分人可见</span>
+                                <span className="ml-2">
+                                    {t("views.CreateGpt.permission_white")}
+                                </span>
                             </label>
                             <label className="flex items-center">
                                 <input
@@ -237,7 +259,9 @@ const CreateGpt = () => {
                                     onChange={() => setAuthType("all")}
                                     className="text-blue-600 focus:ring-blue-500"
                                 />
-                                <span className="ml-2">所有人可见</span>
+                                <span className="ml-2">
+                                    {t("views.CreateGpt.permission_all")}
+                                </span>
                             </label>
                         </div>
                         {authType === "white" && (
@@ -245,7 +269,7 @@ const CreateGpt = () => {
                                 type="text"
                                 value={authUsers}
                                 onChange={(e) => setAuthUsers(e.target.value)}
-                                placeholder="请输入可见人邮箱，逗号分隔"
+                                placeholder={t("views.CreateGpt.permission_users_placeholder")}
                                 className="mt-2 w-full rounded-md border border-gray-300 bg-gray-50 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                             />
                         )}
@@ -255,7 +279,9 @@ const CreateGpt = () => {
                         disabled={isSubmitting}
                         className="px-4 py-2 bg-blue-500 text-white rounded-md disabled:opacity-50"
                     >
-                        {isSubmitting ? "提交中..." : "提交"}
+                        {isSubmitting
+                            ? t("views.CreateGpt.submitting")
+                            : t("views.CreateGpt.submit")}
                     </button>
                 </form>
             </div>
