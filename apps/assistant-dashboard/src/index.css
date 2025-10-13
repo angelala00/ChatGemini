@@ -3,6 +3,6 @@
 @tailwind utilities;
 
 body {
-  @apply bg-slate-100 text-slate-900;
+  @apply bg-slate-950 text-slate-100;
   font-family: "Inter", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
 }
