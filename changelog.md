@@ -17,12 +17,16 @@
     如果用户选择了A，如果没问问题，就关了页面，那应该不算，选择了A并且使用它问了问题，这时候才记录他选择了A
     如果用户选择了A，也问了问题，这时候他又打开了上一次会话，那个会话用的是B，用户接着使用B问了问题，然后用户再创建一个新会话，还是应该用上次选择使用的A
 数据大屏原型，
-  根据这个大屏原型，看看需要记录哪些日志信息
-  根据这个大屏原型，写个前端，集成到前端页面？还是一个单独的前端项目
+  apps/assistant-dashboard/index.html
+  根据这个原型，帮我改造成一个前端项目
     用 TailwindCSS 做布局 → 容易响应式 + 调整比例
     用 Recharts / ECharts → 数据图表
     用 React Query + Axios 拉数据
     支持自动刷新或 WebSocket 推送
+  根据apps/assistant-dashboard这个大屏，创建一个后端项目，放在servers/assistant-metrics-api下，是一个python项目，
+    参考assistant-bff的框架和部署方式
+    把前端mock的数据迁移到后端，后端提供接口
+    再把前后端连接起来
   根据这个大屏原型，把前端和后端接口连接起来
 
 
