@@ -4,11 +4,12 @@ import purgeIcon from "../assets/icons/broom-ball-solid.svg";
 import LogoutIcon from "../assets/icons/right-from-bracket-solid.svg";
 import { Link } from "react-router-dom";
 import { HeaderDropdown } from "./Dropdown";
+import { ModelOption } from "../types/models";
 
 interface HeaderProps {
     readonly sidebarExpand: boolean;
     readonly title?: string;
-    readonly models?: string[];
+    readonly models?: ModelOption[];
     readonly defaultModel?: string;
     readonly newChatUrl: string;
     readonly logoutIcon: boolean;

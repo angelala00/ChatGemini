@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { globalConfig } from "./config/global";
 import { Sidebar } from "./components/Sidebar";
 import { Container } from "./components/Container";
@@ -31,6 +31,7 @@ import { setUserLocale } from "./helpers/setUserLocale";
 import { useTranslation } from "react-i18next";
 import { getCurrentLocale } from "./helpers/getCurrentLocale";
 import { getFullPath } from "./helpers/getDomainAndPath";
+import { ModelOption } from "./types/models";
 
 
 const App = () => {
@@ -75,7 +76,7 @@ const App = () => {
 
 
     const [fileUploadEnabled, setFileUploadEnabled] = useState(false);
-    const [models, setModels] = useState();
+    const [models, setModels] = useState<ModelOption[] | undefined>(undefined);
     const [defaultModel, setDefaultModel] = useState("");
     const [selectedModel, setSelectedModel] = useState("");
     
@@ -208,10 +209,9 @@ const App = () => {
         // });
     };
 
-    const handleModelChange = async (value: string) => {
-        // console.log('setSelectedModel' + value)
+    const handleModelChange = useCallback((value: string) => {
         setSelectedModel(value);
-    };
+    }, []);
     function encodeBase64(text: string) {
         try {
             // return btoa(text);
@@ -371,7 +371,22 @@ const App = () => {
                     response.json().then(data => {
                         setFileUploadEnabled(data.file_upload_enabled)
                         setDefaultModel(data.default_model)
-                        setModels(data.models)
+                        const normalizedModels: ModelOption[] | undefined = Array.isArray(data.models)
+                            ? data.models.reduce(
+                                (acc: ModelOption[], item: any) => {
+                                    if (item && typeof item.id === "string" && typeof item.name === "string") {
+                                        acc.push({
+                                            id: item.id,
+                                            name: item.name,
+                                            description: typeof item.description === "string" ? item.description : "",
+                                        })
+                                    }
+                                    return acc
+                                },
+                                [],
+                            )
+                            : undefined
+                        setModels(normalizedModels)
                         setPageSubTitle(data.desc)
                         setPageSamples(data.samples ?? [])
                         setPageLogo(data.logo)

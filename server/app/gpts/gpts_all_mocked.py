@@ -4,11 +4,30 @@ from .config_gpts import register_gpt
 register_gpt({
     "gptassistant": {
         "name": "GPT Assistant",
-        "desc": "通用对话助手",
+        "title": "通用对话助手",
+        "sub_title": "通用对话助手111",
         "system_prompt": "You are a helpful assistant.",
-        "model_name": "auto",
+        "file_upload_enabled": True,
+        "default_model": "auto",
         "auth": {"type": "all"},
-        "samples": ["你好"],
+        "sort": 0,
+        "models": [
+            {
+                "id": "auto",
+                "name": "Auto",
+                "description": "自动选择最合适的模型",
+            },
+            {
+                "id": "deepseek-r1-distill-qwen-32b",
+                "name": "Deepseek(思考)",
+                "description": "提供深度思考与分析输出",
+            },
+            {
+                "id": "Qwen3-30B-A3B-Instruct-2507",
+                "name": "Qwen(立即回答)",
+                "description": "快速响应的即时回答模式",
+            },
+        ]
     },
     "g3": {
         "name": "法务审查",
