@@ -8,7 +8,10 @@ interface HeaderDropdownProps {
     readonly title?: string;
     readonly models?: ModelOption[];
     readonly defaultModel?: string;
-    readonly onModelChange?: (t: string) => void;
+    readonly onModelChange?: (
+        value: string,
+        options?: { readonly manual?: boolean },
+    ) => void;
 }
 
 export const HeaderDropdown = (props: HeaderDropdownProps) => {
@@ -28,7 +31,7 @@ export const HeaderDropdown = (props: HeaderDropdownProps) => {
     const handleSelect = (value: string) => {
         setSelected(value);
         if (onModelChange) {
-            onModelChange(value);
+            onModelChange(value, { manual: true });
         }
         setOpen(false);
     };
@@ -38,7 +41,7 @@ export const HeaderDropdown = (props: HeaderDropdownProps) => {
     useEffect(() => {
         setSelected(defaultModel);
         if (onModelChange && defaultModel) {
-            onModelChange(defaultModel);
+            onModelChange(defaultModel, { manual: false });
         }
     }, [defaultModel, onModelChange]);
 

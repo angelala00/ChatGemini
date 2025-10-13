@@ -33,6 +33,29 @@ import { getCurrentLocale } from "./helpers/getCurrentLocale";
 import { getFullPath } from "./helpers/getDomainAndPath";
 import { ModelOption } from "./types/models";
 
+const PREFERRED_MODEL_COOKIE_KEY = "preferred_model";
+const COOKIE_MAX_AGE_MS = 365 * 24 * 60 * 60 * 1000;
+
+const readPreferredModel = () => {
+    if (typeof document === "undefined") {
+        return "";
+    }
+    const match = document.cookie.match(
+        new RegExp(`(?:^|; )${PREFERRED_MODEL_COOKIE_KEY}=([^;]*)`),
+    );
+    return match ? decodeURIComponent(match[1]) : "";
+};
+
+const writePreferredModel = (modelId: string) => {
+    if (typeof document === "undefined") {
+        return;
+    }
+    const expires = new Date(Date.now() + COOKIE_MAX_AGE_MS).toUTCString();
+    document.cookie = `${PREFERRED_MODEL_COOKIE_KEY}=${encodeURIComponent(
+        modelId,
+    )}; path=/; expires=${expires}`;
+};
+
 
 const App = () => {
     const { t } = useTranslation();
@@ -77,8 +100,12 @@ const App = () => {
 
     const [fileUploadEnabled, setFileUploadEnabled] = useState(false);
     const [models, setModels] = useState<ModelOption[] | undefined>(undefined);
+    const [serverDefaultModel, setServerDefaultModel] = useState("");
     const [defaultModel, setDefaultModel] = useState("");
     const [selectedModel, setSelectedModel] = useState("");
+    const [pendingManualModel, setPendingManualModel] = useState<string | null>(
+        null,
+    );
     
     const [pageTitle, setPageTitle] = useState("");
     const [pageLogo, setPageLogo] = useState("");
@@ -209,9 +236,15 @@ const App = () => {
         // });
     };
 
-    const handleModelChange = useCallback((value: string) => {
-        setSelectedModel(value);
-    }, []);
+    const handleModelChange = useCallback(
+        (value: string, options?: { manual?: boolean }) => {
+            setSelectedModel(value);
+            if (options?.manual) {
+                setPendingManualModel(value);
+            }
+        },
+        [setPendingManualModel],
+    );
     function encodeBase64(text: string) {
         try {
             // return btoa(text);
@@ -275,9 +308,26 @@ const App = () => {
             sendUserAlert(t("App.handleSubmit.invalid_session"), true);
             return;
         }
+        const ensureModelAvailable = (modelId: string) =>
+            modelId && models?.some((item) => item.id === modelId) ? modelId : "";
         const modelPlaceholder = t("App.handleSubmit.model_placeholder");
         const currentSessionHistory = id in sessions ? sessions[id] : [];
         let conversationId = id in sessions ? mappings[id] : "";
+        const selectedModelId =
+            ensureModelAvailable(selectedModel) ||
+            ensureModelAvailable(defaultModel) ||
+            ensureModelAvailable(serverDefaultModel) ||
+            (models && models.length > 0 ? models[0].id : "");
+
+        if (!selectedModelId) {
+            sendUserAlert(t("App.handleSubmit.invalid_session"), true);
+            return;
+        }
+
+        if (pendingManualModel && pendingManualModel === selectedModelId) {
+            writePreferredModel(selectedModelId);
+            setPendingManualModel(null);
+        }
         const currentTimestamp = Date.now();
         let _sessions = {
             ...sessions,
@@ -298,6 +348,23 @@ const App = () => {
         };
         dispatch(updateAI({ ...ai, busy: true }));
         dispatch(updateSessions(_sessions));
+        const previousExtension = sessionExtensions[id];
+        const nextSessionExtensions = {
+            ...sessionExtensions,
+            [id]: {
+                conversationId:
+                    (previousExtension && previousExtension.conversationId) ||
+                    conversationId ||
+                    "",
+                gid:
+                    gid ||
+                    (previousExtension && previousExtension.gid) ||
+                    "",
+                selectedModel: selectedModelId,
+            },
+        };
+        dispatch(updateSessionExtensions(nextSessionExtensions));
+        let currentSessionExtensionsState = nextSessionExtensions;
         if(gid){
             navigate(`/g/${gid}/chat/${id}`);
         } else {
@@ -307,11 +374,15 @@ const App = () => {
 	        // console.log("onChatMessage, message=" + message + ", end=" +  end + ", convId=" + convId + ", id=" + id + ", gid=" + gid);
             if (convId !== "") {
                 dispatch(updateMappings({ ...mappings, [id]: convId}));
-                dispatch(updateSessionExtensions({ ...sessionExtensions, [id]: {
-                    conversationId: convId,
-                    gid: gid,
-                    selectedModel: selectedModel,
-                }}));
+                currentSessionExtensionsState = {
+                    ...currentSessionExtensionsState,
+                    [id]: {
+                        ...currentSessionExtensionsState[id],
+                        conversationId: convId,
+                        selectedModel: selectedModelId,
+                    },
+                };
+                dispatch(updateSessionExtensions(currentSessionExtensionsState));
             }
             if (end) {
                 dispatch(updateAI({ ...ai, busy: false }));
@@ -346,7 +417,7 @@ const App = () => {
             conversationId,
             gid,
             handler,
-            selectedModel,
+            selectedModelId,
         );
         onAbortUpdate(abort)
         try {
@@ -370,7 +441,11 @@ const App = () => {
                 if (response.ok) {
                     response.json().then(data => {
                         setFileUploadEnabled(data.file_upload_enabled)
-                        setDefaultModel(data.default_model)
+                        setServerDefaultModel(
+                            typeof data.default_model === "string"
+                                ? data.default_model
+                                : "",
+                        )
                         const normalizedModels: ModelOption[] | undefined = Array.isArray(data.models)
                             ? data.models.reduce(
                                 (acc: ModelOption[], item: any) => {
@@ -401,6 +476,44 @@ const App = () => {
             });
         }
     }, [hasLogined, gid]);
+
+    useEffect(() => {
+        if (!models || models.length === 0) {
+            if (defaultModel) {
+                setDefaultModel("");
+            }
+            return;
+        }
+
+        const availableModelIds = new Set(models.map((item) => item.id));
+        const ensureModelAvailable = (modelId: string) =>
+            modelId && availableModelIds.has(modelId) ? modelId : "";
+
+        const sessionId = id;
+        let targetModel = "";
+
+        if (sessionId && sessionExtensions[sessionId]?.selectedModel) {
+            targetModel = ensureModelAvailable(
+                sessionExtensions[sessionId].selectedModel,
+            );
+        }
+
+        if (!targetModel) {
+            targetModel = ensureModelAvailable(readPreferredModel());
+        }
+
+        if (!targetModel) {
+            targetModel = ensureModelAvailable(serverDefaultModel);
+        }
+
+        if (!targetModel && models.length > 0) {
+            targetModel = models[0].id;
+        }
+
+        if (targetModel !== defaultModel) {
+            setDefaultModel(targetModel);
+        }
+    }, [defaultModel, id, models, serverDefaultModel, sessionExtensions]);
 
     useEffect(() => {
         // console.log("====="+hasLogined)

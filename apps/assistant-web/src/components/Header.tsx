@@ -17,7 +17,10 @@ interface HeaderProps {
     readonly onLogout: () => void;
     readonly onToggleSidebar: () => void;
     readonly onPurgeSessions: () => void;
-    readonly onModelChange?: (t: string) => void;
+    readonly onModelChange?: (
+        value: string,
+        options?: { readonly manual?: boolean },
+    ) => void;
 }
 
 export const Header = (props: HeaderProps) => {
