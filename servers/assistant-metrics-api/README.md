@@ -8,6 +8,8 @@ FastAPI 服务，为 `apps/assistant-dashboard` 大屏提供指标数据与 WebS
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+# ``tzdata`` ships the IANA timezone database so the API can format
+# timestamps consistently even on minimal environments.
 uvicorn app.main:app --host 0.0.0.0 --port 5010
 ```
 

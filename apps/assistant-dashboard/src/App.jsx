@@ -36,9 +36,9 @@ function ListCard({ title, items }) {
     <article className="h-full rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
       <h3 className="text-lg font-semibold text-slate-800">{title}</h3>
       <ul className="mt-4 space-y-3">
-        {items.map(({ name, value }) => (
+        {items.map(({ name, value }, index) => (
           <li
-            key={name}
+            key={`${name}-${index}`}
             className="flex items-center justify-between border-b border-slate-100 pb-3 text-sm last:border-b-0 last:pb-0"
           >
             <span className="font-medium text-slate-700">{name}</span>
