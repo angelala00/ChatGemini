@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from datetime import datetime
-from zoneinfo import ZoneInfo
+from datetime import datetime, timedelta, timezone, tzinfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 # Base payload mirrors the original mock JSON that lived in the
 # assistant-dashboard frontend. ``lastUpdated`` is populated dynamically
@@ -90,6 +90,19 @@ _BASE_DASHBOARD_PAYLOAD = {
 }
 
 
+def _resolve_shanghai_timezone() -> tzinfo:
+    """Return the Asia/Shanghai timezone with a UTC+8 fallback."""
+
+    try:
+        return ZoneInfo("Asia/Shanghai")
+    except ZoneInfoNotFoundError:
+        # Some minimal environments do not ship the IANA timezone database.
+        # ``tzdata`` (a PEP 615 compatible provider) is installed via
+        # ``requirements.txt`` but we still keep a graceful fallback to avoid
+        # hard crashes if the package is missing at runtime.
+        return timezone(timedelta(hours=8))
+
+
 def build_dashboard_payload() -> dict[str, object]:
     """Return a dashboard payload with an up-to-date timestamp."""
 
@@ -97,7 +110,7 @@ def build_dashboard_payload() -> dict[str, object]:
 
     # Align the timestamp with the expected +08:00 timezone that was used in
     # the original mock data.
-    shanghai_tz = ZoneInfo("Asia/Shanghai")
+    shanghai_tz = _resolve_shanghai_timezone()
     payload["lastUpdated"] = datetime.now(tz=shanghai_tz)
     return payload
 

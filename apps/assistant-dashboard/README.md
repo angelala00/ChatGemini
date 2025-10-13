@@ -21,13 +21,13 @@ pip install -r requirements.txt
 uvicorn app.main:app --host 0.0.0.0 --port 5010
 ```
 
-前端开发服务器内置了对 `http://localhost:5010` 的反向代理，因而可以直接访问 `/api/dashboard` 与 `/ws/dashboard`。
+前端开发服务器内置了对 `http://localhost:5010` 的反向代理，应用在开发模式下也会默认将 API 请求与 WebSocket 连接指向该后端。
 
 ## 环境变量
 
 | 变量名 | 说明 | 默认值 |
 | ------ | ---- | ------ |
-| `VITE_API_BASE_URL` | Axios 请求的基础路径 | ``（相对路径） |
+| `VITE_API_BASE_URL` | Axios 请求的基础路径 | `http://localhost:5010`（开发模式下） |
 | `VITE_DASHBOARD_ENDPOINT` | 仪表盘数据接口路径 | `/api/dashboard` |
 | `VITE_REFRESH_INTERVAL` | React Query 自动刷新间隔（毫秒） | `30000` |
 | `VITE_WS_URL` | WebSocket 地址，推送 `dashboard:update` 事件 | 未配置则根据 `VITE_API_BASE_URL` 或当前域名推导 |
