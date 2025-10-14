@@ -1,3 +1,4 @@
+import { useMemo, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -50,10 +51,17 @@ function ListCard({ title, items }) {
   );
 }
 
-function RequestsTrend({ data }) {
+function RequestsTrend({ data, rangeLabel }) {
   return (
     <article className="h-full rounded-2xl border border-slate-800/60 bg-slate-900/60 p-6 shadow-[0_20px_45px_-30px_rgba(15,23,42,1)] backdrop-blur">
-      <h3 className="text-base font-semibold text-slate-100/90">请求趋势</h3>
+      <header className="flex items-center justify-between">
+        <h3 className="text-base font-semibold text-slate-100/90">请求趋势</h3>
+        {rangeLabel ? (
+          <span className="rounded-full bg-slate-800/60 px-3 py-1 text-xs text-slate-400">
+            {rangeLabel}
+          </span>
+        ) : null}
+      </header>
       <div className="mt-6 h-72 w-full">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={data} margin={{ top: 10, left: 0, right: 0 }}>
@@ -98,17 +106,23 @@ function RequestsTrend({ data }) {
   );
 }
 
-function TimeWindowCard({ info }) {
-  const entries = [
-    { label: "数据时间范围", value: info.range },
-    { label: "峰值", value: info.peak },
-    { label: "最低值", value: info.low }
-  ];
-  return <ListCard title="时间窗口" items={entries} />;
-}
-
 export default function App() {
   const { data, isLoading, isError, error } = useDashboardData();
+  const [timeRange, setTimeRange] = useState("14d");
+
+  const timeRangeOptions = useMemo(
+    () => [
+      { value: "7d", label: "过去 7 天" },
+      { value: "14d", label: "过去 14 天" },
+      { value: "30d", label: "过去 30 天" }
+    ],
+    []
+  );
+
+  const activeRange = useMemo(
+    () => timeRangeOptions.find((option) => option.value === timeRange),
+    [timeRange, timeRangeOptions]
+  );
 
   if (isLoading) {
     return (
@@ -145,9 +159,28 @@ export default function App() {
               实时追踪用户与模型调用表现，支持自动刷新与 WebSocket 推送。
             </p>
           </div>
-          <span className="inline-flex items-center rounded-full bg-brand/20 px-4 py-1 text-sm font-medium text-brand">
-            数据更新 · {lastUpdatedLabel}
-          </span>
+          <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-3">
+            <label className="flex items-center gap-3 rounded-full border border-slate-800/80 bg-slate-900/80 px-4 py-2 text-xs font-medium uppercase tracking-wider text-slate-400">
+              <span>时间范围</span>
+              <div className="relative">
+                <select
+                  value={timeRange}
+                  onChange={(event) => setTimeRange(event.target.value)}
+                  className="appearance-none rounded-md border border-slate-800/60 bg-slate-900/80 px-3 py-1 text-sm font-medium text-slate-100 focus:border-brand focus:outline-none"
+                >
+                  {timeRangeOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-slate-500">⌄</span>
+              </div>
+            </label>
+            <span className="inline-flex items-center rounded-full bg-brand/20 px-4 py-1 text-sm font-medium text-brand">
+              数据更新 · {lastUpdatedLabel}
+            </span>
+          </div>
         </header>
 
         <section className="mt-10 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -162,9 +195,11 @@ export default function App() {
           ))}
         </section>
 
-        <section className="mt-6 grid gap-4 lg:grid-cols-[2fr_1fr]">
-          <RequestsTrend data={data.requestsTrend} />
-          <TimeWindowCard info={data.timeWindow} />
+        <section className="mt-6">
+          <RequestsTrend
+            data={data.requestsTrend}
+            rangeLabel={activeRange?.label ?? ""}
+          />
         </section>
 
         <section className="mt-6 grid gap-4 lg:grid-cols-2">
@@ -172,9 +207,8 @@ export default function App() {
           <ListCard title="GPTs 使用排行" items={data.gptsLeaderboard} />
         </section>
 
-        <section className="mt-6 grid gap-4 lg:grid-cols-2">
+        <section className="mt-6 grid gap-4">
           <ListCard title="模型使用排行" items={data.modelLeaderboard} />
-          <ListCard title="监控提示" items={data.alerts} />
         </section>
       </div>
     </div>
