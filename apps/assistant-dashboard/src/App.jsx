@@ -195,19 +195,16 @@ export default function App() {
           ))}
         </section>
 
-        <section className="mt-6">
+        <section className="mt-6 grid gap-4 lg:grid-cols-[2fr_1fr]">
           <RequestsTrend
             data={data.requestsTrend}
             rangeLabel={activeRange?.label ?? ""}
           />
+          <ListCard title="用户排行" items={data.userLeaderboard} />
         </section>
 
         <section className="mt-6 grid gap-4 lg:grid-cols-2">
-          <ListCard title="用户排行" items={data.userLeaderboard} />
           <ListCard title="GPTs 使用排行" items={data.gptsLeaderboard} />
-        </section>
-
-        <section className="mt-6 grid gap-4">
           <ListCard title="模型使用排行" items={data.modelLeaderboard} />
         </section>
       </div>
