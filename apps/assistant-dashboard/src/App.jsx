@@ -13,13 +13,13 @@ import zhCN from "date-fns/locale/zh-CN";
 
 function MetricCard({ title, value, hint, emphasis }) {
   return (
-    <article className="rounded-2xl border border-slate-800/60 bg-slate-900/60 p-6 shadow-[0_20px_45px_-30px_rgba(15,23,42,1)] backdrop-blur">
-      <header className="flex items-center justify-between">
-        <h3 className="text-base font-semibold text-slate-100/90">{title}</h3>
-      </header>
-      <p className="mt-5 text-4xl font-semibold tracking-tight text-brand">{value}</p>
+    <article className="relative overflow-hidden rounded-soft border border-white/10 bg-panel p-4 shadow-panel">
+      <div className="flex items-center justify-between">
+        <h3 className="text-xs font-semibold uppercase tracking-widest text-slate-200">{title}</h3>
+      </div>
+      <p className="mt-2 text-2xl font-bold tracking-tight text-slate-50">{value}</p>
       {hint ? (
-        <p className="mt-3 inline-flex items-center gap-2 text-sm text-slate-400">
+        <p className="mt-1 text-xs font-medium text-accent-secondary">
           {hint}
           {emphasis ? (
             <span className="rounded-md bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand">
@@ -149,23 +149,25 @@ export default function App() {
 
   return (
     <div className="flex min-h-full flex-col gap-3 p-3">
-      <header className="flex flex-col gap-3 lg:flex-row lg:items-center">
-        <div>
-          <h1 className="text-3xl font-semibold tracking-tight text-slate-100">
-            ChatGemini 核心指标总览
-          </h1>
-          <p className="text-sm text-slate-400">
+      <header className="grid gap-4 lg:grid-cols-[minmax(0,1fr),auto]">
+        <div className="flex-1 rounded-soft border border-white/10 bg-panel p-4 shadow-panel">
+          <div className="flex items-center justify-between">
+            <h1 className="text-lg font-semibold tracking-wide text-slate-100">
+              ChatGemini 核心指标总览
+            </h1>
+          </div>
+          <p className="mt-1 text-sm text-muted">
             实时追踪用户与模型调用表现，支持自动刷新与 WebSocket 推送。
           </p>
         </div>
-        <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-3">
-          <label className="flex items-center gap-3 rounded-full border border-slate-800/80 bg-slate-900/80 px-4 py-2 text-xs font-medium uppercase tracking-wider text-slate-400">
-            <span>时间范围</span>
+        <div className="flex flex-wrap items-center gap-3 rounded-soft border border-white/10 bg-panel p-3 shadow-panel">
+          <label className="flex items-center gap-3 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-medium uppercase tracking-wider text-slate-400">
+            <span className="text-slate-300/80">时间范围</span>
             <div className="relative">
               <select
                 value={timeRange}
                 onChange={(event) => setTimeRange(event.target.value)}
-                className="appearance-none rounded-md border border-slate-800/60 bg-slate-900/80 px-3 py-1 text-sm font-medium text-slate-100 focus:border-brand focus:outline-none"
+                className="appearance-none rounded-md border border-transparent bg-slate-950/60 px-3 py-1 text-sm font-medium text-slate-100 transition-colors focus:border-brand focus:outline-none"
               >
                 {timeRangeOptions.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -176,12 +178,13 @@ export default function App() {
               <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-slate-500">⌄</span>
             </div>
           </label>
-          <span className="inline-flex items-center rounded-full bg-brand/20 px-4 py-1 text-sm font-medium text-brand">
+          <span className="mt-4 inline-flex w-fit items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium uppercase tracking-[0.2em] text-slate-300">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-brand/60" />
             数据更新 · {lastUpdatedLabel}
           </span>
         </div>
       </header>
-      <main class="grid flex-1 grid-cols-1 gap-3">
+      <main className="grid flex-1 grid-cols-1 gap-3">
         <section className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-4">
           {data.metrics.map((metric) => (
             <MetricCard
@@ -194,7 +197,7 @@ export default function App() {
           ))}
         </section>
 
-        <section className="mt-6 grid gap-4 lg:grid-cols-[2fr_1fr]">
+        <section className="grid gap-3 lg:grid-cols-[2fr_1fr]">
           <RequestsTrend
             data={data.requestsTrend}
             rangeLabel={activeRange?.label ?? ""}
@@ -202,7 +205,7 @@ export default function App() {
           <ListCard title="用户排行" items={data.userLeaderboard} />
         </section>
 
-        <section className="mt-6 grid gap-4 lg:grid-cols-2">
+        <section className="grid gap-3 lg:grid-cols-2">
           <ListCard title="GPTs 使用排行" items={data.gptsLeaderboard} />
           <ListCard title="模型使用排行" items={data.modelLeaderboard} />
         </section>
