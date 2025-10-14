@@ -27,6 +27,11 @@ register_gpt({
                 "name": "Qwen(立即回答)",
                 "description": "快速响应的即时回答模式",
             },
+            {
+                "id": "Qwen2.5-VL-7B-Instruct",
+                "name": "Qwen-VL(多模态)",
+                "description": "支持图像与文本输入，可进行看图问答、内容理解与多模态分析",
+            },
         ]
     },
     "g3": {

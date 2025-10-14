@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ModelOption } from "../types/models";
 
 // const options = ["deepseek-r1-distill-qwen-32b"];
@@ -21,6 +21,7 @@ export const HeaderDropdown = (props: HeaderDropdownProps) => {
         defaultModel,
         onModelChange,
     } = props;
+    const dropdownRef = useRef<HTMLDivElement | null>(null);
     const [open, setOpen] = useState(false);
     const [selected, setSelected] = useState(defaultModel);
     const selectedOption = useMemo(
@@ -36,8 +37,6 @@ export const HeaderDropdown = (props: HeaderDropdownProps) => {
         setOpen(false);
     };
 
-    // console.log(defaultModel)
-
     useEffect(() => {
         setSelected(defaultModel);
         if (onModelChange && defaultModel) {
@@ -45,8 +44,25 @@ export const HeaderDropdown = (props: HeaderDropdownProps) => {
         }
     }, [defaultModel, onModelChange]);
 
+    useEffect(() => {
+        if (!open) {
+            return;
+        }
+
+        const handleClickOutside = (event: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setOpen(false);
+            }
+        };
+
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, [open]);
+
     return (
-        <div className="relative inline-block text-left">
+        <div className="relative inline-block text-left" ref={dropdownRef}>
             {!defaultModel && (
                 <div className="flex items-center gap-1 font-semibold text-sm">
                     {title}
