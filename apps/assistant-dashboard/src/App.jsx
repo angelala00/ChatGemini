@@ -148,42 +148,41 @@ export default function App() {
     : "--";
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-950 to-slate-900 px-6 py-10 text-slate-200">
-      <div className="mx-auto max-w-7xl">
-        <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-3xl font-semibold tracking-tight text-slate-100">
-              ChatGemini 核心指标总览
-            </h1>
-            <p className="text-sm text-slate-400">
-              实时追踪用户与模型调用表现，支持自动刷新与 WebSocket 推送。
-            </p>
-          </div>
-          <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-3">
-            <label className="flex items-center gap-3 rounded-full border border-slate-800/80 bg-slate-900/80 px-4 py-2 text-xs font-medium uppercase tracking-wider text-slate-400">
-              <span>时间范围</span>
-              <div className="relative">
-                <select
-                  value={timeRange}
-                  onChange={(event) => setTimeRange(event.target.value)}
-                  className="appearance-none rounded-md border border-slate-800/60 bg-slate-900/80 px-3 py-1 text-sm font-medium text-slate-100 focus:border-brand focus:outline-none"
-                >
-                  {timeRangeOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-                <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-slate-500">⌄</span>
-              </div>
-            </label>
-            <span className="inline-flex items-center rounded-full bg-brand/20 px-4 py-1 text-sm font-medium text-brand">
-              数据更新 · {lastUpdatedLabel}
-            </span>
-          </div>
-        </header>
-
-        <section className="mt-10 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="flex min-h-full flex-col gap-3 p-3">
+      <header className="flex flex-col gap-3 lg:flex-row lg:items-center">
+        <div>
+          <h1 className="text-3xl font-semibold tracking-tight text-slate-100">
+            ChatGemini 核心指标总览
+          </h1>
+          <p className="text-sm text-slate-400">
+            实时追踪用户与模型调用表现，支持自动刷新与 WebSocket 推送。
+          </p>
+        </div>
+        <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-3">
+          <label className="flex items-center gap-3 rounded-full border border-slate-800/80 bg-slate-900/80 px-4 py-2 text-xs font-medium uppercase tracking-wider text-slate-400">
+            <span>时间范围</span>
+            <div className="relative">
+              <select
+                value={timeRange}
+                onChange={(event) => setTimeRange(event.target.value)}
+                className="appearance-none rounded-md border border-slate-800/60 bg-slate-900/80 px-3 py-1 text-sm font-medium text-slate-100 focus:border-brand focus:outline-none"
+              >
+                {timeRangeOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-slate-500">⌄</span>
+            </div>
+          </label>
+          <span className="inline-flex items-center rounded-full bg-brand/20 px-4 py-1 text-sm font-medium text-brand">
+            数据更新 · {lastUpdatedLabel}
+          </span>
+        </div>
+      </header>
+      <main class="grid flex-1 grid-cols-1 gap-3">
+        <section className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-4">
           {data.metrics.map((metric) => (
             <MetricCard
               key={metric.id}
@@ -207,7 +206,7 @@ export default function App() {
           <ListCard title="GPTs 使用排行" items={data.gptsLeaderboard} />
           <ListCard title="模型使用排行" items={data.modelLeaderboard} />
         </section>
-      </div>
+      </main>
     </div>
   );
 }
