@@ -1,24 +1,39 @@
-# Assistant Metrics API
+24年6月，gpt助手上线
+25年2月，接Deepseek
+25年2月，实现思考模式
+25年3月，制度问答助手上线，支持多轮思考和工具调用
+25年4月，接口由dify切换到自己的服务，修复删除按钮bug
+25年5月，接SSO，三端
+25年6月，非现场问答助手，取消回答功能，修复登录session过期导致的bug，代码精简优化
+25年7月，纪委助手
+25年8月，上线模型切换功能
+25年9月，上线gpts功能
+25年10月，
+优化模型切换，done
+  简化选择，增加友好提示
+  选择模型之后，记住用户的选择，可cookie可服务端，下次新打开会话的时候，优先选择上次用户的选择的模型，如果该模型已经不存在了，再从可用模型里面找默认的那个
+  每个会话记录最后使用的模型，当再次打开这个会话的时候，优先使用上次使用的模型，如果这个模型已经不存在了，再从可用模型里面找默认的那个
+  注意，
+    如果用户选择了A，如果没问问题，就关了页面，那应该不算，选择了A并且使用它问了问题，这时候才记录他选择了A
+    如果用户选择了A，也问了问题，这时候他又打开了上一次会话，那个会话用的是B，用户接着使用B问了问题，然后用户再创建一个新会话，还是应该用上次选择使用的A
+数据大屏原型，done
+  apps/assistant-dashboard/index.html根据这个原型，帮我改造成一个前端项目，done
+    用 TailwindCSS 做布局 → 容易响应式 + 调整比例
+    用 Recharts / ECharts → 数据图表
+    用 React Query + Axios 拉数据
+    支持自动刷新或 WebSocket 推送
+  根据apps/assistant-dashboard这个大屏，创建一个后端项目，放在servers/assistant-metrics-api下，是一个python项目，done
+    参考assistant-bff的框架和部署方式
+    把前端mock的数据迁移到后端，后端提供接口
+  根据这个大屏原型，把前端和后端接口连接起来
+模型选择增加VL选项 done
+模型选择，点击了，出了一个弹窗，没有选择，这时鼠标在其它地方点击了之后，这个弹窗应该消失，但没有，done
+优化数据大屏布局，清晰每一块数据含义
+  调整,done
+    先在右上方来一个时间范围的筛选
+    下面的时间窗口就可以不要了
+    监控提示也不要了
+  页面调整的紧凑一些
 
-FastAPI 服务，为 `apps/assistant-dashboard` 大屏提供指标数据与 WebSocket 推送示例。
 
-## 快速开始
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-# ``tzdata`` ships the IANA timezone database so the API can format
-# timestamps consistently even on minimal environments.
-uvicorn app.main:app --host 0.0.0.0 --port 5010
-```
-
-启动后将提供下列接口：
-
-| Endpoint | 描述 |
-| -------- | ---- |
-| `GET /healthz` | 健康检查 |
-| `GET /api/dashboard` | 返回仪表盘统计数据 |
-| `WS /ws/dashboard` | 周期性推送 `dashboard:update` 消息 |
-
-推送间隔可以通过环境变量 `DASHBOARD_PUSH_INTERVAL`（秒）进行调整，默认 30 秒。
+根据这个大屏数据接口，研究需要怎样读取日志来实现效果
