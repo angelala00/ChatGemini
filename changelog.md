@@ -42,12 +42,10 @@
 2是验证大屏的功能，看看数据是否能够正常工作
 
 
-
+add remote addr
 git remote add modelscope https://oauth2:ms-151987bf-ae27-441c-8686-f13aec57a5df@www.modelscope.cn/eason5870/fxcjg.git
+first push
 git push --set-upstream modelscope main:refs/for/github
-  change
-  git add
-  git commit
-  git push
-git push modelscope main:refs/for/github
+normal push
+git push modelscope master:github-master
 
