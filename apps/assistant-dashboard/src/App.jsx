@@ -157,7 +157,7 @@ export default function App() {
             </h1>
           </div>
           <p className="mt-1 text-sm text-muted">
-            实时追踪用户与模型调用表现，支持自动刷新与 WebSocket 推送。
+            实时追踪用户与模型调用表现
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3 rounded-soft border border-white/10 bg-panel p-3 shadow-panel">
