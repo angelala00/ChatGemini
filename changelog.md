@@ -41,3 +41,7 @@
 1是验证除大屏之外的功能，并且最好能稳定运行一周以上
 2是验证大屏的功能，看看数据是否能够正常工作
 
+
+
+git push modelscope from/github
+git push modelscope github-master
