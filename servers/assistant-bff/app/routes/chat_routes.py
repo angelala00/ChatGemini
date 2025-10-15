@@ -1,3 +1,4 @@
+import inspect
 import time
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -9,6 +10,25 @@ from .file_routes import extract_text_from_file_ids
 from app.logger import gpt_logger
 from app.chat_service import chat_with_react_as_function_call, chat_with_gpt
 from app.utils.model_tool import MODEL_NAME_THINKING
+from app.metrics.events import create_usage_event
+
+
+def _invoke_chat_function(func, args, *, usage_tracker):
+    if "usage_tracker" in inspect.signature(func).parameters:
+        return func(*args, usage_tracker=usage_tracker)
+    return func(*args)
+
+
+async def _stream_with_metrics(generator, tracker):
+    start_time = time.perf_counter()
+    try:
+        async for chunk in generator:
+            yield chunk
+    except Exception as exc:  # pragma: no cover - streaming errors are propagated
+        tracker.finalize(status="error", latency_ms=(time.perf_counter() - start_time) * 1000, error=str(exc))
+        raise
+    else:
+        tracker.finalize(status="success", latency_ms=(time.perf_counter() - start_time) * 1000)
 
 
 router = APIRouter(prefix="/api", tags=["chat"])
@@ -41,8 +61,27 @@ async def chat_with_gpt_assistant(request: QueryRequest, user: dict = Depends(ge
     # if request.file_ids:
     #     user_prompt += extract_text_from_file_ids(request.file_ids)
     print(f"user_prompt:{user_prompt}")
+    tracker = create_usage_event(
+        user_id=user.get("sub", "unknown"),
+        user_email=user.get("email"),
+        conversation_id=cid,
+        gid="gptassistant",
+        requested_model=model_name,
+    )
     chat_function = chat_with_gpt
-    return StreamingResponse(chat_function(user_prompt, cid, system_prompt, model_name, "gptassistant", request.file_ids), media_type="text/event-stream")
+    try:
+        generator = _invoke_chat_function(
+            chat_function,
+            (user_prompt, cid, system_prompt, model_name, "gptassistant", request.file_ids),
+            usage_tracker=tracker,
+        )
+    except Exception as exc:
+        tracker.finalize(status="error", latency_ms=0.0, error=str(exc))
+        raise
+    return StreamingResponse(
+        _stream_with_metrics(generator, tracker),
+        media_type="text/event-stream",
+    )
 
 
 @router.post("/{gid}/chat-messages")
@@ -61,7 +100,27 @@ async def chat_with_gpts(request: QueryRequest, gid: str, user: dict = Depends(g
     if request.file_ids:
         user_prompt += await extract_text_from_file_ids(request.file_ids)
     # print(f"user_prompt:{user_prompt}")
+    tracker = create_usage_event(
+        user_id=user.get("sub", "unknown"),
+        user_email=user.get("email"),
+        conversation_id=cid,
+        gid=gid,
+        requested_model=model_name,
+    )
+    tracker.set_model(model_name)
     chat_function = chat_with_react_as_function_call
     if "chat_function" in gpts[gid]:
         chat_function = gpts[gid]["chat_function"]
-    return StreamingResponse(chat_function(user_prompt, cid, system_prompt, model_name, gid), media_type="text/event-stream")
+    try:
+        generator = _invoke_chat_function(
+            chat_function,
+            (user_prompt, cid, system_prompt, model_name, gid),
+            usage_tracker=tracker,
+        )
+    except Exception as exc:
+        tracker.finalize(status="error", latency_ms=0.0, error=str(exc))
+        raise
+    return StreamingResponse(
+        _stream_with_metrics(generator, tracker),
+        media_type="text/event-stream",
+    )
