@@ -43,13 +43,11 @@
 
 
 
-
-git checkout master
+git remote add modelscope https://oauth2:ms-151987bf-ae27-441c-8686-f13aec57a5df@www.modelscope.cn/eason5870/fxcjg.git
+git push --set-upstream modelscope main:refs/for/github
   change
   git add
   git commit
   git push
-git checkout github-master
-git merge master
-git push modelscope github-master
-  git push modelscope from/github
+git push modelscope main:refs/for/github
+
