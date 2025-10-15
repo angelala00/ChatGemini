@@ -1,118 +1,107 @@
-"""Static dashboard dataset used by the Assistant metrics API."""
+"""Fetch and normalise dashboard data."""
 
 from __future__ import annotations
 
+import logging
+import os
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone, tzinfo
+from typing import Any, Dict
+from urllib.parse import urljoin
+
+import httpx
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-# Base payload mirrors the original mock JSON that lived in the
-# assistant-dashboard frontend. ``lastUpdated`` is populated dynamically
-# so it is omitted from the base structure.
-_BASE_DASHBOARD_PAYLOAD = {
+logger = logging.getLogger(__name__)
+
+BFF_BASE_URL = os.getenv("ASSISTANT_BFF_BASE_URL", "http://localhost:5008")
+BFF_DASHBOARD_ENDPOINT = os.getenv("ASSISTANT_BFF_DASHBOARD_ENDPOINT", "/api/metrics/dashboard")
+REQUEST_TIMEOUT = float(os.getenv("ASSISTANT_METRICS_TIMEOUT", "5.0"))
+
+_BASE_FALLBACK = {
     "metrics": [
         {
             "id": "activeUsers",
             "title": "活跃用户数",
-            "value": "2,430",
+            "value": "0",
             "hint": "较昨日",
-            "emphasis": "+12%",
+            "emphasis": "0%",
         },
         {
             "id": "totalUsers",
             "title": "累计用户数",
-            "value": "8,972",
-            "hint": "较上周",
-            "emphasis": "+5%",
+            "value": "0",
+            "hint": "过去 7 日新增",
+            "emphasis": "0",
         },
         {
             "id": "totalRequests",
             "title": "当前总请求数",
-            "value": "54,302",
+            "value": "0",
             "hint": "今日新增",
-            "emphasis": "8,120",
+            "emphasis": "0",
         },
         {
             "id": "successRate",
             "title": "请求成功率",
-            "value": "98.4%",
+            "value": "0.0%",
             "hint": "错误率",
-            "emphasis": "1.6%",
+            "emphasis": "100.0%",
         },
     ],
-    "requestsTrend": [
-        {"date": "06-01", "total": 2100},
-        {"date": "06-02", "total": 2480},
-        {"date": "06-03", "total": 3120},
-        {"date": "06-04", "total": 2860},
-        {"date": "06-05", "total": 3980},
-        {"date": "06-06", "total": 4210},
-        {"date": "06-07", "total": 4600},
-        {"date": "06-08", "total": 5120},
-        {"date": "06-09", "total": 4860},
-        {"date": "06-10", "total": 4520},
-        {"date": "06-11", "total": 3890},
-        {"date": "06-12", "total": 3720},
-        {"date": "06-13", "total": 3180},
-        {"date": "06-14", "total": 2980},
-    ],
+    "requestsTrend": [],
     "timeWindow": {
         "range": "过去 14 天",
-        "peak": "5,120 请求/日",
-        "low": "1,860 请求/日",
+        "peak": "暂无数据",
+        "low": "暂无数据",
     },
-    "userLeaderboard": [
-        {"name": "Alice Chen", "value": "8,920 请求"},
-        {"name": "Jason Li", "value": "7,835 请求"},
-        {"name": "陈晓", "value": "6,410 请求"},
-        {"name": "王宁", "value": "5,980 请求"},
-        {"name": "李蕾", "value": "5,640 请求"},
-    ],
-    "gptsLeaderboard": [
-        {"name": "代码调试助手", "value": "28%"},
-        {"name": "产品需求分析", "value": "21%"},
-        {"name": "市场洞察", "value": "18%"},
-        {"name": "数据报表生成", "value": "16%"},
-        {"name": "多语言翻译", "value": "12%"},
-    ],
-    "modelLeaderboard": [
-        {"name": "gpt-4o", "value": "42%"},
-        {"name": "gpt-4o-mini", "value": "25%"},
-        {"name": "gpt-4-turbo", "value": "18%"},
-        {"name": "claude-3-opus", "value": "10%"},
-        {"name": "local-embedding", "value": "5%"},
-    ],
-    "alerts": [
-        {"name": "延迟预警", "value": "暂无"},
-        {"name": "SLA 风险", "value": "低"},
-        {"name": "模型分布", "value": "稳定"},
-    ],
+    "userLeaderboard": [],
+    "gptsLeaderboard": [],
+    "modelLeaderboard": [],
+    "alerts": [],
 }
 
 
-def _resolve_shanghai_timezone() -> tzinfo:
-    """Return the Asia/Shanghai timezone with a UTC+8 fallback."""
+async def build_dashboard_payload() -> Dict[str, Any]:
+    try:
+        remote = await _fetch_remote_payload()
+        return _normalise_remote_payload(remote)
+    except Exception:
+        logger.exception("Failed to fetch dashboard payload from assistant-bff, using fallback data")
+        fallback = deepcopy(_BASE_FALLBACK)
+        shanghai_tz = _resolve_shanghai_timezone()
+        fallback["lastUpdated"] = datetime.now(tz=shanghai_tz)
+        return fallback
 
+
+async def _fetch_remote_payload() -> Dict[str, Any]:
+    url = urljoin(BFF_BASE_URL.rstrip("/"), BFF_DASHBOARD_ENDPOINT)
+    async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+        response = await client.get(url)
+        response.raise_for_status()
+        return response.json()
+
+
+def _normalise_remote_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    payload = dict(payload)
+    raw_last_updated = payload.get("lastUpdated")
+    if isinstance(raw_last_updated, str):
+        try:
+            payload["lastUpdated"] = datetime.fromisoformat(raw_last_updated)
+        except ValueError:
+            payload["lastUpdated"] = datetime.now(tz=_resolve_shanghai_timezone())
+    elif isinstance(raw_last_updated, datetime):
+        payload["lastUpdated"] = raw_last_updated
+    else:
+        payload["lastUpdated"] = datetime.now(tz=_resolve_shanghai_timezone())
+    return payload
+
+
+def _resolve_shanghai_timezone() -> tzinfo:
     try:
         return ZoneInfo("Asia/Shanghai")
     except ZoneInfoNotFoundError:
-        # Some minimal environments do not ship the IANA timezone database.
-        # ``tzdata`` (a PEP 615 compatible provider) is installed via
-        # ``requirements.txt`` but we still keep a graceful fallback to avoid
-        # hard crashes if the package is missing at runtime.
         return timezone(timedelta(hours=8))
-
-
-def build_dashboard_payload() -> dict[str, object]:
-    """Return a dashboard payload with an up-to-date timestamp."""
-
-    payload = deepcopy(_BASE_DASHBOARD_PAYLOAD)
-
-    # Align the timestamp with the expected +08:00 timezone that was used in
-    # the original mock data.
-    shanghai_tz = _resolve_shanghai_timezone()
-    payload["lastUpdated"] = datetime.now(tz=shanghai_tz)
-    return payload
 
 
 __all__ = ["build_dashboard_payload"]

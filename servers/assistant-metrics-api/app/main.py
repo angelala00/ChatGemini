@@ -41,7 +41,7 @@ async def healthcheck() -> dict[str, str]:
 async def read_dashboard() -> DashboardPayload:
     """Return the latest dashboard dataset."""
 
-    payload = build_dashboard_payload()
+    payload = await build_dashboard_payload()
     return DashboardPayload(**payload)
 
 
@@ -50,7 +50,7 @@ async def _websocket_sender(websocket: WebSocket, interval: int) -> None:
 
     try:
         while True:
-            payload = DashboardPayload(**build_dashboard_payload())
+            payload = DashboardPayload(**(await build_dashboard_payload()))
             await websocket.send_json(
                 {"type": "dashboard:update", "data": jsonable_encoder(payload)}
             )

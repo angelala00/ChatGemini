@@ -4,16 +4,26 @@ from . import utils  # noqa: F401
 from app.utils.tool_register import dispatch_tool, get_tools
 from .chat_base import client, match_history, save_match_history
 import uuid
-from typing import AsyncGenerator, Dict, Any, List
+from typing import AsyncGenerator, Dict, Any, List, Optional
 import traceback
 from app.routes.file_routes import extract_text_from_file_ids
 from app.routes.file_routes import get_file_paths
 from app.utils.model_tool import convert_image_message, is_image_only
 from app.utils.model_tool import MODEL_NAME_VL, MODEL_NAME_INSTRUCT, MODEL_NAME_THINKING, MODEL_NAME_DS, MODEL_NAME_QWQ
+from app.metrics.events import UsageEventTracker
 
 
-async def chat_with_react_as_function_call(query, conversation_id, system_prompt, model_name, gid):
+async def chat_with_react_as_function_call(
+    query,
+    conversation_id,
+    system_prompt,
+    model_name,
+    gid,
+    usage_tracker: Optional[UsageEventTracker] = None,
+):
     print(f"query:{query}")
+    if usage_tracker:
+        usage_tracker.set_model(model_name)
     # 获取当前对话历史（如果不存在则创建）
     messages = match_history.setdefault(conversation_id, [])
 
@@ -116,7 +126,10 @@ async def chat_with_react_as_function_call(query, conversation_id, system_prompt
                                             print(f"工具调用信息：{chunk_data}")
                                             yield f"data: {json.dumps(chunk_data)}\n\n"
                                             messages.append({"role": "assistant", "content": function_json_str})
-                                            tool_response = await dispatch_tool(tool_info['tool_call']['name'],
+                                            tool_name = tool_info['tool_call']['name']
+                                            if usage_tracker:
+                                                usage_tracker.mark_tool(tool_name)
+                                            tool_response = await dispatch_tool(tool_name,
                                                                                 tool_info['tool_call']['arguments'])
                                             messages.append({"role": "assistant",
                                                              "content": f"我调用了工具{tool_info['tool_call']['name']}，返回信息如下：{tool_response}，请继续回答用户的问题"})
@@ -339,7 +352,15 @@ def is_complex(query) -> bool:
     return len(query) > 60 or any(k in query for k in complex_keywords)
 
 
-async def chat_with_gpt(query, conversation_id, system_prompt, model_name, gid, file_ids):
+async def chat_with_gpt(
+    query,
+    conversation_id,
+    system_prompt,
+    model_name,
+    gid,
+    file_ids,
+    usage_tracker: Optional[UsageEventTracker] = None,
+):
     print(f"model_name===1:{model_name}")
 
     if model_name == "auto":
@@ -355,9 +376,18 @@ async def chat_with_gpt(query, conversation_id, system_prompt, model_name, gid, 
             model_name = MODEL_NAME_INSTRUCT
 
     print(f"model_name===2:{model_name}")
+    if usage_tracker:
+        usage_tracker.set_model(model_name)
 
     if model_name == MODEL_NAME_DS or model_name == MODEL_NAME_QWQ or model_name == MODEL_NAME_THINKING:
-        async for ev in chat_with_react_as_function_call(query, conversation_id, system_prompt, model_name, gid):
+        async for ev in chat_with_react_as_function_call(
+            query,
+            conversation_id,
+            system_prompt,
+            model_name,
+            gid,
+            usage_tracker=usage_tracker,
+        ):
             yield ev
     if model_name == MODEL_NAME_INSTRUCT:
         async for ev in chat_with_agent(query, conversation_id, system_prompt, model_name, gid):
