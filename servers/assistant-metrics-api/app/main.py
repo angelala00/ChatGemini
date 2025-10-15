@@ -75,10 +75,9 @@ async def websocket_dashboard(websocket: WebSocket) -> None:
     except WebSocketDisconnect:
         sender.cancel()
     finally:
-        if not sender.done():
-            sender.cancel()
-            with contextlib.suppress(Exception):
-                await sender
+        sender.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await sender
 
 
 __all__ = ["app"]
