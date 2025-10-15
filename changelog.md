@@ -43,5 +43,13 @@
 
 
 
-git push modelscope from/github
+
+git checkout master
+  change
+  git add
+  git commit
+  git push
+git checkout github-master
+git merge master
 git push modelscope github-master
+  git push modelscope from/github
