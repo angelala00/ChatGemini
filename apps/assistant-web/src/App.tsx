@@ -319,7 +319,9 @@ const App = () => {
             ensureModelAvailable(serverDefaultModel) ||
             (models && models.length > 0 ? models[0].id : "");
 
-        if (!selectedModelId) {
+        const requiresExplicitModel = !gid;
+
+        if (!selectedModelId && requiresExplicitModel) {
             sendUserAlert(t("App.handleSubmit.invalid_session"), true);
             return;
         }
