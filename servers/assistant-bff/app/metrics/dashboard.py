@@ -25,6 +25,13 @@ _BASE_FALLBACK = {
             "emphasis": "持平 0%",
         },
         {
+            "id": "totalConversations",
+            "title": "会话数",
+            "value": "0",
+            "hint": "较上一期",
+            "emphasis": "持平 0%",
+        },
+        {
             "id": "totalRequests",
             "title": "请求数",
             "value": "0",
@@ -125,6 +132,14 @@ def _collect_metric_cards(conn, now: datetime) -> List[Dict[str, str]]:
         conn,
         "SELECT COUNT(DISTINCT user_id) FROM usage_events",
     )
+    total_conversations = _scalar(
+        conn,
+        """
+        SELECT COUNT(DISTINCT conversation_id)
+          FROM usage_events
+         WHERE conversation_id IS NOT NULL AND conversation_id <> ''
+        """,
+    )
     users_last_week = _scalar(
         conn,
         "SELECT COUNT(DISTINCT user_id) FROM usage_events WHERE started_at >= ?",
@@ -135,9 +150,35 @@ def _collect_metric_cards(conn, now: datetime) -> List[Dict[str, str]]:
         "SELECT COUNT(DISTINCT user_id) FROM usage_events WHERE started_at >= ? AND started_at < ?",
         (fourteen_days_ago, seven_days_ago),
     )
+    conversations_last_week = _scalar(
+        conn,
+        """
+        SELECT COUNT(DISTINCT conversation_id)
+          FROM usage_events
+         WHERE started_at >= ?
+           AND conversation_id IS NOT NULL
+           AND conversation_id <> ''
+        """,
+        (seven_days_ago,),
+    )
+    conversations_previous_week = _scalar(
+        conn,
+        """
+        SELECT COUNT(DISTINCT conversation_id)
+          FROM usage_events
+         WHERE started_at >= ?
+           AND started_at < ?
+           AND conversation_id IS NOT NULL
+           AND conversation_id <> ''
+        """,
+        (fourteen_days_ago, seven_days_ago),
+    )
     success_rate = (success_requests / total_requests) if total_requests else 0.0
     error_rate = 1 - success_rate
     users_change = _format_period_change(users_last_week, users_previous_week)
+    conversations_change = _format_period_change(
+        conversations_last_week, conversations_previous_week
+    )
     requests_change = _format_period_change(todays_requests, yesterdays_requests)
 
     return [
@@ -147,6 +188,13 @@ def _collect_metric_cards(conn, now: datetime) -> List[Dict[str, str]]:
             "value": _format_int(total_users),
             "hint": "较上一期",
             "emphasis": users_change,
+        },
+        {
+            "id": "totalConversations",
+            "title": "会话数",
+            "value": _format_int(total_conversations),
+            "hint": "较上一期",
+            "emphasis": conversations_change,
         },
         {
             "id": "totalRequests",
