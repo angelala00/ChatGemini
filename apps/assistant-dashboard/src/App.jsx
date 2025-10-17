@@ -112,7 +112,20 @@ export default function App() {
       window.sessionStorage.getItem(TIME_RANGE_STORAGE_KEY) ?? DEFAULT_TIME_RANGE
     );
   });
-  const { data, isLoading, isError, error } = useDashboardData(timeRange);
+  const { data, isLoading, isError, error, isFetching } =
+    useDashboardData(timeRange);
+  const [cachedData, setCachedData] = useState(null);
+
+  useEffect(() => {
+    if (data) {
+      setCachedData(data);
+    }
+  }, [data]);
+
+  const displayData = data ?? cachedData;
+  const showInitialLoader = isLoading && !displayData;
+  const showInitialError = isError && !displayData;
+  const showRefreshOverlay = isFetching && !!displayData;
 
   const timeRangeOptions = useMemo(
     () => [
@@ -151,7 +164,7 @@ export default function App() {
     }
   }, [timeRange, timeRangeOptions]);
 
-  if (isLoading) {
+  if (showInitialLoader) {
     return (
       <div className="flex h-screen items-center justify-center bg-slate-950">
         <p className="text-slate-400">正在加载数据...</p>
@@ -159,7 +172,7 @@ export default function App() {
     );
   }
 
-  if (isError) {
+  if (showInitialError) {
     return (
       <div className="flex h-screen items-center justify-center bg-slate-950">
         <p className="text-sm text-rose-400">加载失败：{error.message}</p>
@@ -168,7 +181,7 @@ export default function App() {
   }
 
   return (
-    <div className="flex min-h-full flex-col gap-3 p-3">
+    <div className="relative flex min-h-full flex-col gap-3 p-3">
       <header className="grid gap-4 lg:grid-cols-[minmax(0,1fr),auto]">
         <div className="flex-1 rounded-soft border border-white/10 bg-panel p-4 shadow-panel">
           <div className="flex items-center justify-between">
@@ -197,12 +210,46 @@ export default function App() {
               </select>
               <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-slate-500">⌄</span>
             </div>
+            <span
+              className={`flex min-w-[128px] items-center gap-2 rounded-full bg-white/5 px-3 py-1 text-[11px] font-medium text-slate-400 transition-opacity duration-200 ${
+                isFetching ? "opacity-100" : "opacity-0"
+              }`}
+              aria-hidden={!isFetching}
+            >
+              <svg
+                className="h-3.5 w-3.5 animate-spin text-brand"
+                viewBox="0 0 24 24"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <circle
+                  className="opacity-20"
+                  cx="12"
+                  cy="12"
+                  r="9"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                />
+                <path
+                  d="M21 12a9 9 0 00-9-9"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                />
+              </svg>
+              数据刷新中...
+            </span>
           </label>
         </div>
       </header>
+      {isError ? (
+        <p className="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+          加载最新数据失败：{error.message}
+        </p>
+      ) : null}
       <main className="grid flex-1 grid-cols-1 gap-3">
         <section className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-4">
-          {data.metrics.map((metric) => (
+          {displayData.metrics.map((metric) => (
             <MetricCard
               key={metric.id}
               title={metric.title}
@@ -214,15 +261,41 @@ export default function App() {
         </section>
 
         <section className="grid gap-3 lg:grid-cols-[2fr_1fr]">
-          <RequestsTrend data={data.requestsTrend} />
-          <ListCard title="用户排行" items={data.userLeaderboard} />
+          <RequestsTrend data={displayData.requestsTrend} />
+          <ListCard title="用户排行" items={displayData.userLeaderboard} />
         </section>
 
         <section className="grid gap-3 lg:grid-cols-2">
-          <ListCard title="GPTs 使用排行" items={data.gptsLeaderboard} />
-          <ListCard title="模型使用排行" items={data.modelLeaderboard} />
+          <ListCard title="GPTs 使用排行" items={displayData.gptsLeaderboard} />
+          <ListCard title="模型使用排行" items={displayData.modelLeaderboard} />
         </section>
       </main>
+      {showRefreshOverlay ? (
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-slate-950/30 backdrop-blur-sm">
+          <svg
+            className="h-12 w-12 animate-spin text-brand"
+            viewBox="0 0 24 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <circle
+              className="opacity-20"
+              cx="12"
+              cy="12"
+              r="9"
+              stroke="currentColor"
+              strokeWidth="3"
+            />
+            <path
+              d="M21 12a9 9 0 00-9-9"
+              stroke="currentColor"
+              strokeWidth="3"
+              strokeLinecap="round"
+            />
+          </svg>
+          <p className="text-sm font-medium text-slate-200/90">正在刷新最新数据...</p>
+        </div>
+      ) : null}
     </div>
   );
 }
