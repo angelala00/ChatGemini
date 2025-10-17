@@ -13,6 +13,10 @@ from app.utils.model_tool import MODEL_NAME_VL, MODEL_NAME_INSTRUCT, MODEL_NAME_
 from app.metrics.events import UsageEventTracker
 
 
+class StreamHandledError(Exception):
+    """Raised when a streaming error has already been sent to the client."""
+
+
 async def chat_with_react_as_function_call(
     query,
     conversation_id,
@@ -176,6 +180,7 @@ async def chat_with_react_as_function_call(
                                                             stream=True)
     except Exception as e:
         print(f"调用失败，conversation_id:{conversation_id}, e:{e}")
+        raise
     finally:
         print(f"调用完成，conversation_id:{conversation_id}")
 
@@ -281,6 +286,7 @@ async def _chat_with_agent(
         except Exception as e:
             traceback.print_exc()
             yield {"type": "error", "data": {"message": f"stream error: {e}"}}
+            raise StreamHandledError(str(e)) from e
         if summary is None:
             yield {"type": "assistant.final", "data": {"text": ""}}
             return
