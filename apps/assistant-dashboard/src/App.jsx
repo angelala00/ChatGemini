@@ -193,14 +193,14 @@ export default function App() {
             实时追踪用户与模型调用表现
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-3 rounded-soft border border-white/10 bg-panel p-3 shadow-panel">
-          <label className="flex items-center gap-3 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-medium uppercase tracking-wider text-slate-400">
+        <div className="flex flex-wrap items-end gap-4 rounded-soft border border-white/10 bg-panel p-3 shadow-panel">
+          <label className="flex flex-col gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
             <span className="text-slate-300/80">时间范围</span>
             <div className="relative">
               <select
                 value={timeRange}
                 onChange={handleTimeRangeChange}
-                className="appearance-none rounded-md border border-transparent bg-slate-950/60 px-3 py-1 text-sm font-medium text-slate-100 transition-colors focus:border-brand focus:outline-none"
+                className="h-9 appearance-none rounded-md border border-white/10 bg-slate-950/70 px-3 pr-9 text-sm font-medium text-slate-100 shadow-inner transition-colors focus:border-brand focus:ring-2 focus:ring-brand/40 focus:outline-none"
               >
                 {timeRangeOptions.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -208,38 +208,38 @@ export default function App() {
                   </option>
                 ))}
               </select>
-              <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-slate-500">⌄</span>
+              <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-slate-500">⌄</span>
             </div>
-            <span
-              className={`flex min-w-[128px] items-center gap-2 rounded-full bg-white/5 px-3 py-1 text-[11px] font-medium text-slate-400 transition-opacity duration-200 ${
-                isFetching ? "opacity-100" : "opacity-0"
-              }`}
-              aria-hidden={!isFetching}
-            >
-              <svg
-                className="h-3.5 w-3.5 animate-spin text-brand"
-                viewBox="0 0 24 24"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <circle
-                  className="opacity-20"
-                  cx="12"
-                  cy="12"
-                  r="9"
-                  stroke="currentColor"
-                  strokeWidth="3"
-                />
-                <path
-                  d="M21 12a9 9 0 00-9-9"
-                  stroke="currentColor"
-                  strokeWidth="3"
-                  strokeLinecap="round"
-                />
-              </svg>
-              数据刷新中...
-            </span>
           </label>
+          <span
+            className={`flex min-w-[132px] items-center gap-2 rounded-md border border-white/5 bg-white/5 px-3 py-1 text-[11px] font-medium text-slate-400 transition-opacity duration-200 ${
+              isFetching ? "opacity-100" : "opacity-0"
+            }`}
+            aria-hidden={!isFetching}
+          >
+            <svg
+              className="h-3.5 w-3.5 animate-spin text-brand"
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <circle
+                className="opacity-20"
+                cx="12"
+                cy="12"
+                r="9"
+                stroke="currentColor"
+                strokeWidth="3"
+              />
+              <path
+                d="M21 12a9 9 0 00-9-9"
+                stroke="currentColor"
+                strokeWidth="3"
+                strokeLinecap="round"
+              />
+            </svg>
+            数据刷新中...
+          </span>
         </div>
       </header>
       {isError ? (
