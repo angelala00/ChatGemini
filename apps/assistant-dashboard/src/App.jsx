@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -8,6 +8,9 @@ import {
   YAxis
 } from "recharts";
 import { useDashboardData } from "./hooks/useDashboardData";
+
+const DEFAULT_TIME_RANGE = "14d";
+const TIME_RANGE_STORAGE_KEY = "dashboard:timeRange";
 
 function MetricCard({ title, value, hint, emphasis }) {
   return (
@@ -100,18 +103,53 @@ function RequestsTrend({ data }) {
 }
 
 export default function App() {
-  const { data, isLoading, isError, error } = useDashboardData();
-  const [timeRange, setTimeRange] = useState("14d");
+  const [timeRange, setTimeRange] = useState(() => {
+    if (typeof window === "undefined") {
+      return DEFAULT_TIME_RANGE;
+    }
+
+    return (
+      window.sessionStorage.getItem(TIME_RANGE_STORAGE_KEY) ?? DEFAULT_TIME_RANGE
+    );
+  });
+  const { data, isLoading, isError, error } = useDashboardData(timeRange);
 
   const timeRangeOptions = useMemo(
     () => [
       { value: "today", label: "今天" },
       { value: "7d", label: "过去 7 天" },
       { value: "14d", label: "过去 14 天" },
-      { value: "30d", label: "过去 30 天" }
+      { value: "30d", label: "过去 30 天" },
+      { value: "all", label: "所有时间" }
     ],
     []
   );
+
+  const handleTimeRangeChange = (event) => {
+    const nextTimeRange = event.target.value;
+    setTimeRange(nextTimeRange);
+
+    if (typeof window !== "undefined") {
+      window.sessionStorage.setItem(TIME_RANGE_STORAGE_KEY, nextTimeRange);
+    }
+  };
+
+  useEffect(() => {
+    const isValidTimeRange = timeRangeOptions.some(
+      (option) => option.value === timeRange
+    );
+
+    if (!isValidTimeRange) {
+      setTimeRange(DEFAULT_TIME_RANGE);
+
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem(
+          TIME_RANGE_STORAGE_KEY,
+          DEFAULT_TIME_RANGE
+        );
+      }
+    }
+  }, [timeRange, timeRangeOptions]);
 
   if (isLoading) {
     return (
@@ -148,7 +186,7 @@ export default function App() {
             <div className="relative">
               <select
                 value={timeRange}
-                onChange={(event) => setTimeRange(event.target.value)}
+                onChange={handleTimeRangeChange}
                 className="appearance-none rounded-md border border-transparent bg-slate-950/60 px-3 py-1 text-sm font-medium text-slate-100 transition-colors focus:border-brand focus:outline-none"
               >
                 {timeRangeOptions.map((option) => (

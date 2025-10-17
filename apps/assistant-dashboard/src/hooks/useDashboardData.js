@@ -1,11 +1,15 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import client from "../api/client";
 
-const DASHBOARD_QUERY_KEY = ["dashboard"];
+const DASHBOARD_QUERY_KEY = "dashboard";
 
 const DASHBOARD_ENDPOINT =
   import.meta.env.VITE_DASHBOARD_ENDPOINT ?? "/api/dashboard";
+
+function createDashboardQueryKey(timeRange) {
+  return [DASHBOARD_QUERY_KEY, { timeRange }];
+}
 
 function resolveApiBaseUrlForWebSocket() {
   if (import.meta.env.VITE_API_BASE_URL) {
@@ -56,17 +60,24 @@ function resolveWebSocketUrl() {
   }
 }
 
-async function fetchDashboard() {
-  const { data } = await client.get(DASHBOARD_ENDPOINT);
+async function fetchDashboard(timeRange) {
+  const { data } = await client.get(DASHBOARD_ENDPOINT, {
+    params: timeRange ? { timeRange } : undefined
+  });
   return data;
 }
 
-export function useDashboardData() {
+export function useDashboardData(timeRange = "14d") {
   const queryClient = useQueryClient();
+  const latestTimeRangeRef = useRef(timeRange);
+
+  useEffect(() => {
+    latestTimeRangeRef.current = timeRange;
+  }, [timeRange]);
 
   const query = useQuery({
-    queryKey: DASHBOARD_QUERY_KEY,
-    queryFn: fetchDashboard,
+    queryKey: createDashboardQueryKey(timeRange),
+    queryFn: () => fetchDashboard(timeRange),
     refetchInterval: Number(import.meta.env.VITE_REFRESH_INTERVAL ?? 30_000)
   });
 
@@ -84,7 +95,11 @@ export function useDashboardData() {
       try {
         const payload = JSON.parse(event.data);
         if (payload.type === "dashboard:update") {
-          queryClient.setQueryData(DASHBOARD_QUERY_KEY, (prev) => ({
+          const queryKey = createDashboardQueryKey(
+            latestTimeRangeRef.current
+          );
+
+          queryClient.setQueryData(queryKey, (prev) => ({
             ...prev,
             ...payload.data
           }));
