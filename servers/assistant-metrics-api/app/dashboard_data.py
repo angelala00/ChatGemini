@@ -21,22 +21,15 @@ REQUEST_TIMEOUT = float(os.getenv("ASSISTANT_METRICS_TIMEOUT", "5.0"))
 _BASE_FALLBACK = {
     "metrics": [
         {
-            "id": "activeUsers",
-            "title": "活跃用户数",
-            "value": "0",
-            "hint": "较昨日",
-            "emphasis": "0%",
-        },
-        {
             "id": "totalUsers",
-            "title": "累计用户数",
+            "title": "用户数",
             "value": "0",
             "hint": "过去 7 日新增",
             "emphasis": "0",
         },
         {
             "id": "totalRequests",
-            "title": "当前总请求数",
+            "title": "请示数",
             "value": "0",
             "hint": "今日新增",
             "emphasis": "0",

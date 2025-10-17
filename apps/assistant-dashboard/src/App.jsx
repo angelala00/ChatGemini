@@ -153,7 +153,7 @@ export default function App() {
         <div className="flex-1 rounded-soft border border-white/10 bg-panel p-4 shadow-panel">
           <div className="flex items-center justify-between">
             <h1 className="text-lg font-semibold tracking-wide text-slate-100">
-              ChatGemini 核心指标总览
+              GPT助手 核心指标总览
             </h1>
           </div>
           <p className="mt-1 text-sm text-muted">
