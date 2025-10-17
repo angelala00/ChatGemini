@@ -21,15 +21,15 @@ _BASE_FALLBACK = {
             "id": "totalUsers",
             "title": "用户数",
             "value": "0",
-            "hint": "过去 7 日新增",
-            "emphasis": "0",
+            "hint": "较上一期",
+            "emphasis": "持平 0%",
         },
         {
             "id": "totalRequests",
             "title": "请求数",
             "value": "0",
-            "hint": "今日新增",
-            "emphasis": "0",
+            "hint": "较上一期",
+            "emphasis": "持平 0%",
         },
         {
             "id": "successRate",
@@ -99,6 +99,7 @@ def build_dashboard_snapshot() -> Dict[str, object]:
 
 def _collect_metric_cards(conn, now: datetime) -> List[Dict[str, str]]:
     seven_days_ago = (now - timedelta(days=7)).isoformat()
+    fourteen_days_ago = (now - timedelta(days=14)).isoformat()
     total_requests = _scalar(
         conn,
         "SELECT COUNT(*) FROM usage_events WHERE status IN ('success', 'error')",
@@ -107,11 +108,18 @@ def _collect_metric_cards(conn, now: datetime) -> List[Dict[str, str]]:
         conn,
         "SELECT COUNT(*) FROM usage_events WHERE status='success'",
     )
-    today_anchor = datetime(now.year, now.month, now.day, tzinfo=timezone.utc).isoformat()
+    today_start = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
+    today_anchor = today_start.isoformat()
+    yesterday_start = (today_start - timedelta(days=1)).isoformat()
     todays_requests = _scalar(
         conn,
         "SELECT COUNT(*) FROM usage_events WHERE started_at >= ?",
         (today_anchor,),
+    )
+    yesterdays_requests = _scalar(
+        conn,
+        "SELECT COUNT(*) FROM usage_events WHERE started_at >= ? AND started_at < ?",
+        (yesterday_start, today_anchor),
     )
     total_users = _scalar(
         conn,
@@ -122,23 +130,30 @@ def _collect_metric_cards(conn, now: datetime) -> List[Dict[str, str]]:
         "SELECT COUNT(DISTINCT user_id) FROM usage_events WHERE started_at >= ?",
         (seven_days_ago,),
     )
+    users_previous_week = _scalar(
+        conn,
+        "SELECT COUNT(DISTINCT user_id) FROM usage_events WHERE started_at >= ? AND started_at < ?",
+        (fourteen_days_ago, seven_days_ago),
+    )
     success_rate = (success_requests / total_requests) if total_requests else 0.0
     error_rate = 1 - success_rate
+    users_change = _format_period_change(users_last_week, users_previous_week)
+    requests_change = _format_period_change(todays_requests, yesterdays_requests)
 
     return [
         {
             "id": "totalUsers",
             "title": "用户数",
             "value": _format_int(total_users),
-            "hint": "过去 7 日新增",
-            "emphasis": _format_int(users_last_week),
+            "hint": "较上一期",
+            "emphasis": users_change,
         },
         {
             "id": "totalRequests",
-            "title": "请示数",
+            "title": "请求数",
             "value": _format_int(total_requests),
-            "hint": "今日新增",
-            "emphasis": _format_int(todays_requests),
+            "hint": "较上一期",
+            "emphasis": requests_change,
         },
         {
             "id": "successRate",
@@ -253,6 +268,20 @@ def _scalar(conn, sql: str, params: Tuple[object, ...] = tuple()) -> int:
 
 def _format_int(value: int) -> str:
     return f"{value:,}"
+
+
+def _format_period_change(current: int, previous: int) -> str:
+    if previous <= 0:
+        if current <= 0:
+            return "持平 0%"
+        return "增长 100%+"
+
+    change = (current - previous) / previous * 100
+    if change > 0:
+        return f"增长 {change:.1f}%"
+    if change < 0:
+        return f"下降 {abs(change):.1f}%"
+    return "持平 0%"
 
 
 def _resolve_shanghai_timezone() -> tzinfo:
