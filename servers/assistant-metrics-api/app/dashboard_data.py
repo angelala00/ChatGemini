@@ -29,7 +29,7 @@ _BASE_FALLBACK = {
         },
         {
             "id": "totalRequests",
-            "title": "请示数",
+            "title": "请求数",
             "value": "0",
             "hint": "今日新增",
             "emphasis": "0",
