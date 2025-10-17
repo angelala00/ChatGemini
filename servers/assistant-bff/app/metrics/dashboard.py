@@ -18,22 +18,15 @@ logger = logging.getLogger(__name__)
 _BASE_FALLBACK = {
     "metrics": [
         {
-            "id": "activeUsers",
-            "title": "活跃用户数",
-            "value": "0",
-            "hint": "较昨日",
-            "emphasis": "0%",
-        },
-        {
             "id": "totalUsers",
-            "title": "累计用户数",
+            "title": "用户数",
             "value": "0",
             "hint": "过去 7 日新增",
             "emphasis": "0",
         },
         {
             "id": "totalRequests",
-            "title": "当前总请求数",
+            "title": "请示数",
             "value": "0",
             "hint": "今日新增",
             "emphasis": "0",
@@ -105,8 +98,6 @@ def build_dashboard_snapshot() -> Dict[str, object]:
 
 
 def _collect_metric_cards(conn, now: datetime) -> List[Dict[str, str]]:
-    today_start = (now - timedelta(days=1)).isoformat()
-    yesterday_start = (now - timedelta(days=2)).isoformat()
     seven_days_ago = (now - timedelta(days=7)).isoformat()
     total_requests = _scalar(
         conn,
@@ -122,20 +113,6 @@ def _collect_metric_cards(conn, now: datetime) -> List[Dict[str, str]]:
         "SELECT COUNT(*) FROM usage_events WHERE started_at >= ?",
         (today_anchor,),
     )
-    active_users_today = _scalar(
-        conn,
-        "SELECT COUNT(DISTINCT user_id) FROM usage_events WHERE started_at >= ?",
-        (today_start,),
-    )
-    active_users_yesterday = _scalar(
-        conn,
-        """
-        SELECT COUNT(DISTINCT user_id)
-          FROM usage_events
-         WHERE started_at >= ? AND started_at < ?
-        """,
-        (yesterday_start, today_start),
-    )
     total_users = _scalar(
         conn,
         "SELECT COUNT(DISTINCT user_id) FROM usage_events",
@@ -147,26 +124,18 @@ def _collect_metric_cards(conn, now: datetime) -> List[Dict[str, str]]:
     )
     success_rate = (success_requests / total_requests) if total_requests else 0.0
     error_rate = 1 - success_rate
-    active_delta = _format_delta(active_users_today, active_users_yesterday)
 
     return [
         {
-            "id": "activeUsers",
-            "title": "活跃用户数",
-            "value": _format_int(active_users_today),
-            "hint": "较昨日",
-            "emphasis": active_delta,
-        },
-        {
             "id": "totalUsers",
-            "title": "累计用户数",
+            "title": "用户数",
             "value": _format_int(total_users),
             "hint": "过去 7 日新增",
             "emphasis": _format_int(users_last_week),
         },
         {
             "id": "totalRequests",
-            "title": "当前总请求数",
+            "title": "请示数",
             "value": _format_int(total_requests),
             "hint": "今日新增",
             "emphasis": _format_int(todays_requests),
@@ -284,14 +253,6 @@ def _scalar(conn, sql: str, params: Tuple[object, ...] = tuple()) -> int:
 
 def _format_int(value: int) -> str:
     return f"{value:,}"
-
-
-def _format_delta(current: int, previous: int) -> str:
-    if previous <= 0:
-        return "+∞%" if current > 0 else "0%"
-    delta = (current - previous) / previous * 100
-    sign = "+" if delta >= 0 else ""
-    return f"{sign}{delta:.1f}%"
 
 
 def _resolve_shanghai_timezone() -> tzinfo:
