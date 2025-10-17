@@ -8,7 +8,11 @@ from app.auth.auth_routes import get_current_user
 from .gpts_routes import gpts
 from .file_routes import extract_text_from_file_ids
 from app.logger import gpt_logger
-from app.chat_service import chat_with_react_as_function_call, chat_with_gpt
+from app.chat_service import (
+    StreamHandledError,
+    chat_with_react_as_function_call,
+    chat_with_gpt,
+)
 from app.utils.model_tool import MODEL_NAME_THINKING
 from app.metrics.events import create_usage_event
 
@@ -26,6 +30,8 @@ async def _stream_with_metrics(generator, tracker):
             yield chunk
     except Exception as exc:  # pragma: no cover - streaming errors are propagated
         tracker.finalize(status="error", latency_ms=(time.perf_counter() - start_time) * 1000, error=str(exc))
+        if isinstance(exc, StreamHandledError):
+            return
         raise
     else:
         tracker.finalize(status="success", latency_ms=(time.perf_counter() - start_time) * 1000)
