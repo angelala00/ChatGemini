@@ -21,21 +21,21 @@ _BASE_FALLBACK = {
             "id": "totalUsers",
             "title": "用户数",
             "value": "0",
-            "hint": "较上一期",
+            "hint": "较上期",
             "emphasis": "持平 0%",
         },
         {
             "id": "totalConversations",
             "title": "会话数",
             "value": "0",
-            "hint": "较上一期",
+            "hint": "较上期",
             "emphasis": "持平 0%",
         },
         {
             "id": "totalRequests",
             "title": "请求数",
             "value": "0",
-            "hint": "较上一期",
+            "hint": "较上期",
             "emphasis": "持平 0%",
         },
         {
@@ -186,21 +186,21 @@ def _collect_metric_cards(conn, now: datetime) -> List[Dict[str, str]]:
             "id": "totalUsers",
             "title": "用户数",
             "value": _format_int(total_users),
-            "hint": "较上一期",
+            "hint": "较上期",
             "emphasis": users_change,
         },
         {
             "id": "totalConversations",
             "title": "会话数",
             "value": _format_int(total_conversations),
-            "hint": "较上一期",
+            "hint": "较上期",
             "emphasis": conversations_change,
         },
         {
             "id": "totalRequests",
             "title": "请求数",
             "value": _format_int(total_requests),
-            "hint": "较上一期",
+            "hint": "较上期",
             "emphasis": requests_change,
         },
         {
@@ -322,13 +322,13 @@ def _format_period_change(current: int, previous: int) -> str:
     if previous <= 0:
         if current <= 0:
             return "持平 0%"
-        return "增长 100%+"
+        return "↑ 100%+"
 
     change = (current - previous) / previous * 100
     if change > 0:
-        return f"增长 {change:.1f}%"
+        return f"↑ {change:.1f}%"
     if change < 0:
-        return f"下降 {abs(change):.1f}%"
+        return f"↓ {abs(change):.1f}%"
     return "持平 0%"
 
 
