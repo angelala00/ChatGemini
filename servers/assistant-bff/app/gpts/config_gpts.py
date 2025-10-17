@@ -67,5 +67,8 @@ refresh_gpts()
 __all__ = ["gpts", "fetch_gpts", "refresh_gpts", "BUILTIN_GIDS"]
 
 
-def register_gpt(congfig):
-    builtin_gpts.update(congfig)
+def register_gpt(config):
+    """Register built-in GPT definitions and refresh cached state."""
+
+    builtin_gpts.update(config)
+    refresh_gpts()
