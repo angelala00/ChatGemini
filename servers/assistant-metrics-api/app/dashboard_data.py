@@ -69,7 +69,7 @@ async def build_dashboard_payload() -> Dict[str, Any]:
 
 async def _fetch_remote_payload() -> Dict[str, Any]:
     url = urljoin(BFF_BASE_URL.rstrip("/"), BFF_DASHBOARD_ENDPOINT)
-    async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+    async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT, trust_env=False) as client:
         response = await client.get(url)
         response.raise_for_status()
         return response.json()
