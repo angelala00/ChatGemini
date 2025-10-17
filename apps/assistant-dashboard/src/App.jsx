@@ -8,8 +8,6 @@ import {
   YAxis
 } from "recharts";
 import { useDashboardData } from "./hooks/useDashboardData";
-import { formatDistanceToNowStrict, parseISO } from "date-fns";
-import zhCN from "date-fns/locale/zh-CN";
 
 function MetricCard({ title, value, hint, emphasis }) {
   return (
@@ -51,16 +49,11 @@ function ListCard({ title, items }) {
   );
 }
 
-function RequestsTrend({ data, rangeLabel }) {
+function RequestsTrend({ data }) {
   return (
     <article className="h-full rounded-2xl border border-slate-800/60 bg-slate-900/60 p-6 shadow-[0_20px_45px_-30px_rgba(15,23,42,1)] backdrop-blur">
       <header className="flex items-center justify-between">
         <h3 className="text-base font-semibold text-slate-100/90">请求趋势</h3>
-        {rangeLabel ? (
-          <span className="rounded-full bg-slate-800/60 px-3 py-1 text-xs text-slate-400">
-            {rangeLabel}
-          </span>
-        ) : null}
       </header>
       <div className="mt-6 h-72 w-full">
         <ResponsiveContainer width="100%" height="100%">
@@ -112,16 +105,12 @@ export default function App() {
 
   const timeRangeOptions = useMemo(
     () => [
+      { value: "today", label: "今天" },
       { value: "7d", label: "过去 7 天" },
       { value: "14d", label: "过去 14 天" },
       { value: "30d", label: "过去 30 天" }
     ],
     []
-  );
-
-  const activeRange = useMemo(
-    () => timeRangeOptions.find((option) => option.value === timeRange),
-    [timeRange, timeRangeOptions]
   );
 
   if (isLoading) {
@@ -139,13 +128,6 @@ export default function App() {
       </div>
     );
   }
-
-  const lastUpdatedLabel = data?.lastUpdated
-    ? formatDistanceToNowStrict(parseISO(data.lastUpdated), {
-        locale: zhCN,
-        addSuffix: true
-      })
-    : "--";
 
   return (
     <div className="flex min-h-full flex-col gap-3 p-3">
@@ -178,10 +160,6 @@ export default function App() {
               <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-slate-500">⌄</span>
             </div>
           </label>
-          <span className="mt-4 inline-flex w-fit items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium uppercase tracking-[0.2em] text-slate-300">
-            <span className="h-2 w-2 animate-pulse rounded-full bg-brand/60" />
-            数据更新 · {lastUpdatedLabel}
-          </span>
         </div>
       </header>
       <main className="grid flex-1 grid-cols-1 gap-3">
@@ -198,10 +176,7 @@ export default function App() {
         </section>
 
         <section className="grid gap-3 lg:grid-cols-[2fr_1fr]">
-          <RequestsTrend
-            data={data.requestsTrend}
-            rangeLabel={activeRange?.label ?? ""}
-          />
+          <RequestsTrend data={data.requestsTrend} />
           <ListCard title="用户排行" items={data.userLeaderboard} />
         </section>
 
