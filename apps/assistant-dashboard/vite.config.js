@@ -7,6 +7,7 @@ export default defineConfig(({ mode }) => {
   const wsTarget = apiTarget.replace(/^http/, "ws");
 
   return {
+    base: "/dashboard/",
     plugins: [react()],
     server: {
       port: 4173,

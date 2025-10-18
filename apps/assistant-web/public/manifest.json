@@ -1,6 +1,6 @@
 {
-  "short_name": "ChatGemini",
-  "name": "ChatGemini is a chatbot that uses Google's Generative AI to generate responses to your messages.",
+  "short_name": "GPT助手",
+  "name": "GPT助手 - 生成式人工智能",
   "icons": [
     {
       "src": "favicon.ico",

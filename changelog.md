@@ -64,6 +64,9 @@ ChatGemini 核心指标总览页面
 2是验证大屏的功能，看看数据是否能够正常工作
 
 
+model_config.py移到.env里
+
+
 add remote addr
 git remote add modelscope https://oauth2:ms-151987bf-ae27-441c-8686-f13aec57a5df@www.modelscope.cn/eason5870/fxcjg.git
 first push
