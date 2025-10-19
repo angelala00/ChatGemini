@@ -18,6 +18,7 @@ import { ReduxStoreProps } from "../config/store";
 import { onUpdate as updatePinnedGpts } from "../store/gpts";
 import { handleRequest } from "../helpers/handleRequest";
 import { getFullPath } from "../helpers/getDomainAndPath";
+import { globalConfig } from "../config/global";
 
 interface SidebarProps {
     readonly title: string;
@@ -374,7 +375,7 @@ export const Sidebar = (props: SidebarProps) => {
             )}
             </div>
             <div className="sticky bottom-0 bg-slate-900 py-1 flex justify-center items-center text-xs text-gray-100 border-gray-400 border-t">
-		技术支持@abcc
+                技术支持@{globalConfig.supportContact}
             </div>
         </nav>
     );
