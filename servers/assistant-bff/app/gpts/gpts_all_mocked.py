@@ -46,7 +46,7 @@ register_gpt({
         ],
     },
     "g5": {
-        "logo": "/gpts/echarts.svg",
+        "logo": "./gpts/echarts.svg",
         "name": "ECharts 画图助手",
         "desc": "用 ECharts 绘制可视化图表",
         "system_prompt": "",
@@ -62,7 +62,7 @@ register_gpt({
     "g6": {
         "name": "PPT 大纲生成助手",
         "desc": "自动生成演示文稿大纲",
-        "logo": "/gpts/ppt.svg",
+        "logo": "./gpts/ppt.svg",
         "system_prompt": "",
         "model_name": "auto",
         "auth": {"type": "all"},
@@ -74,7 +74,7 @@ register_gpt({
     "regulationassistant": {
         "name": "制度问答助手",
         "desc": "解答制度相关问题",
-        "logo": "/gpts/policy.svg",
+        "logo": "./gpts/policy.svg",
         "system_prompt": "",
         "model_name": "auto",
         "auth": {"type": "all"},

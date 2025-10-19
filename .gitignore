@@ -27,3 +27,5 @@ yarn-error.log*
 **.venv
 **.vite
 **dist
+apps/assistant-web/build
+**.log
