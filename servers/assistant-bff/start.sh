@@ -17,5 +17,10 @@ source "${VENV_DIR}/bin/activate"
 # pip install --upgrade pip
 # pip install -r "${SCRIPT_DIR}/requirements.txt"
 
-# Launch the FastAPI service with Uvicorn.
-uvicorn app.main:app --host 0.0.0.0 --port 5008
+# Launch the FastAPI service with Uvicorn in the background.
+LOG_FILE="${SCRIPT_DIR}/assistant-bff.log"
+nohup uvicorn app.main:app --host 0.0.0.0 --port 5008 \
+  >"${LOG_FILE}" 2>&1 &
+
+PID=$!
+echo "assistant-bff started in background (PID: ${PID}). Logs: ${LOG_FILE}"
