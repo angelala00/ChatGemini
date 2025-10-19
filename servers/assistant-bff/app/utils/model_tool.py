@@ -1,14 +1,29 @@
 import os
 import base64
+from pathlib import Path
 from typing import Union, List
 import imghdr
 
+from dotenv import load_dotenv
 
-MODEL_NAME_VL = "Qwen2.5-VL-7B-Instruct"
-MODEL_NAME_INSTRUCT = "Qwen3-30B-A3B-Instruct-2507"
-MODEL_NAME_THINKING = "Qwen3-30B-A3B-Thinking-2507"
-MODEL_NAME_QWQ = "QwQ-32B"
-MODEL_NAME_DS = "deepseek-r1-distill-qwen-32b"
+
+_current_file = Path(__file__).resolve()
+_env_candidates = []
+if len(_current_file.parents) >= 5:
+    _env_candidates.append(_current_file.parents[4] / ".env")
+if len(_current_file.parents) >= 3:
+    _env_candidates.append(_current_file.parents[2] / ".env")
+
+for _env_file in _env_candidates:
+    if load_dotenv(_env_file, override=False):
+        break
+
+
+MODEL_NAME_VL = os.getenv("MODEL_NAME_VL", "Qwen2.5-VL-7B-Instruct")
+MODEL_NAME_INSTRUCT = os.getenv("MODEL_NAME_INSTRUCT", "Qwen3-30B-A3B-Instruct-2507")
+MODEL_NAME_THINKING = os.getenv("MODEL_NAME_THINKING", "Qwen3-30B-A3B-Thinking-2507")
+MODEL_NAME_QWQ = os.getenv("MODEL_NAME_QWQ", "QwQ-32B")
+MODEL_NAME_DS = os.getenv("MODEL_NAME_DS", "deepseek-r1-distill-qwen-32b")
 
 
 def convert_image_message(file_path: Union[str, List[str]], query):
