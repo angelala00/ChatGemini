@@ -43,6 +43,9 @@ export const globalConfig = {
     difyappid: env["REACT_APP_NEXT_PUBLIC_APP_ID"],
     difyappurl: env["REACT_APP_NEXT_PUBLIC_API_URL"],
     aichat_backend: env["REACT_APP_NEXT_AICHAT_BACKEND_API_URL"],
+    supportContact: !!env["REACT_APP_SUPPORT_CONTACT"]?.length
+        ? env["REACT_APP_SUPPORT_CONTACT"]
+        : "abcc",
     // domain: domain,
     // path: path,
 };
