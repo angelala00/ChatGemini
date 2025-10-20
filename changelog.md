@@ -74,3 +74,5 @@ git push --set-upstream modelscope main:refs/for/github
 normal push
 git push modelscope master:github-master
 
+
+test
