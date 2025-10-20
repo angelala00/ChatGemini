@@ -188,12 +188,19 @@ async def chat_with_react_as_function_call(
 async def _ask_once_stream(messages: List[Dict[str, Any]],
                            tools: List[Dict[str, Any]],
                            model_name: str) -> AsyncGenerator[Dict[str, Any], None]:
-    stream = await client.chat.completions.create(
-        model=model_name,
-        messages=messages,
-        tools=tools,
-        stream=True,
-    )
+    if tools:
+        stream = await client.chat.completions.create(
+            model=model_name,
+            messages=messages,
+            tools=tools,
+            stream=True,
+        )
+    else:
+        stream = await client.chat.completions.create(
+            model=model_name,
+            messages=messages,
+            stream=True,
+        )
 
     text_buf: List[str] = []
     tc_acc: Dict[int, Dict[str, Any]] = {}
