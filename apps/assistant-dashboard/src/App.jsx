@@ -127,6 +127,14 @@ export default function App() {
   const showInitialError = isError && !displayData;
   const showRefreshOverlay = isFetching && !!displayData;
 
+  const metrics = displayData?.metrics ?? [];
+  const requestsTrend = displayData?.requestsTrend ?? [];
+  const userLeaderboard = displayData?.userLeaderboard ?? [];
+  const gptsLeaderboard = displayData?.gptsLeaderboard ?? [];
+  const modelLeaderboard = displayData?.modelLeaderboard ?? [];
+  const requestedModelLeaderboard =
+    displayData?.requestedModelLeaderboard ?? [];
+
   const timeRangeOptions = useMemo(
     () => [
       { value: "today", label: "今天" },
@@ -249,7 +257,7 @@ export default function App() {
       ) : null}
       <main className="grid flex-1 grid-cols-1 gap-3">
         <section className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-4">
-          {displayData.metrics.map((metric) => (
+          {metrics.map((metric) => (
             <MetricCard
               key={metric.id}
               title={metric.title}
@@ -261,13 +269,17 @@ export default function App() {
         </section>
 
         <section className="grid gap-3 lg:grid-cols-[2fr_1fr]">
-          <RequestsTrend data={displayData.requestsTrend} />
-          <ListCard title="用户排行" items={displayData.userLeaderboard} />
+          <RequestsTrend data={requestsTrend} />
+          <ListCard title="用户排行" items={userLeaderboard} />
         </section>
 
-        <section className="grid gap-3 lg:grid-cols-2">
-          <ListCard title="GPTs 使用排行" items={displayData.gptsLeaderboard} />
-          <ListCard title="模型使用排行" items={displayData.modelLeaderboard} />
+        <section className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
+          <ListCard title="GPTs 使用排行" items={gptsLeaderboard} />
+          <ListCard title="模型使用排行" items={modelLeaderboard} />
+          <ListCard
+            title="模型选择占比"
+            items={requestedModelLeaderboard}
+          />
         </section>
       </main>
       {showRefreshOverlay ? (

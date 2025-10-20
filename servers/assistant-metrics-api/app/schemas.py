@@ -38,6 +38,7 @@ class DashboardPayload(BaseModel):
     userLeaderboard: List[LeaderboardEntry]
     gptsLeaderboard: List[LeaderboardEntry]
     modelLeaderboard: List[LeaderboardEntry]
+    requestedModelLeaderboard: List[LeaderboardEntry]
     alerts: List[LeaderboardEntry]
 
     class Config:

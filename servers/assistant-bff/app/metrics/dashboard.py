@@ -55,6 +55,7 @@ _BASE_FALLBACK = {
     "userLeaderboard": [],
     "gptsLeaderboard": [],
     "modelLeaderboard": [],
+    "requestedModelLeaderboard": [],
     "alerts": [],
 }
 
@@ -79,6 +80,9 @@ def build_dashboard_snapshot() -> Dict[str, object]:
         user_leaderboard = _collect_leaderboard(conn, now, key="user", limit=5)
         gpts_leaderboard = _collect_leaderboard(conn, now, key="gid", limit=5)
         model_leaderboard = _collect_leaderboard(conn, now, key="model", limit=5)
+        requested_model_leaderboard = _collect_leaderboard(
+            conn, now, key="requested_model", limit=5
+        )
         alerts = _collect_alerts(metrics, peak_latency=_fetch_average_latency(conn, now))
     except Exception:  # pragma: no cover - defensive fallback
         logger.exception("Failed to build dashboard snapshot; returning fallback data")
@@ -100,6 +104,7 @@ def build_dashboard_snapshot() -> Dict[str, object]:
         "userLeaderboard": user_leaderboard,
         "gptsLeaderboard": gpts_leaderboard,
         "modelLeaderboard": model_leaderboard,
+        "requestedModelLeaderboard": requested_model_leaderboard,
         "alerts": alerts,
     }
 
@@ -241,29 +246,36 @@ def _collect_trend(conn, now: datetime) -> Tuple[List[Dict[str, object]], int | 
 
 
 def _collect_leaderboard(conn, now: datetime, *, key: str, limit: int) -> List[Dict[str, str]]:
-    assert key in {"user", "gid", "model"}
+    assert key in {"user", "gid", "model", "requested_model"}
     column = {
         "user": ("COALESCE(user_email, user_id)", "user_id"),
         "gid": ("COALESCE(gid, '未标记')", "gid"),
         "model": ("COALESCE(model, '未指定模型')", "model"),
+        "requested_model": ("requested_model", "requested_model"),
     }[key]
     start = (now - timedelta(days=14)).isoformat()
+    filters = ["started_at >= ?", "status = 'success'"]
+    params = [start]
+    if key == "requested_model":
+        filters.append("requested_model IS NOT NULL AND requested_model <> ''")
+    where_clause = " AND ".join(filters)
+
     rows = conn.execute(
         f"""
         SELECT {column[0]} AS label, COUNT(*) AS total
           FROM usage_events
-         WHERE started_at >= ? AND status = 'success'
+         WHERE {where_clause}
          GROUP BY {column[1]}
          ORDER BY total DESC
          LIMIT ?
         """,
-        (start, limit),
+        (*params, limit),
     ).fetchall()
 
     total_success = _scalar(
         conn,
-        "SELECT COUNT(*) FROM usage_events WHERE started_at >= ? AND status = 'success'",
-        (start,),
+        f"SELECT COUNT(*) FROM usage_events WHERE {where_clause}",
+        tuple(params),
     )
     leaderboard: List[Dict[str, str]] = []
     for row in rows:

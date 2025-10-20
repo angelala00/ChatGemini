@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS usage_events (
   conversation_id TEXT,
   gid TEXT,
   model TEXT,
+  requested_model TEXT,
   status TEXT NOT NULL,
   error TEXT,
   started_at TEXT NOT NULL,
@@ -28,17 +29,37 @@ CREATE TABLE IF NOT EXISTS usage_events (
   request_tokens INTEGER,
   response_tokens INTEGER
 );
-CREATE INDEX IF NOT EXISTS idx_usage_events_started_at ON usage_events(started_at);
-CREATE INDEX IF NOT EXISTS idx_usage_events_user_id ON usage_events(user_id);
-CREATE INDEX IF NOT EXISTS idx_usage_events_gid ON usage_events(gid);
-CREATE INDEX IF NOT EXISTS idx_usage_events_model ON usage_events(model);
 """
+
+_INDEX_DEFINITIONS: dict[str, tuple[str, set[str]]] = {
+    "idx_usage_events_started_at": (
+        "CREATE INDEX IF NOT EXISTS idx_usage_events_started_at ON usage_events(started_at)",
+        {"started_at"},
+    ),
+    "idx_usage_events_user_id": (
+        "CREATE INDEX IF NOT EXISTS idx_usage_events_user_id ON usage_events(user_id)",
+        {"user_id"},
+    ),
+    "idx_usage_events_gid": (
+        "CREATE INDEX IF NOT EXISTS idx_usage_events_gid ON usage_events(gid)",
+        {"gid"},
+    ),
+    "idx_usage_events_model": (
+        "CREATE INDEX IF NOT EXISTS idx_usage_events_model ON usage_events(model)",
+        {"model"},
+    ),
+    "idx_usage_events_requested_model": (
+        "CREATE INDEX IF NOT EXISTS idx_usage_events_requested_model ON usage_events(requested_model)",
+        {"requested_model"},
+    ),
+}
 
 _REQUIRED_COLUMNS = {
     "user_email": "TEXT",
     "conversation_id": "TEXT",
     "gid": "TEXT",
     "model": "TEXT",
+    "requested_model": "TEXT",
     "status": "TEXT NOT NULL DEFAULT 'running'",
     "error": "TEXT",
     "completed_at": "TEXT",
@@ -47,6 +68,13 @@ _REQUIRED_COLUMNS = {
     "request_tokens": "INTEGER",
     "response_tokens": "INTEGER",
 }
+
+# NOTE: ``_ensure_required_columns`` runs during service start (see ``init_metrics_storage``)
+# and issues ``ALTER TABLE`` statements for any columns missing from an existing
+# ``usage_events`` table.  This keeps rolling upgrades safe: the new code adds
+# ``requested_model`` automatically, while older binaries continue to work
+# because the column remains optional and defaults to ``NULL`` when writes do not
+# mention it explicitly.
 
 
 @dataclass
@@ -120,6 +148,7 @@ def init_metrics_storage() -> None:
     try:
         conn.executescript(_TABLE_DDL)
         _ensure_required_columns(conn)
+        _ensure_indexes(conn)
         conn.commit()
     finally:
         conn.close()
@@ -134,6 +163,15 @@ def _ensure_required_columns(conn: sqlite3.Connection) -> None:
         conn.execute(
             f"ALTER TABLE usage_events ADD COLUMN {column} {_REQUIRED_COLUMNS[column]}"
         )
+
+
+def _ensure_indexes(conn: sqlite3.Connection) -> None:
+    """Create indexes after columns are guaranteed to exist."""
+
+    existing_columns = {row["name"] for row in conn.execute("PRAGMA table_info(usage_events)")}
+    for sql, required_columns in _INDEX_DEFINITIONS.values():
+        if required_columns.issubset(existing_columns):
+            conn.execute(sql)
 
 
 def create_usage_event(
@@ -155,9 +193,10 @@ def create_usage_event(
             conversation_id,
             gid,
             model,
+            requested_model,
             status,
             started_at
-        ) VALUES (?, ?, ?, ?, ?, ?, 'running', ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'running', ?)
         """,
         (
             event_id,
@@ -165,6 +204,7 @@ def create_usage_event(
             user_email,
             conversation_id,
             gid,
+            requested_model,
             requested_model,
             started_at,
         ),
