@@ -51,6 +51,7 @@ _BASE_FALLBACK = {
     "userLeaderboard": [],
     "gptsLeaderboard": [],
     "modelLeaderboard": [],
+    "requestedModelLeaderboard": [],
     "alerts": [],
 }
 
