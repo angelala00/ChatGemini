@@ -376,17 +376,22 @@ async def chat_with_gpt(
 ):
     print(f"model_name===1:{model_name}")
 
+    file_paths = get_file_paths(file_ids)
+    has_file_ids = bool(file_ids)
+    image_only = is_image_only(file_paths)
+
     if model_name == "auto":
-        file_paths = get_file_paths(file_ids)
-        if is_image_only(file_paths):
+        if image_only:
             model_name = MODEL_NAME_VL
-        elif len(file_ids) > 0:
+        elif has_file_ids:
             model_name = MODEL_NAME_THINKING
             query += await extract_text_from_file_ids(file_ids)
         elif is_complex(query):
             model_name = MODEL_NAME_THINKING
         else:
             model_name = MODEL_NAME_INSTRUCT
+    elif has_file_ids and not image_only and model_name != MODEL_NAME_VL:
+        query += await extract_text_from_file_ids(file_ids)
 
     print(f"model_name===2:{model_name}")
     if usage_tracker:
