@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ModelOption } from "../types/models";
 
-// const options = ["deepseek-r1-distill-qwen-32b"];
-//, "QwQ-32B", "Qwen3-30B-A3B"
 
 interface HeaderDropdownProps {
     readonly title?: string;

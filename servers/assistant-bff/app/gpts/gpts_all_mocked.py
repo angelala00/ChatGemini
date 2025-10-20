@@ -1,5 +1,5 @@
 from .config_gpts import register_gpt
-
+from app.utils.model_tool import MODEL_NAME_VL, MODEL_NAME_INSTRUCT, MODEL_NAME_THINKING
 
 register_gpt({
     "gptassistant": {
@@ -18,17 +18,17 @@ register_gpt({
                 "description": "自动选择最合适的模型",
             },
             {
-                "id": "deepseek-r1-distill-qwen-32b",
+                "id": MODEL_NAME_THINKING,
                 "name": "Deepseek(思考)",
                 "description": "提供深度思考与分析输出",
             },
             {
-                "id": "Qwen3-30B-A3B-Instruct-2507",
+                "id": MODEL_NAME_INSTRUCT,
                 "name": "Qwen(立即回答)",
                 "description": "快速响应的即时回答模式",
             },
             {
-                "id": "Qwen2.5-VL-7B-Instruct",
+                "id": MODEL_NAME_VL,
                 "name": "Qwen-VL(多模态)",
                 "description": "支持图像与文本输入，可进行看图问答、内容理解与多模态分析",
             },

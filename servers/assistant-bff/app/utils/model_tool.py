@@ -19,9 +19,9 @@ for _env_file in _env_candidates:
         break
 
 
-MODEL_NAME_VL = os.getenv("MODEL_NAME_VL", "Qwen2.5-VL-7B-Instruct")
-MODEL_NAME_INSTRUCT = os.getenv("MODEL_NAME_INSTRUCT", "Qwen3-30B-A3B-Instruct-2507")
-MODEL_NAME_THINKING = os.getenv("MODEL_NAME_THINKING", "Qwen3-30B-A3B-Thinking-2507")
+MODEL_NAME_VL = os.getenv("MODEL_NAME_VL", "qwen3-vl-8b-instruct")
+MODEL_NAME_INSTRUCT = os.getenv("MODEL_NAME_INSTRUCT", "qwen3-30b-a3b-instruct-2507")
+MODEL_NAME_THINKING = os.getenv("MODEL_NAME_THINKING", "deepseek-r1-distill-qwen-32b")
 MODEL_NAME_QWQ = os.getenv("MODEL_NAME_QWQ", "QwQ-32B")
 MODEL_NAME_DS = os.getenv("MODEL_NAME_DS", "deepseek-r1-distill-qwen-32b")
 

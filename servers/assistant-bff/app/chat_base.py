@@ -4,6 +4,7 @@ import httpx
 import asyncio
 from app.base_config import model_config
 from app.db import get_db
+from app.utils.model_tool import MODEL_NAME_INSTRUCT, MODEL_NAME_THINKING
 
 
 client = openai.AsyncOpenAI(
@@ -47,7 +48,7 @@ def save_match_history():
 
 async def chat():
     messages = [{"role": "user", "content": "帮我写一首诗"}]
-    response = await client.chat.completions.create(model="deepseek-r1-distill-qwen-32b", messages=messages, temperature=0.7, stream=False)
+    response = await client.chat.completions.create(model=MODEL_NAME_THINKING, messages=messages, temperature=0.7, stream=False)
     print(f"response:{response.choices[0].message.content}")
 
 
@@ -72,7 +73,7 @@ toolss = [
 
 async def chat_with_function_call():
     stream = await client.chat.completions.create(
-        model="Qwen3-30B-A3B-Instruct-2507",
+        model=MODEL_NAME_INSTRUCT,
         messages=[{"role": "user", "content": "帮我查一下北京天气"}],
         tools=toolss,
         stream=True
@@ -102,7 +103,7 @@ async def chat_with_function_call():
 
 # async def chat_with_function_call3():
 #     stream = await client.responses.create(
-#         model="Qwen3-30B-A3B-Instruct-2507",
+#         model=MODEL_NAME_INSTRUCT,
 #         input=[{"role": "user", "content": "帮我查一下北京天气"}],
 #         tools=toolss,
 #         stream=True
