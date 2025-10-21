@@ -105,7 +105,9 @@
         "InputArea": {
             "checkAttachment": {
                 "size_exceed": "File size exceeds {{ size }} MB limit",
-                "illegal_format": "Only common file formats(pdf,doc,docx) are allowed to be uploaded",
+                "illegal_format": "Only {{types}} files are allowed to be uploaded",
+                "type_document": "document",
+                "type_image": "image",
                 "upload_success": "Click the icon again to cancel uploading"
             },
             "setPlaceholderByWidth": {

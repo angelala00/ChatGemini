@@ -105,7 +105,9 @@
         "InputArea": {
             "checkAttachment": {
                 "size_exceed": "文件大小超过 {{ size }} MB 限制",
-                "illegal_format": "仅限上传常见文件(pdf,doc,docx)格式",
+                "illegal_format": "仅支持上传{{types}}类型的文件",
+                "type_document": "文档",
+                "type_image": "图片",
                 "upload_success": "再次点击图标即可取消上传"
             },
             "setPlaceholderByWidth": {

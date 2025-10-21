@@ -16,21 +16,25 @@ register_gpt({
                 "id": "auto",
                 "name": "Auto",
                 "description": "自动选择最合适的模型",
+                "upload_file_types": ["document", "image"],
             },
             {
                 "id": MODEL_NAME_THINKING,
                 "name": "Deepseek(思考)",
                 "description": "提供深度思考与分析输出",
+                "upload_file_types": ["document"],
             },
             {
                 "id": MODEL_NAME_INSTRUCT,
                 "name": "Qwen(立即回答)",
                 "description": "快速响应的即时回答模式",
+                "upload_file_types": ["document"],
             },
             {
                 "id": MODEL_NAME_VL,
                 "name": "Qwen-VL(多模态)",
                 "description": "支持图像与文本输入，可进行看图问答、内容理解与多模态分析",
+                "upload_file_types": ["image"],
             },
         ]
     },
