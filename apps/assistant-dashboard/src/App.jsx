@@ -12,23 +12,54 @@ import { useDashboardData } from "./hooks/useDashboardData";
 const DEFAULT_TIME_RANGE = "14d";
 const TIME_RANGE_STORAGE_KEY = "dashboard:timeRange";
 
-function MetricCard({ title, value, hint, emphasis }) {
+function MetricCard({
+  title,
+  value,
+  hint,
+  emphasis,
+  detailLabel,
+  detailValue,
+  detailEmphasis
+}) {
+  const showDetail = detailLabel || detailValue || detailEmphasis;
+
   return (
     <article className="relative overflow-hidden rounded-soft border border-white/10 bg-panel p-4 shadow-panel">
-      <div className="flex items-center justify-between">
-        <h3 className="text-xs font-semibold uppercase tracking-widest text-slate-200">{title}</h3>
-      </div>
-      <p className="mt-2 text-2xl font-bold tracking-tight text-slate-50">{value}</p>
-      {hint ? (
-        <p className="mt-1 text-xs font-medium text-accent-secondary">
-          {hint}
-          {emphasis ? (
-            <span className="rounded-md bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand">
-              {emphasis}
-            </span>
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1">
+          <h3 className="text-xs font-semibold uppercase tracking-widest text-slate-200">
+            {title}
+          </h3>
+          <p className="mt-2 text-2xl font-bold tracking-tight text-slate-50">{value}</p>
+          {hint ? (
+            <p className="mt-1 flex items-center gap-2 text-xs font-medium text-accent-secondary">
+              <span>{hint}</span>
+              {emphasis ? (
+                <span className="rounded-md bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand">
+                  {emphasis}
+                </span>
+              ) : null}
+            </p>
           ) : null}
-        </p>
-      ) : null}
+        </div>
+        {showDetail ? (
+          <div className="flex flex-col items-end gap-1 text-right">
+            {detailLabel ? (
+              <span className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">
+                {detailLabel}
+              </span>
+            ) : null}
+            {detailValue ? (
+              <span className="text-sm font-semibold text-slate-100">{detailValue}</span>
+            ) : null}
+            {detailEmphasis ? (
+              <span className="rounded-md bg-brand/10 px-2 py-0.5 text-[11px] font-medium text-brand">
+                {detailEmphasis}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
     </article>
   );
 }
@@ -264,6 +295,9 @@ export default function App() {
               value={metric.value}
               hint={metric.hint}
               emphasis={metric.emphasis}
+              detailLabel={metric.detailLabel}
+              detailValue={metric.detailValue}
+              detailEmphasis={metric.detailEmphasis}
             />
           ))}
         </section>

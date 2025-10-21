@@ -33,6 +33,9 @@ _BASE_FALLBACK = {
             "value": "0",
             "hint": "今日新增",
             "emphasis": "0",
+            "detailLabel": "含上传文件的请求",
+            "detailValue": "0 次",
+            "detailEmphasis": "0%",
         },
         {
             "id": "successRate",
