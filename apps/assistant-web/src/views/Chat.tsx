@@ -70,36 +70,90 @@ const Chat = (props: RouterComponentProps) => {
 
     useEffect(() => {
         if (mainSectionRef) {
+            const bottomThreshold = 4;
+            let userInteracting = false;
+            let userHasLeftBottom = false;
+            let interactionTimeout: ReturnType<typeof setTimeout> | undefined;
+            let settleTimeout: ReturnType<typeof setTimeout> | undefined;
 
-            let interactionTimeout: ReturnType<typeof setTimeout>;
-            const handleUserInteraction = () => {
-                setAutoScroll(false);
-                // console.log('========handleUserInteraction')
-                clearTimeout(interactionTimeout);
+            const computeIsAtBottom = () =>
+                mainSectionRef.scrollHeight -
+                    mainSectionRef.scrollTop -
+                    mainSectionRef.clientHeight <=
+                bottomThreshold;
+
+            const scheduleInteractionSettle = () => {
+                if (interactionTimeout) {
+                    clearTimeout(interactionTimeout);
+                }
                 interactionTimeout = setTimeout(() => {
-                    const isAtBottom = mainSectionRef.scrollHeight - mainSectionRef.scrollTop - mainSectionRef.clientHeight <= 50;
-                    setAutoScroll(isAtBottom);
-                    // console.log('========isAtBottom：' + isAtBottom)
-                }, 1000)
+                    userInteracting = false;
+                    if (!userHasLeftBottom && computeIsAtBottom()) {
+                        setAutoScroll(true);
+                    }
+                }, 300);
             };
 
+            const handleUserInteraction = () => {
+                userInteracting = true;
+                userHasLeftBottom = false;
+                setAutoScroll(false);
+                scheduleInteractionSettle();
+            };
 
-
-            let timeoutId: ReturnType<typeof setTimeout>;
             const handleScroll = () => {
-                clearTimeout(timeoutId);
-                timeoutId = setTimeout(() => {
-                    const isAtBottom = mainSectionRef.scrollHeight - mainSectionRef.scrollTop - mainSectionRef.clientHeight <= 50;
+                if (settleTimeout) {
+                    clearTimeout(settleTimeout);
+                }
+                settleTimeout = setTimeout(() => {
+                    const isAtBottom = computeIsAtBottom();
+                    if (userInteracting) {
+                        if (isAtBottom) {
+                            if (userHasLeftBottom) {
+                                userInteracting = false;
+                                userHasLeftBottom = false;
+                                setAutoScroll(true);
+                            } else {
+                                scheduleInteractionSettle();
+                            }
+                        } else {
+                            userHasLeftBottom = true;
+                            scheduleInteractionSettle();
+                        }
+                        return;
+                    }
                     setAutoScroll(isAtBottom);
-                }, 10)
+                }, 50);
             };
-            mainSectionRef.addEventListener("wheel", handleUserInteraction);
-            mainSectionRef.addEventListener("scroll", handleScroll);
+
+            mainSectionRef.addEventListener("wheel", handleUserInteraction, {
+                passive: true,
+            });
+            mainSectionRef.addEventListener("touchstart", handleUserInteraction, {
+                passive: true,
+            });
+            mainSectionRef.addEventListener("pointerdown", handleUserInteraction);
+            mainSectionRef.addEventListener("scroll", handleScroll, {
+                passive: true,
+            });
             return () => {
-                clearTimeout(timeoutId);
+                if (interactionTimeout) {
+                    clearTimeout(interactionTimeout);
+                }
+                if (settleTimeout) {
+                    clearTimeout(settleTimeout);
+                }
                 mainSectionRef.removeEventListener("wheel", handleUserInteraction);
+                mainSectionRef.removeEventListener(
+                    "touchstart",
+                    handleUserInteraction,
+                );
+                mainSectionRef.removeEventListener(
+                    "pointerdown",
+                    handleUserInteraction,
+                );
                 mainSectionRef.removeEventListener("scroll", handleScroll);
-            }
+            };
         }
     }, [mainSectionRef]);
 
