@@ -64,12 +64,20 @@ function MetricCard({
   );
 }
 
-function ListCard({ title, items }) {
+function ListCard({ title, items, limit, scrollHeight }) {
+  const displayItems = limit ? items.slice(0, limit) : items;
+  const enableScroll = Boolean(scrollHeight);
+
   return (
-    <article className="h-full rounded-2xl border border-slate-800/60 bg-slate-900/60 p-6 shadow-[0_20px_45px_-30px_rgba(15,23,42,1)] backdrop-blur">
+    <article className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-800/60 bg-slate-900/60 p-6 shadow-[0_20px_45px_-30px_rgba(15,23,42,1)] backdrop-blur">
       <h3 className="text-base font-semibold text-slate-100/90">{title}</h3>
-      <ul className="mt-4 space-y-3">
-        {items.map(({ name, value }, index) => (
+      <ul
+        className={`mt-4 space-y-3 ${
+          enableScroll ? "flex-1 min-h-0 overflow-y-auto pr-2" : ""
+        }`}
+        style={enableScroll ? { maxHeight: scrollHeight } : undefined}
+      >
+        {displayItems.map(({ name, value }, index) => (
           <li
             key={`${name}-${index}`}
             className="flex items-center justify-between border-b border-slate-800/80 pb-3 text-sm text-slate-300 last:border-b-0 last:pb-0"
@@ -302,9 +310,14 @@ export default function App() {
           ))}
         </section>
 
-        <section className="grid gap-3 lg:grid-cols-[2fr_1fr]">
+        <section className="grid gap-3 lg:min-h-0 lg:grid-cols-[2fr_1fr]">
           <RequestsTrend data={requestsTrend} />
-          <ListCard title="用户排行" items={userLeaderboard} />
+          <ListCard
+            title="用户排行"
+            items={userLeaderboard}
+            limit={15}
+            scrollHeight="18.5rem"
+          />
         </section>
 
         <section className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
