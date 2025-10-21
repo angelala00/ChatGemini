@@ -1,6 +1,8 @@
 import inspect
 import time
 import uuid
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -21,6 +23,12 @@ def _invoke_chat_function(func, args, *, usage_tracker):
     if "usage_tracker" in inspect.signature(func).parameters:
         return func(*args, usage_tracker=usage_tracker)
     return func(*args)
+
+
+def _count_file_ids(file_ids: Optional[str]) -> int:
+    if not file_ids:
+        return 0
+    return sum(1 for file_id in file_ids.split(",") if file_id.strip())
 
 
 async def _stream_with_metrics(generator, tracker):
@@ -67,12 +75,14 @@ async def chat_with_gpt_assistant(request: QueryRequest, user: dict = Depends(ge
     # if request.file_ids:
     #     user_prompt += extract_text_from_file_ids(request.file_ids)
     print(f"user_prompt:{user_prompt}")
+    upload_count = _count_file_ids(request.file_ids)
     tracker = create_usage_event(
         user_id=user.get("sub", "unknown"),
         user_email=user.get("email"),
         conversation_id=cid,
         gid="gptassistant",
         requested_model=model_name,
+        upload_count=upload_count,
     )
     chat_function = chat_with_gpt
     try:
@@ -103,6 +113,7 @@ async def chat_with_gpts(request: QueryRequest, gid: str, user: dict = Depends(g
     if "model_name" in gpts[gid]:
         model_name = gpts[gid]["model_name"]
     user_prompt = request.query
+    upload_count = _count_file_ids(request.file_ids)
     if request.file_ids:
         user_prompt += await extract_text_from_file_ids(request.file_ids)
     # print(f"user_prompt:{user_prompt}")
@@ -112,6 +123,7 @@ async def chat_with_gpts(request: QueryRequest, gid: str, user: dict = Depends(g
         conversation_id=cid,
         gid=gid,
         requested_model=model_name,
+        upload_count=upload_count,
     )
     tracker.set_model(model_name)
     chat_function = chat_with_react_as_function_call

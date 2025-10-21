@@ -27,7 +27,8 @@ CREATE TABLE IF NOT EXISTS usage_events (
   latency_ms REAL,
   tool_names TEXT,
   request_tokens INTEGER,
-  response_tokens INTEGER
+  response_tokens INTEGER,
+  upload_count INTEGER NOT NULL DEFAULT 0
 );
 """
 
@@ -67,6 +68,7 @@ _REQUIRED_COLUMNS = {
     "tool_names": "TEXT",
     "request_tokens": "INTEGER",
     "response_tokens": "INTEGER",
+    "upload_count": "INTEGER NOT NULL DEFAULT 0",
 }
 
 # NOTE: ``_ensure_required_columns`` runs during service start (see ``init_metrics_storage``)
@@ -181,6 +183,7 @@ def create_usage_event(
     conversation_id: Optional[str],
     gid: Optional[str],
     requested_model: Optional[str],
+    upload_count: int = 0,
 ) -> UsageEventTracker:
     event_id = str(uuid.uuid4())
     started_at = datetime.now(timezone.utc).isoformat()
@@ -195,8 +198,9 @@ def create_usage_event(
             model,
             requested_model,
             status,
-            started_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'running', ?)
+            started_at,
+            upload_count
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'running', ?, ?)
         """,
         (
             event_id,
@@ -207,6 +211,7 @@ def create_usage_event(
             requested_model,
             requested_model,
             started_at,
+            max(int(upload_count), 0),
         ),
     )
     return UsageEventTracker(event_id)

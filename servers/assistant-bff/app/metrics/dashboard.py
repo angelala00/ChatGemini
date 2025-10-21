@@ -37,6 +37,9 @@ _BASE_FALLBACK = {
             "value": "0",
             "hint": "较上期",
             "emphasis": "持平 0%",
+            "detailLabel": "含上传文件的请求",
+            "detailValue": "0 次",
+            "detailEmphasis": "0%",
         },
         {
             "id": "successRate",
@@ -116,6 +119,15 @@ def _collect_metric_cards(conn, now: datetime) -> List[Dict[str, str]]:
         conn,
         "SELECT COUNT(*) FROM usage_events WHERE status IN ('success', 'error')",
     )
+    upload_requests = _scalar(
+        conn,
+        """
+        SELECT COUNT(*)
+          FROM usage_events
+         WHERE status IN ('success', 'error')
+           AND upload_count > 0
+        """,
+    )
     success_requests = _scalar(
         conn,
         "SELECT COUNT(*) FROM usage_events WHERE status='success'",
@@ -186,6 +198,8 @@ def _collect_metric_cards(conn, now: datetime) -> List[Dict[str, str]]:
     )
     requests_change = _format_period_change(todays_requests, yesterdays_requests)
 
+    upload_share = (upload_requests / total_requests * 100) if total_requests else 0.0
+
     return [
         {
             "id": "totalUsers",
@@ -207,6 +221,9 @@ def _collect_metric_cards(conn, now: datetime) -> List[Dict[str, str]]:
             "value": _format_int(total_requests),
             "hint": "较上期",
             "emphasis": requests_change,
+            "detailLabel": "含上传文件的请求",
+            "detailValue": f"{_format_int(upload_requests)} 次",
+            "detailEmphasis": f"{upload_share:.0f}%",
         },
         {
             "id": "successRate",

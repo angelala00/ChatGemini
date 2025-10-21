@@ -12,6 +12,9 @@ class Metric(BaseModel):
     value: str
     hint: Optional[str] = None
     emphasis: Optional[str] = None
+    detailLabel: Optional[str] = None
+    detailValue: Optional[str] = None
+    detailEmphasis: Optional[str] = None
 
 
 class TrendPoint(BaseModel):
