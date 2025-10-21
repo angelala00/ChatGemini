@@ -80,7 +80,7 @@ def build_dashboard_snapshot() -> Dict[str, object]:
     try:
         metrics = _collect_metric_cards(conn, now)
         requests_trend, peak, low = _collect_trend(conn, now)
-        user_leaderboard = _collect_leaderboard(conn, now, key="user", limit=5)
+        user_leaderboard = _collect_leaderboard(conn, now, key="user", limit=15)
         gpts_leaderboard = _collect_leaderboard(conn, now, key="gid", limit=5)
         model_leaderboard = _collect_leaderboard(conn, now, key="model", limit=5)
         requested_model_leaderboard = _collect_leaderboard(
