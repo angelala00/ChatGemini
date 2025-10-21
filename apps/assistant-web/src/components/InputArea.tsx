@@ -17,6 +17,14 @@ import { setTextAreaHeight } from "../helpers/setTextAreaHeight";
 import { sendUserAlert } from "../helpers/sendUserAlert";
 import { useTranslation } from "react-i18next";
 import { isMobileDevice } from "../helpers/isMobileDevice";
+import { UploadCategory } from "../types/models";
+
+const CATEGORY_EXTENSION_MAP: Record<UploadCategory, string[]> = {
+    document: ["txt", "pdf", "doc", "docx", "xlsx"],
+    image: ["jpg", "jpeg", "png"],
+};
+
+const DEFAULT_UPLOAD_CATEGORIES: UploadCategory[] = ["document", "image"];
 
 interface InputAreaProps {
     readonly busy: boolean;
@@ -26,17 +34,40 @@ interface InputAreaProps {
     readonly onSubmit: (prompt: string) => void;
     readonly onUpload: (file: File | null) => void;
     readonly onAbort: () => void;
+    readonly allowedFileTypes?: UploadCategory[];
 }
 
 export const InputArea = forwardRef(
     (props: InputAreaProps, ref: ForwardedRef<HTMLTextAreaElement>) => {
-        const { busy, fileUploadEnabled, minHeight, maxHeight, onSubmit, onUpload, onAbort } = props;
-        const { t } = useTranslation();
+        const { busy, fileUploadEnabled, minHeight, maxHeight, onSubmit, onUpload, onAbort, allowedFileTypes } = props;
+        const { t, i18n } = useTranslation();
 
         const fileInputRef = useRef<HTMLInputElement>(null);
         const textAreaRef = useRef<HTMLTextAreaElement>(null);
         const [inputPlaceholder, setInputPlaceholder] = useState("");
         const [attachmentName, setAttachmentName] = useState("");
+
+        const activeUploadCategories = (allowedFileTypes && allowedFileTypes.length > 0
+            ? Array.from(new Set(allowedFileTypes))
+            : DEFAULT_UPLOAD_CATEGORIES);
+
+        const allowedExtensions = activeUploadCategories.reduce((acc, category) => {
+            const extensions = CATEGORY_EXTENSION_MAP[category];
+            if (extensions) {
+                extensions.forEach((item) => acc.add(item));
+            }
+            return acc;
+        }, new Set<string>());
+
+        if (allowedExtensions.size === 0) {
+            DEFAULT_UPLOAD_CATEGORIES.forEach((category) => {
+                CATEGORY_EXTENSION_MAP[category].forEach((item) => allowedExtensions.add(item));
+            });
+        }
+
+        const fileInputAccept = Array.from(allowedExtensions)
+            .map((ext) => `.${ext}`)
+            .join(",");
 
         const handleSubmit = () => {
             const { current } = textAreaRef;
@@ -47,18 +78,6 @@ export const InputArea = forwardRef(
 
         const checkAttachment = (file: File) => {
             const sizeLimit = 20;
-            const allowedTypes = [
-                // "image/png",
-                // "image/jpeg",
-                // "image/webp",
-                // "image/heic",
-                // "image/heif",
-                // "text/plain",    // 支持 .txt 文件
-                "application/eio-x-xlsx", // 支持 .xlsx
-                "application/pdf", // 支持 .pdf 文件
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // 支持 .docx 文件
-                "application/eio-x-docx"
-            ];
             if (!file) {
                 return false;
             }
@@ -70,9 +89,35 @@ export const InputArea = forwardRef(
                     true
                 );
                 return false;
-            } else if (!allowedTypes.includes(file.type)) {
+            }
+
+            const extension = file.name.includes(".")
+                ? file.name.split(".").pop()?.toLowerCase()
+                : "";
+            if (!extension || !allowedExtensions.has(extension)) {
+                const typeLabels = activeUploadCategories.map((category) =>
+                    t(`components.InputArea.checkAttachment.type_${category}`),
+                );
+                const joinLabels = (labels: string[]) => {
+                    const filtered = labels.filter(Boolean);
+                    if (filtered.length === 0) {
+                        return "";
+                    }
+                    if (i18n.language.startsWith("zh")) {
+                        return filtered.join("、");
+                    }
+                    if (filtered.length === 1) {
+                        return filtered[0];
+                    }
+                    const head = filtered.slice(0, -1);
+                    const tail = filtered[filtered.length - 1];
+                    return `${head.join(", ")} and ${tail}`;
+                };
+                const allowedTypesText = joinLabels(typeLabels);
                 sendUserAlert(
-                    t("components.InputArea.checkAttachment.illegal_format"),
+                    t("components.InputArea.checkAttachment.illegal_format", {
+                        types: allowedTypesText,
+                    }),
                     true
                 );
                 return false;
@@ -156,17 +201,23 @@ export const InputArea = forwardRef(
                         {fileUploadEnabled && (
                             /* 上传按钮 */
                             <div>
-                                <input type="file" multiple className="hidden" ref={fileInputRef} onChange={({ currentTarget }) => {
-                                    const { files } = currentTarget;
-                                    if (files && files.length > 0) {
-                                        Array.from(files).forEach(file => {
-                                            if (checkAttachment(file)) {
-                                                setAttachmentName(prev => prev + ' ' + file.name);
+                                <input
+                                    type="file"
+                                    multiple
+                                    className="hidden"
+                                    accept={fileInputAccept}
+                                    ref={fileInputRef}
+                                    onChange={({ currentTarget }) => {
+                                        const { files } = currentTarget;
+                                        if (files && files.length > 0) {
+                                            Array.from(files).forEach(file => {
+                                                if (checkAttachment(file)) {
+                                                setAttachmentName(prev => prev ? `${prev} ${file.name}` : file.name);
                                                 onUpload(file);
-                                            }
-                                        })
-                                    }
-                                }} />
+                                                }
+                                            })
+                                        }
+                                    }} />
                                 <div className="relative group inline-flex">
                                     <button className="w-8 h-8 bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center justify-center p-1.5"
                                         onClick={({ currentTarget }) => {

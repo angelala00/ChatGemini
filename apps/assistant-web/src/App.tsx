@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { globalConfig } from "./config/global";
 import { Sidebar } from "./components/Sidebar";
 import { Container } from "./components/Container";
@@ -31,7 +31,7 @@ import { setUserLocale } from "./helpers/setUserLocale";
 import { useTranslation } from "react-i18next";
 import { getCurrentLocale } from "./helpers/getCurrentLocale";
 import { getFullPath } from "./helpers/getDomainAndPath";
-import { ModelOption } from "./types/models";
+import { ModelOption, UploadCategory } from "./types/models";
 
 const PREFERRED_MODEL_COOKIE_KEY = "preferred_model";
 const COOKIE_MAX_AGE_MS = 365 * 24 * 60 * 60 * 1000;
@@ -245,6 +245,24 @@ const App = () => {
         },
         [setPendingManualModel],
     );
+
+    const resolveModelId = useCallback(() => {
+        const ensureModelAvailable = (modelId: string) =>
+            modelId && models?.some((item) => item.id === modelId) ? modelId : "";
+        return (
+            ensureModelAvailable(selectedModel) ||
+            ensureModelAvailable(defaultModel) ||
+            ensureModelAvailable(serverDefaultModel) ||
+            (models && models.length > 0 ? models[0].id : "")
+        );
+    }, [defaultModel, models, selectedModel, serverDefaultModel]);
+
+    const resolvedModelId = useMemo(() => resolveModelId(), [resolveModelId]);
+    const resolvedModelOption = useMemo(
+        () => models?.find((item) => item.id === resolvedModelId),
+        [models, resolvedModelId],
+    );
+    const resolvedUploadCategories = resolvedModelOption?.uploadFileTypes;
     function encodeBase64(text: string) {
         try {
             // return btoa(text);
@@ -269,6 +287,8 @@ const App = () => {
             try {
                 const formData = new FormData();
                 formData.append('file', file);
+                const targetModelId = resolveModelId() || 'auto';
+                formData.append('model_id', targetModelId);
                 const uploadResponseJson = await handleRequest('POST', getFullPath('/api/upload'), formData);
                 // 处理响应数据
                 console.log('上传成功:', uploadResponseJson);
@@ -308,16 +328,10 @@ const App = () => {
             sendUserAlert(t("App.handleSubmit.invalid_session"), true);
             return;
         }
-        const ensureModelAvailable = (modelId: string) =>
-            modelId && models?.some((item) => item.id === modelId) ? modelId : "";
         const modelPlaceholder = t("App.handleSubmit.model_placeholder");
         const currentSessionHistory = id in sessions ? sessions[id] : [];
         let conversationId = id in sessions ? mappings[id] : "";
-        const selectedModelId =
-            ensureModelAvailable(selectedModel) ||
-            ensureModelAvailable(defaultModel) ||
-            ensureModelAvailable(serverDefaultModel) ||
-            (models && models.length > 0 ? models[0].id : "");
+        const selectedModelId = resolveModelId();
 
         const requiresExplicitModel = !gid;
 
@@ -452,10 +466,16 @@ const App = () => {
                             ? data.models.reduce(
                                 (acc: ModelOption[], item: any) => {
                                     if (item && typeof item.id === "string" && typeof item.name === "string") {
+                                        const uploadTypes: UploadCategory[] | undefined = Array.isArray(item.upload_file_types)
+                                            ? item.upload_file_types.filter((type: unknown): type is UploadCategory =>
+                                                type === "document" || type === "image",
+                                            )
+                                            : undefined
                                         acc.push({
                                             id: item.id,
                                             name: item.name,
                                             description: typeof item.description === "string" ? item.description : "",
+                                            uploadFileTypes: uploadTypes,
                                         })
                                     }
                                     return acc
@@ -623,6 +643,7 @@ const App = () => {
                                     ref={textAreaRef}
                                     busy={ai.busy}
                                     fileUploadEnabled={fileUploadEnabled}
+                                    allowedFileTypes={resolvedUploadCategories}
                                     key={location.pathname}
                                     onSubmit={handleSubmit}
                                     onUpload={handleUpload}

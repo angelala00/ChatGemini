@@ -3,13 +3,18 @@ import os
 import uuid
 from apscheduler.schedulers.background import BackgroundScheduler
 from ..utils import extract_text
-from fastapi import APIRouter, Request, Depends, File, UploadFile, HTTPException, status
+from fastapi import APIRouter, Request, Depends, File, UploadFile, HTTPException, status, Form
 from fastapi.responses import JSONResponse, FileResponse
 from datetime import datetime
 import mimetypes
 from app.auth.auth_routes import get_current_user
 from app.logger import gpt_logger
 from app.base_config import model_config
+from app.utils.model_tool import (
+    MODEL_NAME_INSTRUCT,
+    MODEL_NAME_THINKING,
+    MODEL_NAME_VL,
+)
 from app.db import get_db
 
 router = APIRouter(prefix="/api", tags=["auth"])
@@ -19,13 +24,35 @@ UPLOAD_FOLDER = f"{model_config.FILE_BASE}/gptassistant/uploads"
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
-ALLOWED_EXTENSIONS = {'txt', 'pdf', 'doc', 'docx', 'xlsx', 'jpg', 'png'}
+DOCUMENT_EXTENSIONS = {"txt", "pdf", "doc", "docx", "xlsx"}
+IMAGE_EXTENSIONS = {"jpg", "jpeg", "png"}
+
+MODEL_UPLOAD_RULES = {
+    "auto": {"documents": True, "images": True},
+    MODEL_NAME_THINKING: {"documents": True, "images": False},
+    MODEL_NAME_INSTRUCT: {"documents": True, "images": False},
+    MODEL_NAME_VL: {"documents": False, "images": True},
+}
 FILE_LIFETIME_DAYS = 7  # 可配置的过期时间，单位为天
 
 
 # 判断文件扩展名是否允许
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+def _get_allowed_extensions_by_model(model_id: str):
+    model_rule = MODEL_UPLOAD_RULES.get(model_id) or MODEL_UPLOAD_RULES["auto"]
+    allowed_extensions = set()
+    if model_rule.get("documents"):
+        allowed_extensions.update(DOCUMENT_EXTENSIONS)
+    if model_rule.get("images"):
+        allowed_extensions.update(IMAGE_EXTENSIONS)
+    return allowed_extensions, model_rule
+
+
+def allowed_file(filename, model_id: str):
+    if "." not in filename:
+        return False, {}
+    extension = filename.rsplit(".", 1)[1].lower()
+    allowed_extensions, model_rule = _get_allowed_extensions_by_model(model_id)
+    return extension in allowed_extensions, model_rule
 
 
 def init_db():
@@ -95,7 +122,11 @@ def delete_file_mapping(file_id):
 
 
 @router.post("/upload")
-async def upload_file(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+async def upload_file(
+    file: UploadFile = File(...),
+    model_id: str = Form("auto"),
+    user: dict = Depends(get_current_user),
+):
     gpt_logger.info(f"path=upload_file user={user['email']} at={time.strftime('%Y-%m-%d %H:%M:%S')}")
 
     if not file:
@@ -110,10 +141,18 @@ async def upload_file(file: UploadFile = File(...), user: dict = Depends(get_cur
             detail="No selected file"
         )
 
-    if not allowed_file(file.filename):
+    is_allowed, model_rule = allowed_file(file.filename, model_id)
+    if not is_allowed:
+        allowed_types = []
+        if model_rule.get("documents"):
+            allowed_types.append("documents")
+        if model_rule.get("images"):
+            allowed_types.append("images")
+        if not allowed_types:
+            allowed_types.append("documents/images")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File type not allowed"
+            detail=f"File type not allowed for model '{model_id}'. Allowed types: {', '.join(allowed_types)}"
         )
 
     try:
