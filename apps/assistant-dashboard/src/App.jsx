@@ -22,6 +22,11 @@ function MetricCard({
   detailEmphasis
 }) {
   const showDetail = detailLabel || detailValue || detailEmphasis;
+  const hasDetailPair = detailValue && detailEmphasis;
+  const inlineDetailValue =
+    hasDetailPair && typeof detailValue === "string"
+      ? detailValue.replace(/\s*(?:次|请求)$/u, "")
+      : detailValue;
 
   return (
     <article className="relative overflow-hidden rounded-soft border border-white/10 bg-panel p-4 shadow-panel">
@@ -49,14 +54,24 @@ function MetricCard({
                 {detailLabel}
               </span>
             ) : null}
-            {detailValue ? (
-              <span className="text-sm font-semibold text-slate-100">{detailValue}</span>
-            ) : null}
-            {detailEmphasis ? (
-              <span className="rounded-md bg-brand/10 px-2 py-0.5 text-[11px] font-medium text-brand">
-                {detailEmphasis}
+            {hasDetailPair ? (
+              <span className="flex items-baseline gap-1 text-sm font-semibold text-slate-100">
+                <span>{inlineDetailValue}</span>
+                <span className="text-xs font-normal text-slate-500">/</span>
+                <span className="text-sm font-semibold text-brand">{detailEmphasis}</span>
               </span>
-            ) : null}
+            ) : (
+              <>
+                {detailValue ? (
+                  <span className="text-sm font-semibold text-slate-100">{detailValue}</span>
+                ) : null}
+                {detailEmphasis ? (
+                  <span className="rounded-md bg-brand/10 px-2 py-0.5 text-[11px] font-medium text-brand">
+                    {detailEmphasis}
+                  </span>
+                ) : null}
+              </>
+            )}
           </div>
         ) : null}
       </div>
