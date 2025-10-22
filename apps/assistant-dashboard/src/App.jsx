@@ -64,6 +64,24 @@ function MetricCard({
   );
 }
 
+function formatLeaderboardValue(value) {
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  const trimmed = value.trim();
+  const match = trimmed.match(
+    /^([\d,]+)\s*(?:次|请求)?\s*[·•]\s*(\d+(?:\.\d+)?)%$/u
+  );
+
+  if (match) {
+    const [, total, percentage] = match;
+    return `${total} / ${percentage}%`;
+  }
+
+  return value;
+}
+
 function ListCard({ title, items, limit, scrollHeight }) {
   const displayItems = limit ? items.slice(0, limit) : items;
   const enableScroll = Boolean(scrollHeight);
@@ -83,7 +101,7 @@ function ListCard({ title, items, limit, scrollHeight }) {
             className="flex items-center justify-between border-b border-slate-800/80 pb-3 text-sm text-slate-300 last:border-b-0 last:pb-0"
           >
             <span className="font-medium text-slate-100/80">{name}</span>
-            <span className="text-slate-400">{value}</span>
+            <span className="text-slate-400">{formatLeaderboardValue(value)}</span>
           </li>
         ))}
       </ul>
