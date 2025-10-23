@@ -262,46 +262,67 @@ def _collect_trend(conn, now: datetime) -> Tuple[List[Dict[str, object]], int | 
     return trend, peak, low
 
 
-def _collect_leaderboard(conn, now: datetime, *, key: str, limit: int) -> List[Dict[str, str]]:
+def _collect_leaderboard(conn, now: datetime, *, key: str, limit: int) -> List[Dict[str, object]]:
     assert key in {"user", "gid", "model", "requested_model"}
     column = {
-        "user": ("COALESCE(user_email, user_id)", "user_id"),
-        "gid": ("COALESCE(gid, '未标记')", "gid"),
-        "model": ("COALESCE(model, '未指定模型')", "model"),
-        "requested_model": ("requested_model", "requested_model"),
+        "user": {
+            "select": "COALESCE(user_email, user_id)",
+            "group": "user_id",
+        },
+        "gid": {
+            "select": "COALESCE(gid, '未标记')",
+            "group": "gid",
+        },
+        "model": {
+            "select": "COALESCE(model, '未指定模型')",
+            "group": "model",
+        },
+        "requested_model": {
+            "select": "COALESCE(NULLIF(requested_model, ''), '未指定模型')",
+            "group": "COALESCE(NULLIF(requested_model, ''), '未指定模型')",
+        },
     }[key]
     start = (now - timedelta(days=14)).isoformat()
     filters = ["started_at >= ?", "status = 'success'"]
     params = [start]
-    if key == "requested_model":
-        filters.append("requested_model IS NOT NULL AND requested_model <> ''")
     where_clause = " AND ".join(filters)
 
     rows = conn.execute(
         f"""
-        SELECT {column[0]} AS label, COUNT(*) AS total
+        SELECT {column['select']} AS label, COUNT(*) AS total
           FROM usage_events
          WHERE {where_clause}
-         GROUP BY {column[1]}
+         GROUP BY {column['group']}
          ORDER BY total DESC
          LIMIT ?
         """,
         (*params, limit),
     ).fetchall()
 
-    total_success = _scalar(
+    total_in_scope = _scalar(
         conn,
         f"SELECT COUNT(*) FROM usage_events WHERE {where_clause}",
         tuple(params),
     )
-    leaderboard: List[Dict[str, str]] = []
+    leaderboard: List[Dict[str, object]] = []
     for row in rows:
+        total_raw = int(row["total"])
+        total = _format_int(total_raw)
         if key == "user":
-            value = f"{_format_int(row['total'])} 请求"
-        else:
-            share = (row["total"] / total_success * 100) if total_success else 0.0
-            value = f"{share:.0f}%"
-        leaderboard.append({"name": row["label"], "value": value})
+            value = f"{total} 请求"
+            leaderboard.append({"name": row["label"], "value": value})
+            continue
+
+        share = (total_raw / total_in_scope * 100) if total_in_scope else 0.0
+        value = f"{total} 次 · {share:.0f}%"
+        leaderboard.append(
+            {
+                "name": row["label"],
+                "value": value,
+                "count": total_raw,
+                "percentage": round(share, 2),
+            }
+        )
     return leaderboard
 
 
