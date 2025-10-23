@@ -132,18 +132,26 @@ def _collect_metric_cards(conn, now: datetime) -> List[Dict[str, str]]:
         conn,
         "SELECT COUNT(*) FROM usage_events WHERE status='success'",
     )
-    today_start = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
-    today_anchor = today_start.isoformat()
-    yesterday_start = (today_start - timedelta(days=1)).isoformat()
-    todays_requests = _scalar(
+    requests_last_week = _scalar(
         conn,
-        "SELECT COUNT(*) FROM usage_events WHERE started_at >= ?",
-        (today_anchor,),
+        """
+        SELECT COUNT(*)
+          FROM usage_events
+         WHERE status IN ('success', 'error')
+           AND started_at >= ?
+        """,
+        (seven_days_ago,),
     )
-    yesterdays_requests = _scalar(
+    requests_previous_week = _scalar(
         conn,
-        "SELECT COUNT(*) FROM usage_events WHERE started_at >= ? AND started_at < ?",
-        (yesterday_start, today_anchor),
+        """
+        SELECT COUNT(*)
+          FROM usage_events
+         WHERE status IN ('success', 'error')
+           AND started_at >= ?
+           AND started_at < ?
+        """,
+        (fourteen_days_ago, seven_days_ago),
     )
     total_users = _scalar(
         conn,
@@ -196,7 +204,7 @@ def _collect_metric_cards(conn, now: datetime) -> List[Dict[str, str]]:
     conversations_change = _format_period_change(
         conversations_last_week, conversations_previous_week
     )
-    requests_change = _format_period_change(todays_requests, yesterdays_requests)
+    requests_change = _format_period_change(requests_last_week, requests_previous_week)
 
     upload_share = (upload_requests / total_requests * 100) if total_requests else 0.0
 
