@@ -74,17 +74,5 @@ register_gpt({
             "生成创业计划书PPT大纲",
             "生成项目汇报PPT大纲",
         ],
-    },
-    "regulationassistant": {
-        "name": "制度问答助手",
-        "desc": "解答制度相关问题",
-        "logo": "./gpts/policy.svg",
-        "system_prompt": "",
-        "model_name": "auto",
-        "auth": {"type": "all"},
-        "samples": [
-            "公司请假制度是什么？",
-            "公司报销流程如何进行？",
-        ],
-    },
+    }
 })
