@@ -87,6 +87,8 @@ TODO
 
 gpt助手前后端协议优化
 
+gpt助手支持扩展，比如后端用dify？
+
 add remote addr
 git remote add modelscope https://oauth2:ms-151987bf-ae27-441c-8686-f13aec57a5df@www.modelscope.cn/eason5870/fxcjg.git
 first push
