@@ -73,12 +73,19 @@ pdf文件读取修复
 dashboard中帮我增加统计一个数据，上传文件数有多少
 用户排行的统计，看前15个人，页面人多的时候增加滚动条
 
+25年11月，
+
+dashboard，时间范围筛选不生效
+
 
 TODO
 聊天窗口，模型在返回用户问题的，不断的流式输出的过程中，有一些问题，体验特别不好，比如说，回复时间很长，我的理解又跟不上输出的速度，我想往上拉一点，慢慢看，再想拉到底部的时候，它并没有继续跟着滚动
 
 在外网的情况下，回答的内容都在think里面不太对
 
+页面优化
+
+gpt助手前后端协议优化
 
 add remote addr
 git remote add modelscope https://oauth2:ms-151987bf-ae27-441c-8686-f13aec57a5df@www.modelscope.cn/eason5870/fxcjg.git
