@@ -5,8 +5,9 @@ from __future__ import annotations
 import logging
 from collections import Counter
 from copy import deepcopy
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone, tzinfo
-from typing import Dict, List, Tuple
+from typing import Dict, Iterable, List, Sequence, Tuple
 
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -63,33 +64,56 @@ _BASE_FALLBACK = {
 }
 
 
-def build_dashboard_snapshot() -> Dict[str, object]:
+@dataclass(frozen=True)
+class TimeRangeWindow:
+    """Represents a normalised time range selection."""
+
+    key: str
+    label: str
+    current_start: datetime | None
+    current_end: datetime
+    previous_start: datetime | None
+    previous_end: datetime | None
+    days: int | None
+    compare: bool
+
+
+def build_dashboard_snapshot(time_range: str | None = None) -> Dict[str, object]:
     now = datetime.now(timezone.utc)
+    window = _resolve_time_range(now, time_range)
 
     try:
         init_metrics_storage()
     except Exception:  # pragma: no cover - defensive fallback
         logger.exception("Failed to initialise metrics storage; returning fallback data")
-        return _build_fallback_snapshot(now)
+        return _build_fallback_snapshot(now, window)
 
     try:
         conn = get_db()
     except Exception:  # pragma: no cover - defensive fallback
         logger.exception("Failed to open metrics database; returning fallback data")
-        return _build_fallback_snapshot(now)
+        return _build_fallback_snapshot(now, window)
     try:
-        metrics = _collect_metric_cards(conn, now)
-        requests_trend, peak, low = _collect_trend(conn, now)
-        user_leaderboard = _collect_leaderboard(conn, now, key="user", limit=15)
-        gpts_leaderboard = _collect_leaderboard(conn, now, key="gid", limit=5)
-        model_leaderboard = _collect_leaderboard(conn, now, key="model", limit=5)
-        requested_model_leaderboard = _collect_leaderboard(
-            conn, now, key="requested_model", limit=5
+        metrics = _collect_metric_cards(conn, now, window)
+        requests_trend, peak, low = _collect_trend(conn, now, window)
+        user_leaderboard = _collect_leaderboard(
+            conn, window, key="user", limit=15
         )
-        alerts = _collect_alerts(metrics, peak_latency=_fetch_average_latency(conn, now))
+        gpts_leaderboard = _collect_leaderboard(
+            conn, window, key="gid", limit=5
+        )
+        model_leaderboard = _collect_leaderboard(
+            conn, window, key="model", limit=5
+        )
+        requested_model_leaderboard = _collect_leaderboard(
+            conn, window, key="requested_model", limit=5
+        )
+        alerts = _collect_alerts(
+            metrics, peak_latency=_fetch_average_latency(conn, now, window)
+        )
     except Exception:  # pragma: no cover - defensive fallback
         logger.exception("Failed to build dashboard snapshot; returning fallback data")
-        return _build_fallback_snapshot(now)
+        return _build_fallback_snapshot(now, window)
     finally:
         conn.close()
 
@@ -100,7 +124,7 @@ def build_dashboard_snapshot() -> Dict[str, object]:
         "metrics": metrics,
         "requestsTrend": requests_trend,
         "timeWindow": {
-            "range": "过去 14 天",
+            "range": window.label,
             "peak": f"{peak:,} 请求/日" if peak is not None else "暂无数据",
             "low": f"{low:,} 请求/日" if low is not None else "暂无数据",
         },
@@ -112,99 +136,134 @@ def build_dashboard_snapshot() -> Dict[str, object]:
     }
 
 
-def _collect_metric_cards(conn, now: datetime) -> List[Dict[str, str]]:
-    seven_days_ago = (now - timedelta(days=7)).isoformat()
-    fourteen_days_ago = (now - timedelta(days=14)).isoformat()
+def _collect_metric_cards(
+    conn, now: datetime, window: TimeRangeWindow
+) -> List[Dict[str, str]]:
+    current_filters, current_params = _build_time_filters(
+        window.current_start, window.current_end
+    )
+    previous_filters: List[str]
+    previous_params: Sequence[str]
+    if window.compare and window.previous_start is not None:
+        previous_filters, previous_params = _build_time_filters(
+            window.previous_start, window.previous_end
+        )
+    else:
+        previous_filters, previous_params = [], ()
+
     total_requests = _scalar(
         conn,
-        "SELECT COUNT(*) FROM usage_events WHERE status IN ('success', 'error')",
+        """
+        SELECT COUNT(*)
+          FROM usage_events
+         {where}
+        """.format(where=_build_where_clause([
+            "status IN ('success', 'error')",
+            *current_filters,
+        ])),
+        tuple(current_params),
     )
     upload_requests = _scalar(
         conn,
         """
         SELECT COUNT(*)
           FROM usage_events
-         WHERE status IN ('success', 'error')
-           AND upload_count > 0
-        """,
+         {where}
+        """.format(where=_build_where_clause([
+            "status IN ('success', 'error')",
+            "upload_count > 0",
+            *current_filters,
+        ])),
+        tuple(current_params),
     )
     success_requests = _scalar(
         conn,
-        "SELECT COUNT(*) FROM usage_events WHERE status='success'",
-    )
-    requests_last_week = _scalar(
-        conn,
         """
         SELECT COUNT(*)
           FROM usage_events
-         WHERE status IN ('success', 'error')
-           AND started_at >= ?
-        """,
-        (seven_days_ago,),
+         {where}
+        """.format(where=_build_where_clause([
+            "status = 'success'",
+            *current_filters,
+        ])),
+        tuple(current_params),
     )
-    requests_previous_week = _scalar(
-        conn,
-        """
-        SELECT COUNT(*)
-          FROM usage_events
-         WHERE status IN ('success', 'error')
-           AND started_at >= ?
-           AND started_at < ?
-        """,
-        (fourteen_days_ago, seven_days_ago),
-    )
+
+    requests_previous = 0
+    if previous_filters:
+        requests_previous = _scalar(
+            conn,
+            """
+            SELECT COUNT(*)
+              FROM usage_events
+             {where}
+            """.format(where=_build_where_clause([
+                "status IN ('success', 'error')",
+                *previous_filters,
+            ])),
+            tuple(previous_params),
+        )
+
     total_users = _scalar(
         conn,
-        "SELECT COUNT(DISTINCT user_id) FROM usage_events",
+        """
+        SELECT COUNT(DISTINCT user_id)
+          FROM usage_events
+         {where}
+        """.format(where=_build_where_clause(current_filters)),
+        tuple(current_params),
     )
     total_conversations = _scalar(
         conn,
         """
         SELECT COUNT(DISTINCT conversation_id)
           FROM usage_events
-         WHERE conversation_id IS NOT NULL AND conversation_id <> ''
-        """,
+         {where}
+        """.format(where=_build_where_clause([
+            "conversation_id IS NOT NULL",
+            "conversation_id <> ''",
+            *current_filters,
+        ])),
+        tuple(current_params),
     )
-    users_last_week = _scalar(
-        conn,
-        "SELECT COUNT(DISTINCT user_id) FROM usage_events WHERE started_at >= ?",
-        (seven_days_ago,),
-    )
-    users_previous_week = _scalar(
-        conn,
-        "SELECT COUNT(DISTINCT user_id) FROM usage_events WHERE started_at >= ? AND started_at < ?",
-        (fourteen_days_ago, seven_days_ago),
-    )
-    conversations_last_week = _scalar(
-        conn,
-        """
-        SELECT COUNT(DISTINCT conversation_id)
-          FROM usage_events
-         WHERE started_at >= ?
-           AND conversation_id IS NOT NULL
-           AND conversation_id <> ''
-        """,
-        (seven_days_ago,),
-    )
-    conversations_previous_week = _scalar(
-        conn,
-        """
-        SELECT COUNT(DISTINCT conversation_id)
-          FROM usage_events
-         WHERE started_at >= ?
-           AND started_at < ?
-           AND conversation_id IS NOT NULL
-           AND conversation_id <> ''
-        """,
-        (fourteen_days_ago, seven_days_ago),
-    )
+
+    users_previous = 0
+    conversations_previous = 0
+    if previous_filters:
+        users_previous = _scalar(
+            conn,
+            """
+            SELECT COUNT(DISTINCT user_id)
+              FROM usage_events
+             {where}
+            """.format(where=_build_where_clause(previous_filters)),
+            tuple(previous_params),
+        )
+        conversations_previous = _scalar(
+            conn,
+            """
+            SELECT COUNT(DISTINCT conversation_id)
+              FROM usage_events
+             {where}
+            """.format(where=_build_where_clause([
+                "conversation_id IS NOT NULL",
+                "conversation_id <> ''",
+                *previous_filters,
+            ])),
+            tuple(previous_params),
+        )
+
     success_rate = (success_requests / total_requests) if total_requests else 0.0
     error_rate = 1 - success_rate
-    users_change = _format_period_change(users_last_week, users_previous_week)
-    conversations_change = _format_period_change(
-        conversations_last_week, conversations_previous_week
-    )
-    requests_change = _format_period_change(requests_last_week, requests_previous_week)
+
+    def _change(current: int, previous: int) -> str:
+        if not previous_filters:
+            return "持平 0%"
+        return _format_period_change(current, previous)
+
+    users_change = _change(total_users, users_previous)
+    conversations_change = _change(total_conversations, conversations_previous)
+    requests_change = _change(total_requests, requests_previous)
 
     upload_share = (upload_requests / total_requests * 100) if total_requests else 0.0
 
@@ -243,34 +302,53 @@ def _collect_metric_cards(conn, now: datetime) -> List[Dict[str, str]]:
     ]
 
 
-def _collect_trend(conn, now: datetime) -> Tuple[List[Dict[str, object]], int | None, int | None]:
-    start_date = (now - timedelta(days=13)).date()
-    start_anchor = datetime(start_date.year, start_date.month, start_date.day, tzinfo=timezone.utc).isoformat()
-    totals = Counter()
-    for row in conn.execute(
+def _collect_trend(
+    conn, now: datetime, window: TimeRangeWindow
+) -> Tuple[List[Dict[str, object]], int | None, int | None]:
+    time_filters, time_params = _build_time_filters(
+        window.current_start, window.current_end
+    )
+    filters = ["status IN ('success', 'error')", *time_filters]
+    rows = conn.execute(
         """
         SELECT substr(started_at, 1, 10) AS day, COUNT(*) AS total
           FROM usage_events
-         WHERE started_at >= ?
+         {where}
          GROUP BY day
-        """,
-        (start_anchor,),
-    ):
-        totals[row["day"]] = row["total"]
+         ORDER BY day
+        """.format(where=_build_where_clause(filters)),
+        tuple(time_params),
+    ).fetchall()
+
+    totals = Counter({row["day"]: row["total"] for row in rows})
+
+    if window.days is None:
+        if not totals:
+            return [], None, None
+        first_day_str = min(totals)
+        first_day = datetime.fromisoformat(first_day_str).date()
+        total_days = max((now.date() - first_day).days + 1, 1)
+    else:
+        total_days = max(window.days, 1)
+        first_day = (now - timedelta(days=total_days - 1)).date()
 
     trend: List[Dict[str, object]] = []
     peak = None
     low = None
-    for i in range(14):
-        day = start_date + timedelta(days=i)
-        total = totals.get(day.isoformat(), 0)
+    for offset in range(total_days):
+        day = first_day + timedelta(days=offset)
+        iso_day = day.isoformat()
+        total = totals.get(iso_day, 0)
         trend.append({"date": day.strftime("%m-%d"), "total": total})
         peak = total if peak is None or total > peak else peak
         low = total if low is None or total < low else low
+
     return trend, peak, low
 
 
-def _collect_leaderboard(conn, now: datetime, *, key: str, limit: int) -> List[Dict[str, object]]:
+def _collect_leaderboard(
+    conn, window: TimeRangeWindow, *, key: str, limit: int
+) -> List[Dict[str, object]]:
     assert key in {"user", "gid", "model", "requested_model"}
     column = {
         "user": {
@@ -290,27 +368,27 @@ def _collect_leaderboard(conn, now: datetime, *, key: str, limit: int) -> List[D
             "group": "COALESCE(NULLIF(requested_model, ''), '未指定模型')",
         },
     }[key]
-    start = (now - timedelta(days=14)).isoformat()
-    filters = ["started_at >= ?", "status = 'success'"]
-    params = [start]
-    where_clause = " AND ".join(filters)
+    time_filters, time_params = _build_time_filters(
+        window.current_start, window.current_end
+    )
+    filters = ["status = 'success'", *time_filters]
+    where_clause = _build_where_clause(filters)
 
     rows = conn.execute(
         f"""
         SELECT {column['select']} AS label, COUNT(*) AS total
-          FROM usage_events
-         WHERE {where_clause}
+          FROM usage_events{where_clause}
          GROUP BY {column['group']}
          ORDER BY total DESC
          LIMIT ?
         """,
-        (*params, limit),
+        (*time_params, limit),
     ).fetchall()
 
     total_in_scope = _scalar(
         conn,
-        f"SELECT COUNT(*) FROM usage_events WHERE {where_clause}",
-        tuple(params),
+        f"SELECT COUNT(*) FROM usage_events{where_clause}",
+        tuple(time_params),
     )
     leaderboard: List[Dict[str, object]] = []
     for row in rows:
@@ -354,15 +432,19 @@ def _collect_alerts(metrics: List[Dict[str, str]], *, peak_latency: float | None
     ]
 
 
-def _fetch_average_latency(conn, now: datetime) -> float | None:
-    start = (now - timedelta(days=1)).isoformat()
+def _fetch_average_latency(
+    conn, now: datetime, window: TimeRangeWindow
+) -> float | None:
+    time_filters, time_params = _build_time_filters(
+        window.current_start, window.current_end
+    )
+    filters = ["completed_at IS NOT NULL", *time_filters]
     row = conn.execute(
         """
         SELECT AVG(latency_ms) AS avg_latency
-          FROM usage_events
-         WHERE completed_at IS NOT NULL AND started_at >= ?
-        """,
-        (start,),
+          FROM usage_events{where}
+        """.format(where=_build_where_clause(filters)),
+        tuple(time_params),
     ).fetchone()
     return float(row["avg_latency"]) if row and row["avg_latency"] is not None else None
 
@@ -390,6 +472,96 @@ def _format_period_change(current: int, previous: int) -> str:
     return "持平 0%"
 
 
+def _build_time_filters(
+    start: datetime | None, end: datetime | None, *, column: str = "started_at"
+) -> Tuple[List[str], List[str]]:
+    filters: List[str] = []
+    params: List[str] = []
+    if start is not None:
+        filters.append(f"{column} >= ?")
+        params.append(start.isoformat())
+    if end is not None:
+        filters.append(f"{column} < ?")
+        params.append(end.isoformat())
+    return filters, params
+
+
+def _build_where_clause(filters: Iterable[str]) -> str:
+    parts = [f for f in filters if f]
+    if not parts:
+        return ""
+    return " WHERE " + " AND ".join(parts)
+
+
+def _resolve_time_range(now: datetime, key: str | None) -> TimeRangeWindow:
+    default_key = "14d"
+    normalized = (key or default_key).strip().lower()
+    duration_labels = {
+        "7d": ("过去 7 天", 7),
+        default_key: ("过去 14 天", 14),
+        "30d": ("过去 30 天", 30),
+    }
+
+    if normalized == "all":
+        return TimeRangeWindow(
+            key="all",
+            label="所有时间",
+            current_start=None,
+            current_end=now,
+            previous_start=None,
+            previous_end=None,
+            days=None,
+            compare=False,
+        )
+
+    if normalized == "today":
+        start_of_day = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
+        previous_start = start_of_day - timedelta(days=1)
+        return TimeRangeWindow(
+            key="today",
+            label="今天",
+            current_start=start_of_day,
+            current_end=now,
+            previous_start=previous_start,
+            previous_end=start_of_day,
+            days=1,
+            compare=True,
+        )
+
+    if normalized in duration_labels:
+        label, days = duration_labels[normalized]
+        start = now - timedelta(days=days)
+        previous_start = start - timedelta(days=days)
+        return TimeRangeWindow(
+            key=normalized,
+            label=label,
+            current_start=start,
+            current_end=now,
+            previous_start=previous_start,
+            previous_end=start,
+            days=days,
+            compare=True,
+        )
+
+    if normalized != default_key:
+        return _resolve_time_range(now, default_key)
+
+    # Fallback: treat unknown keys as the default 14-day window.
+    label, days = duration_labels[default_key]
+    start = now - timedelta(days=days)
+    previous_start = start - timedelta(days=days)
+    return TimeRangeWindow(
+        key=default_key,
+        label=label,
+        current_start=start,
+        current_end=now,
+        previous_start=previous_start,
+        previous_end=start,
+        days=days,
+        compare=True,
+    )
+
+
 def _resolve_shanghai_timezone() -> tzinfo:
     try:
         return ZoneInfo("Asia/Shanghai")
@@ -397,9 +569,10 @@ def _resolve_shanghai_timezone() -> tzinfo:
         return timezone(timedelta(hours=8))
 
 
-def _build_fallback_snapshot(now: datetime) -> Dict[str, object]:
+def _build_fallback_snapshot(now: datetime, window: TimeRangeWindow) -> Dict[str, object]:
     payload = deepcopy(_BASE_FALLBACK)
     payload["lastUpdated"] = now.astimezone(_resolve_shanghai_timezone()).isoformat()
+    payload.setdefault("timeWindow", {})["range"] = window.label
     return payload
 
 

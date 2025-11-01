@@ -59,22 +59,26 @@ _BASE_FALLBACK = {
 }
 
 
-async def build_dashboard_payload() -> Dict[str, Any]:
+async def build_dashboard_payload(time_range: str | None = None) -> Dict[str, Any]:
     try:
-        remote = await _fetch_remote_payload()
+        remote = await _fetch_remote_payload(time_range)
         return _normalise_remote_payload(remote)
     except Exception:
         logger.exception("Failed to fetch dashboard payload from assistant-bff, using fallback data")
         fallback = deepcopy(_BASE_FALLBACK)
         shanghai_tz = _resolve_shanghai_timezone()
         fallback["lastUpdated"] = datetime.now(tz=shanghai_tz)
+        fallback.setdefault("timeWindow", {})["range"] = _resolve_time_range_label(
+            time_range
+        )
         return fallback
 
 
-async def _fetch_remote_payload() -> Dict[str, Any]:
+async def _fetch_remote_payload(time_range: str | None) -> Dict[str, Any]:
     url = urljoin(BFF_BASE_URL.rstrip("/"), BFF_DASHBOARD_ENDPOINT)
     async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT, trust_env=False) as client:
-        response = await client.get(url)
+        params = {"timeRange": time_range} if time_range else None
+        response = await client.get(url, params=params)
         response.raise_for_status()
         return response.json()
 
@@ -99,6 +103,17 @@ def _resolve_shanghai_timezone() -> tzinfo:
         return ZoneInfo("Asia/Shanghai")
     except ZoneInfoNotFoundError:
         return timezone(timedelta(hours=8))
+
+
+def _resolve_time_range_label(time_range: str | None) -> str:
+    labels = {
+        "today": "今天",
+        "7d": "过去 7 天",
+        "14d": "过去 14 天",
+        "30d": "过去 30 天",
+        "all": "所有时间",
+    }
+    return labels.get((time_range or "14d").lower(), labels["14d"])
 
 
 __all__ = ["build_dashboard_payload"]
