@@ -6,7 +6,7 @@ import asyncio
 import contextlib
 import os
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -38,10 +38,12 @@ async def healthcheck() -> dict[str, str]:
 
 
 @app.get("/api/dashboard", response_model=DashboardPayload)
-async def read_dashboard() -> DashboardPayload:
+async def read_dashboard(
+    time_range: str | None = Query(None, alias="timeRange")
+) -> DashboardPayload:
     """Return the latest dashboard dataset."""
 
-    payload = await build_dashboard_payload()
+    payload = await build_dashboard_payload(time_range)
     return DashboardPayload(**payload)
 
 

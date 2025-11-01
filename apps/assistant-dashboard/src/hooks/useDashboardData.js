@@ -11,6 +11,23 @@ function createDashboardQueryKey(timeRange) {
   return [DASHBOARD_QUERY_KEY, { timeRange }];
 }
 
+const TIME_RANGE_LABELS = {
+  today: "今天",
+  "7d": "过去 7 天",
+  "14d": "过去 14 天",
+  "30d": "过去 30 天",
+  all: "所有时间"
+};
+
+function resolveTimeRangeLabel(timeRange) {
+  if (!timeRange) {
+    return TIME_RANGE_LABELS["14d"];
+  }
+
+  const normalized = String(timeRange).toLowerCase();
+  return TIME_RANGE_LABELS[normalized] ?? TIME_RANGE_LABELS["14d"];
+}
+
 function resolveApiBaseUrlForWebSocket() {
   if (import.meta.env.VITE_API_BASE_URL) {
     return import.meta.env.VITE_API_BASE_URL;
@@ -95,9 +112,15 @@ export function useDashboardData(timeRange = "14d") {
       try {
         const payload = JSON.parse(event.data);
         if (payload.type === "dashboard:update") {
-          const queryKey = createDashboardQueryKey(
-            latestTimeRangeRef.current
-          );
+          const currentTimeRange = latestTimeRangeRef.current;
+          const expectedLabel = resolveTimeRangeLabel(currentTimeRange);
+          const payloadLabel = payload?.data?.timeWindow?.range;
+
+          if (payloadLabel && payloadLabel !== expectedLabel) {
+            return;
+          }
+
+          const queryKey = createDashboardQueryKey(currentTimeRange);
 
           queryClient.setQueryData(queryKey, (prev) => ({
             ...prev,
