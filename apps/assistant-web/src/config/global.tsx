@@ -1,8 +1,10 @@
-const env = Object.keys(process.env)
+const metaEnv = import.meta.env as Record<string, string | undefined>;
+
+const env = Object.keys(metaEnv)
     .filter((key) => key.startsWith("REACT_APP_"))
-    .reduce((env: Record<string, string | null>, key) => {
-        env[key] = process.env[key] ?? null;
-        return env;
+    .reduce((acc: Record<string, string | null>, key) => {
+        acc[key] = metaEnv[key] ?? null;
+        return acc;
     }, {});
 
 if (!Object.keys(env).length) {

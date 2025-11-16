@@ -3,22 +3,24 @@ import remarkGfm from "remark-gfm";
 import rehypeKatex from "rehype-katex";
 import remarkMath from "remark-math";
 import rehypeRaw from "rehype-raw";
-import "katex/dist/katex.min.css";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Prism } from "react-syntax-highlighter";
 import { setClipboardText } from "../helpers/setClipboardText";
 import { a11yDark as style } from "react-syntax-highlighter/dist/esm/styles/prism";
 import userThrottle from "../helpers/userThrottle";
-import { useEffect, useState } from "react";
 import userDebounce from "../helpers/userDebounce";
 import type { Point } from "unist";
 import { isObjectEqual } from "../helpers/isObjectEqual";
 import { getPythonResult } from "../helpers/getPythonResult";
-import { PyodideInterface } from "pyodide";
+import type { PyodideInterface } from "../types/pyodide";
 import { getPythonRuntime } from "../helpers/getPythonRuntime";
 import { useTranslation } from "react-i18next";
 import { ChevronDownIcon, ChevronUpIcon } from "@heroicons/react/24/outline";
 import { getFullPath } from "../helpers/getDomainAndPath";
-import { ECharts } from "./ECharts";
+const LazyECharts = lazy(() =>
+    import("./ECharts").then((module) => ({ default: module.ECharts }))
+);
+import "katex/dist/katex.min.css";
 
 interface MarkdownProps {
     readonly className?: string;
@@ -268,9 +270,17 @@ export const Markdown = (props: MarkdownProps) => {
                                     option = new Function(`return (${trimmed})`)();
                                 }
                                 return (
-                                    <>
-                                        <ECharts option={option} />
-                                    </>
+                                    <Suspense
+                                        fallback={
+                                            <span className="text-gray-500">
+                                                {t(
+                                                    "components.Markdown.echarts_rendering"
+                                                )}
+                                            </span>
+                                        }
+                                    >
+                                        <LazyECharts option={option} />
+                                    </Suspense>
                                 );
                             } catch (e) {
                                 console.log(code)

@@ -20,7 +20,6 @@
         "katex": "^0.16.9",
         "localforage": "^1.10.0",
         "node-fetch": "^2.7.0",
-        "pyodide": "^0.23.4",
         "react": "^18.2.0",
         "react-dom": "^18.2.0",
         "react-hot-toast": "^2.4.1",
@@ -28,7 +27,6 @@
         "react-markdown": "^9.0.1",
         "react-redux": "^9.1.0",
         "react-router-dom": "^6.21.3",
-        "react-scripts": "5.0.1",
         "react-syntax-highlighter": "^15.5.0",
         "redux": "^5.0.1",
         "redux-persist": "^6.0.0",
@@ -46,9 +44,10 @@
         "uuid": "^9.0.0"
     },
     "scripts": {
-        "start": "cross-env BROWSER=none GENERATE_SOURCEMAP=false react-scripts start",
-        "build": "cross-env GENERATE_SOURCEMAP=false react-scripts build",
-        "eject": "react-scripts eject"
+        "dev": "vite",
+        "start": "vite",
+        "build": "vite build",
+        "preview": "vite preview"
     },
     "browserslist": {
         "production": [
@@ -68,15 +67,18 @@
         "@types/crypto-js": "^4.2.2",
         "@types/file-saver": "^2.0.7",
         "@types/html-to-docx": "^1.8.0",
-        "@types/node": "^16.18.76",
+        "@types/node": "^20.11.17",
         "@types/react": "^18.2.48",
         "@types/react-dom": "^18.2.18",
         "@types/react-syntax-highlighter": "^15.5.11",
         "@types/remarkable": "^2.0.8",
         "@types/unist": "^3.0.2",
-        "cross-env": "^7.0.3",
+        "@vitejs/plugin-react": "^4.2.1",
+        "autoprefixer": "^10.4.17",
         "tailwindcss": "^3.4.1",
         "tailwindcss-animated": "^1.0.1",
-        "typescript": "^4.9.5"
+        "typescript": "^4.9.5",
+        "vite": "^5.2.0",
+        "vite-plugin-svgr": "^4.5.0"
     }
 }

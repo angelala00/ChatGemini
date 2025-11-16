@@ -1,10 +1,21 @@
 import { useEffect, useRef, useState } from "react";
-import * as echarts from "echarts";
 import { useTranslation } from "react-i18next";
+import type { EChartsType } from "echarts";
 
 interface Props {
     option: any;
 }
+
+type EChartsModule = typeof import("echarts");
+
+let echartsLoader: Promise<EChartsModule> | null = null;
+
+const loadECharts = () => {
+    if (!echartsLoader) {
+        echartsLoader = import("echarts");
+    }
+    return echartsLoader;
+};
 
 export const ECharts = ({ option }: Props) => {
     const { t } = useTranslation();
@@ -13,19 +24,32 @@ export const ECharts = ({ option }: Props) => {
 
     useEffect(() => {
         if (!chartRef.current) return;
-        let chart: echarts.EChartsType | null = null;
-        try {
-            chart = echarts.init(chartRef.current);
-            chart.setOption(option);
-        } catch (e) {
-            setFailed(true);
-            return;
-        }
+        setFailed(false);
+        let disposed = false;
+        let chart: EChartsType | null = null;
+        let resize: (() => void) | null = null;
 
-        const resize = () => chart!.resize();
-        window.addEventListener("resize", resize);
+        loadECharts()
+            .then((echarts) => {
+                if (disposed || !chartRef.current) {
+                    return;
+                }
+                chart = echarts.init(chartRef.current);
+                chart.setOption(option);
+                resize = () => chart?.resize();
+                window.addEventListener("resize", resize);
+            })
+            .catch(() => {
+                if (!disposed) {
+                    setFailed(true);
+                }
+            });
+
         return () => {
-            window.removeEventListener("resize", resize);
+            disposed = true;
+            if (resize) {
+                window.removeEventListener("resize", resize);
+            }
             chart?.dispose();
         };
     }, [option]);
@@ -40,4 +64,3 @@ export const ECharts = ({ option }: Props) => {
 
     return <div ref={chartRef} style={{ width: "100%", height: 400 }} />;
 };
-

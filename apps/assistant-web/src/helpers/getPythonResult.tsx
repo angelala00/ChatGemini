@@ -1,4 +1,4 @@
-import { PyodideInterface } from "pyodide";
+import type { PyodideInterface } from "../types/pyodide";
 
 export const getPythonResult = async (
     pyodide: PyodideInterface,

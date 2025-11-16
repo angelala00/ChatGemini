@@ -17,7 +17,7 @@ import { ImageView } from "../components/ImageView";
 import { sendUserConfirm } from "../helpers/sendUserConfirm";
 import { sendUserAlert } from "../helpers/sendUserAlert";
 import { RouterComponentProps, routerConfig } from "../config/router";
-import { PyodideInterface } from "pyodide";
+import type { PyodideInterface } from "../types/pyodide";
 import { useTranslation } from "react-i18next";
 import { stat } from "node:fs/promises";
 import { exportMdAsDocx } from "../helpers/exportMdAsDocx";

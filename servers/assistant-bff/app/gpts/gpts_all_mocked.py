@@ -42,7 +42,7 @@ register_gpt({
         "name": "法务审查",
         "desc": "快速审查合同条款",
         "system_prompt": "",
-        "model_name": "auto",
+        "model_name": MODEL_NAME_THINKING,
         "auth": {"type": "all"},
         "samples": [
             "审查合同中的潜在风险",
@@ -58,7 +58,7 @@ register_gpt({
             "使用ECharts绘制销售占比饼图",
             "使用ECharts生成月度趋势折线图",
         ],
-        "model_name": "auto",
+        "model_name": MODEL_NAME_THINKING,
         # 知识库
         # 工具
         "auth": {"type": "all"},
@@ -68,7 +68,7 @@ register_gpt({
         "desc": "自动生成演示文稿大纲",
         "logo": "./gpts/ppt.svg",
         "system_prompt": "",
-        "model_name": "auto",
+        "model_name": MODEL_NAME_THINKING,
         "auth": {"type": "all"},
         "samples": [
             "生成创业计划书PPT大纲",

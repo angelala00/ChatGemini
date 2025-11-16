@@ -3,7 +3,7 @@ import userIcon from "../assets/icons/user-regular.svg";
 import editIcon from "../assets/icons/pen-to-square-solid.svg";
 import deleteIcon from "../assets/icons/trash-solid.svg";
 import refreshIcon from "../assets/icons/arrows-rotate-solid.svg";
-import { ReactComponent as ExportIcon } from "../assets/icons/file-export-solid.svg"
+import ExportIcon from "../assets/icons/file-export-solid.svg?react";
 import clipboardIcon from "../assets/icons/clipboard-regular.svg";
 import { ReactElement, ReactNode, useRef } from "react";
 import { setClipboardText } from "../helpers/setClipboardText";
