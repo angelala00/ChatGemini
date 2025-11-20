@@ -1,8 +1,10 @@
-from .config_gpts import register_gpt
-from app.utils.tool_register import register_tool
 from typing import List
+
+from .config_gpts import register_gpt
 from app.base_config import model_config
 from app.utils.model_tool import MODEL_NAME_QWQ
+from app.utils import text_extractor
+from app.utils.tool_register import register_tool
 
 gpts_id = "regulationassistant"
 
@@ -81,12 +83,10 @@ async def fetch_document_content(
         for fileName in file_names:
             file_path = f"{model_config.FILE_BASE}/{gpts_id}/pdf/{fileName}"
             text = text + fileName + "的内容:\n"
-            raw = textract.process(file_path, extension=".pdf")
-            text += raw.decode('utf-8') + "\n"
+            text += text_extractor.extract_text(file_path, ".pdf") + "\n"
             text = text.encode('utf-8', 'ignore').decode('utf-8')
         return text.strip()[:10000]  # 限制最大返回长度
     except FileNotFoundError:
         return f"错误：文件 {file_path} 不存在"
     except Exception as e:
         return f"发生错误：{str(e)}"
-

@@ -12,7 +12,6 @@ aiofiles
 openpyxl
 python-docx
 PyPDF2
-textract
 itsdangerous
 tzdata
 jwt

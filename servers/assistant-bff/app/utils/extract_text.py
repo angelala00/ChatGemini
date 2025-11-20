@@ -1,10 +1,8 @@
 import os
-import textract
 import imghdr
-from openpyxl import load_workbook
-from docx import Document
-from PyPDF2 import PdfReader
+
 from app.utils.model_tool import convert_image_message, MODEL_NAME_VL
+from app.utils import text_extractor
 
 
 async def extract_text_from_file(file_path: str, file_type: str):
@@ -35,35 +33,5 @@ async def extract_text_from_file(file_path: str, file_type: str):
                 text_content += event.get("data")["text"]
         return text_content
     else:
-        raw = textract.process(file_path, extension=file_type)
-        text = raw.decode('utf-8')
-    return text
-
-
-def parse_excel(file_path):
-    """解析Excel文件"""
-    wb = load_workbook(file_path)
-    sheet = wb.active
-    text = ""
-    for row in sheet.iter_rows(values_only=True):
-        text += " ".join(str(cell) for cell in row) + "\n"
-    return text
-
-
-def parse_word(file_path):
-    """解析Word文件"""
-    doc = Document(file_path)
-    text = ""
-    for paragraph in doc.paragraphs:
-        text += paragraph.text + "\n"
-    return text
-
-
-def parse_pdf(file_path):
-    """解析Pdf文件"""
-    reader = PdfReader(file_path)
-    text = ""
-    for page in reader.pages:
-        # 提取页面中的文字
-        text += page.extract_text()
+        text = text_extractor.extract_text(file_path, file_type)
     return text
