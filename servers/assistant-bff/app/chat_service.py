@@ -49,8 +49,9 @@ async def chat_with_react_as_function_call(
             post_think_tokens = []  # 缓冲 </think> 后的 token
             function_check_done = False  # 是否已经完成前三 token 的检查
             function_mode = False  # 标记是否进入函数调用处理模式
-            start_token = True
             sum_content = ""
+            start_token = True
+            insert_think_prefix = model_name != "deepseek-r1-distill-qwen-32b"
             async for chunk in response:
                 if not chunk.choices:
                     continue
@@ -61,14 +62,14 @@ async def chat_with_react_as_function_call(
                     sum_content = sum_content + content
                     if start_token:
                         start_token = False
-                        if not think_begin:
+                        if insert_think_prefix and not think_begin:
                             think_begin = True
                             temp = {"event": "message", "conversation_id": conversation_id, "answer": "<think>"}
                             yield f"data: {json.dumps(temp)}\n\n"
                         temp = {"event": "message", "conversation_id": conversation_id,
                                 "answer": "<step><summary>思考中</summary>"}
                         yield f"data: {json.dumps(temp)}\n\n"
-                        if "<think>" in content:
+                        if insert_think_prefix and "<think>" in content:
                             continue
                     if not think_tag_detected:
                         # 还未遇到 </think>，直接转发内容
