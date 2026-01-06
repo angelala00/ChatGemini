@@ -260,6 +260,7 @@ async def _chat_with_agent(
         model_name: str,
         file_ids: str = None
 ) -> AsyncGenerator[Dict[str, Any], None]:
+
     max_turns = 3
     # 获取当前对话历史（如果不存在则创建）
     messages = match_history.setdefault(conversation_id, [])
@@ -328,6 +329,9 @@ async def _chat_with_agent(
 async def chat_with_agent(query, conversation_id, system_prompt, model_name, gid, file_ids=None):
     first = True
     think_end = False
+    tools = get_tools(gid)
+    print(f"DEBUG:当前会话GID: {gid}")
+    print(f"DEBUG:传递给模型的工具数量: {len(tools) if tools else 0}")
     async for ev in _chat_with_agent(query, conversation_id, system_prompt, get_tools(gid), model_name, file_ids):
         # print(f"ev:{ev}")
         if first:
@@ -374,7 +378,6 @@ async def chat_with_gpt(
     file_ids,
     usage_tracker: Optional[UsageEventTracker] = None,
 ):
-    print(f"model_name===1:{model_name}")
 
     file_paths = get_file_paths(file_ids)
     has_file_ids = bool(file_ids)

@@ -1,6 +1,6 @@
 import os
 import uvicorn
-from .logger import gpt_logger
+from logger import gpt_logger
 from fastapi import FastAPI, Request
 from starlette.middleware.sessions import SessionMiddleware
 from app.auth.auth_routes import router as auth_router
@@ -11,6 +11,8 @@ from app.routes.metrics_routes import router as metrics_router
 from app.metrics import init_metrics_storage
 from fastapi.middleware.cors import CORSMiddleware
 from app.base_config import model_config
+import app.gpts.gpts_legal
+import app.utils.tools
 
 app = FastAPI()
 
@@ -33,6 +35,7 @@ app.include_router(chat_router, prefix="")
 app.include_router(file_router, prefix="")
 app.include_router(gpts_router, prefix="")
 app.include_router(metrics_router, prefix="")
+
 
 
 @app.on_event("startup")

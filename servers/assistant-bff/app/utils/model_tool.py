@@ -5,7 +5,7 @@ from typing import Union, List
 import imghdr
 
 from dotenv import load_dotenv
-
+from app.utils.case_rag import case_rag_engine
 
 _current_file = Path(__file__).resolve()
 _env_candidates = []
@@ -63,3 +63,14 @@ def is_image_only(file_paths: str):
             return False
     return True
 
+
+# def search_legal_cases(query: str):
+#     """
+#     Search for historical legal cases similar to the user's description.
+#     Useful when user asks about verdicts, sentencing, or legal analysis of a specific scenario.
+#
+#     Args:
+#         query: A description of the case scenario (e.g. "bank manager taking bribes").
+#     """
+#     print(f" [Tool Call] 正在检索相似案例: {query}")
+#     return case_rag_engine.search_similar_cases(query)

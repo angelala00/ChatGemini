@@ -17,7 +17,7 @@ from app.chat_service import (
 )
 from app.utils.model_tool import MODEL_NAME_THINKING
 from app.metrics.events import create_usage_event
-
+from app.utils.model_tool import MODEL_NAME_THINKING, MODEL_NAME_INSTRUCT
 
 def _invoke_chat_function(func, args, *, usage_tracker):
     if "usage_tracker" in inspect.signature(func).parameters:
@@ -99,24 +99,74 @@ async def chat_with_gpt_assistant(request: QueryRequest, user: dict = Depends(ge
         media_type="text/event-stream",
     )
 
-
+#
+# @router.post("/{gid}/chat-messages")
+# async def chat_with_gpts(request: QueryRequest, gid: str, user: dict = Depends(get_current_user)):
+#     gpt_logger.info(f"path=chat_with_gpts user={user['email']} at={time.strftime('%Y-%m-%d %H:%M:%S')}")
+#     if not request.conversation_id:
+#         request.conversation_id = await generate_conversation_id()
+#     cid = request.conversation_id
+#     if gid not in gpts:
+#         raise HTTPException(status.HTTP_404_NOT_FOUND, "gid not found")
+#     system_prompt = gpts[gid]["system_prompt"]
+#     model_name = MODEL_NAME_THINKING
+#     if "model_name" in gpts[gid]:
+#         model_name = gpts[gid]["model_name"]
+#     user_prompt = request.query
+#     upload_count = _count_file_ids(request.file_ids)
+#     if request.file_ids:
+#         user_prompt += await extract_text_from_file_ids(request.file_ids)
+#     # print(f"user_prompt:{user_prompt}")
+#     tracker = create_usage_event(
+#         user_id=user.get("sub", "unknown"),
+#         user_email=user.get("email"),
+#         conversation_id=cid,
+#         gid=gid,
+#         requested_model=model_name,
+#         upload_count=upload_count,
+#     )
+#     tracker.set_model(model_name)
+#     chat_function = chat_with_react_as_function_call
+#     if "chat_function" in gpts[gid]:
+#         chat_function = gpts[gid]["chat_function"]
+#     try:
+#         generator = _invoke_chat_function(
+#             chat_function,
+#             (user_prompt, cid, system_prompt, model_name, gid),
+#             usage_tracker=tracker,
+#         )
+#     except Exception as exc:
+#         tracker.finalize(status="error", latency_ms=0.0, error=str(exc))
+#         raise
+#     return StreamingResponse(
+#         _stream_with_metrics(generator, tracker),
+#         media_type="text/event-stream",
+#     )
 @router.post("/{gid}/chat-messages")
 async def chat_with_gpts(request: QueryRequest, gid: str, user: dict = Depends(get_current_user)):
     gpt_logger.info(f"path=chat_with_gpts user={user['email']} at={time.strftime('%Y-%m-%d %H:%M:%S')}")
+
     if not request.conversation_id:
         request.conversation_id = await generate_conversation_id()
     cid = request.conversation_id
+
     if gid not in gpts:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "gid not found")
+
     system_prompt = gpts[gid]["system_prompt"]
-    model_name = MODEL_NAME_THINKING
+
+    # 获取配置的模型名称
+    model_name = MODEL_NAME_THINKING  # 默认为思考模型
     if "model_name" in gpts[gid]:
         model_name = gpts[gid]["model_name"]
+
     user_prompt = request.query
     upload_count = _count_file_ids(request.file_ids)
+
+    # 如果是思考模型，且有文件，可能需要提取文本拼接到 prompt
     if request.file_ids:
         user_prompt += await extract_text_from_file_ids(request.file_ids)
-    # print(f"user_prompt:{user_prompt}")
+
     tracker = create_usage_event(
         user_id=user.get("sub", "unknown"),
         user_email=user.get("email"),
@@ -127,17 +177,24 @@ async def chat_with_gpts(request: QueryRequest, gid: str, user: dict = Depends(g
     )
     tracker.set_model(model_name)
     chat_function = chat_with_react_as_function_call
+    call_args = (user_prompt, cid, system_prompt, model_name, gid)
+    # 如果配置的是指令模型，强制切换到通用 Agent 模式
+    if model_name == MODEL_NAME_INSTRUCT:
+        chat_function = chat_with_gpt
+        call_args = (user_prompt, cid, system_prompt, model_name, gid, request.file_ids)
     if "chat_function" in gpts[gid]:
         chat_function = gpts[gid]["chat_function"]
+
     try:
         generator = _invoke_chat_function(
             chat_function,
-            (user_prompt, cid, system_prompt, model_name, gid),
+            call_args,  # 使用动态构建的参数元组
             usage_tracker=tracker,
         )
     except Exception as exc:
         tracker.finalize(status="error", latency_ms=0.0, error=str(exc))
         raise
+
     return StreamingResponse(
         _stream_with_metrics(generator, tracker),
         media_type="text/event-stream",
