@@ -565,6 +565,7 @@ const App = () => {
     }, [hasLogined]);
 
     // console.log("=====22222"+hasLogined)
+    const currentPath = location.hash.replace("#", "") || location.pathname;
     const gptsRoutes: Array<keyof typeof routes> = [
         "gpts",
         "my_gpts",
@@ -575,54 +576,27 @@ const App = () => {
             {
                 path: `${routes[key].prefix}${routes[key].uri}${routes[key].suffix}`,
             },
-            location.hash.replace("#", "") || location.pathname
+            currentPath
         )
+    );
+    const isPlatformPage = matchPath(
+        {
+            path: `${routes.platform.prefix}${routes.platform.uri}${routes.platform.suffix}`,
+        },
+        currentPath
     );
     return (
         <Container
             className={
                 !hasLogined ? "flex flex-col items-center justify-center min-h-screen p-10"
-                    : ""
+                    : isPlatformPage
+                        ? "min-h-screen w-full"
+                        : ""
             }
             toaster={true}
         >
             {hasLogined ? (
-                <>
-                    <Sidebar
-                        title={header}
-                        locales={locales}
-                        sessions={sessions}
-                        expand={sidebarExpand}
-                        currentLocale={currentLocale}
-                        onSwitchLocale={handleSwitchLocale}
-                        onExportSession={handleExportSession}
-                        onDeleteSession={handleDeleteSession}
-                        onRenameSession={handleRenameSession}
-                    />
-                    <Container
-                        ref={mainSectionRef}
-                        className={`min-w-full overflow-y-auto overflow-x-hidden flex flex-col h-screen ${isGptsPage ? "" : "justify-between "}
-                        ${
-                            !sidebarExpand ? "col-span-2" : ""
-                        }`}
-                    >
-                        {!isGptsPage && (
-                            <Header
-                                userName={userName}
-                                logoutIcon={!!passcodes.length}
-                                newChatUrl={routes.index.prefix}
-                                sidebarExpand={sidebarExpand}
-                                title={pageName}
-                                models={models}
-                                defaultModel={defaultModel}
-                                onPurgeSessions={handlePurgeSessions}
-                                onToggleSidebar={() =>
-                                    setSidebarExpand((state) => !state)
-                                }
-                                onLogout={handleLogout}
-                                onModelChange={handleModelChange}
-                            />
-                        )}
+                isPlatformPage ? (
                         <RouterView
                             routes={routes}
                             suspense={<Skeleton />}
@@ -634,36 +608,88 @@ const App = () => {
                                 logo: pageLogo,
                                 subTitle: pageSubTitle,
                                 samples: pageSamples,
+                                userName: userName,
                             }}
                         />
-                        {!isGptsPage && (
-                            <>
-                                <InputArea
-                                    minHeight={45}
-                                    ref={textAreaRef}
-                                    busy={ai.busy}
-                                    fileUploadEnabled={fileUploadEnabled}
-                                    allowedFileTypes={resolvedUploadCategories}
-                                    key={location.pathname}
-                                    onSubmit={handleSubmit}
-                                    onUpload={handleUpload}
-                                    onAbort={handleAbort}
+                ) : (
+                    <>
+                        <Sidebar
+                            title={header}
+                            locales={locales}
+                            sessions={sessions}
+                            expand={sidebarExpand}
+                            currentLocale={currentLocale}
+                            onSwitchLocale={handleSwitchLocale}
+                            onExportSession={handleExportSession}
+                            onDeleteSession={handleDeleteSession}
+                            onRenameSession={handleRenameSession}
+                        />
+                        <Container
+                            ref={mainSectionRef}
+                            className={`min-w-full overflow-y-auto overflow-x-hidden flex flex-col h-screen ${isGptsPage ? "" : "justify-between "}
+                            ${
+                                !sidebarExpand ? "col-span-2" : ""
+                            }`}
+                        >
+                            {!isGptsPage && (
+                                <Header
+                                    userName={userName}
+                                    logoutIcon={!!passcodes.length}
+                                    newChatUrl={routes.index.prefix}
+                                    sidebarExpand={sidebarExpand}
+                                    title={pageName}
+                                    models={models}
+                                    defaultModel={defaultModel}
+                                    onPurgeSessions={handlePurgeSessions}
+                                    onToggleSidebar={() =>
+                                        setSidebarExpand((state) => !state)
+                                    }
+                                    onLogout={handleLogout}
+                                    onModelChange={handleModelChange}
                                 />
-                                {!ai.busy && (
-                                    <PageScroller
-                                        thresholds={{
-                                            top: 200,
-                                            bottom: 200,
-                                            debounce: 50,
-                                        }}
-                                        monitorRef={mainSectionRef}
+                            )}
+                            <RouterView
+                                routes={routes}
+                                suspense={<Skeleton />}
+                                routerProps={{
+                                    refs: { mainSectionRef, textAreaRef },
+                                    onAbortUpdate: onAbortUpdate,
+                                    gid: gid,
+                                    title: pageTitle,
+                                    logo: pageLogo,
+                                    subTitle: pageSubTitle,
+                                    samples: pageSamples,
+                                    userName: userName,
+                                }}
+                            />
+                            {!isGptsPage && (
+                                <>
+                                    <InputArea
+                                        minHeight={45}
+                                        ref={textAreaRef}
+                                        busy={ai.busy}
+                                        fileUploadEnabled={fileUploadEnabled}
+                                        allowedFileTypes={resolvedUploadCategories}
+                                        key={location.pathname}
+                                        onSubmit={handleSubmit}
+                                        onUpload={handleUpload}
+                                        onAbort={handleAbort}
                                     />
-                                )}
-                            </>
-                        )}
-                        
-                    </Container>
-                </>
+                                    {!ai.busy && (
+                                        <PageScroller
+                                            thresholds={{
+                                                top: 200,
+                                                bottom: 200,
+                                                debounce: 50,
+                                            }}
+                                            monitorRef={mainSectionRef}
+                                        />
+                                    )}
+                                </>
+                            )}
+                        </Container>
+                    </>
+                )
             ) : (
                 <LoginByOAuth
                     title={header}

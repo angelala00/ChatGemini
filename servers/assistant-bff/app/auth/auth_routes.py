@@ -19,7 +19,7 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 @router.get("/status")
 async def status() -> dict[str, str]:
     """Return a mock login status."""
-    return {"name": "mock_user"}
+    return {"name": "user2-claude"}
 
 
 @router.get("/get-provider")
@@ -55,7 +55,7 @@ def get_current_user() -> dict[str, str]:
     setup.
     """
 
-    return {"sub": "mock_user", "email": "mock@example.com"}
+    return {"sub": "user2-claude@nu.com", "email": "user2-claude@nu.com"}
 
 
 __all__ = ["router", "get_current_user"]

@@ -7,6 +7,7 @@ const Chat = lazy(() => import("../views/Chat"));
 const Gpts = lazy(() => import("../views/Gpts"));
 const MyGpts = lazy(() => import("../views/MyGpts"));
 const CreateGpt = lazy(() => import("../views/CreateGpt"));
+const Platform = lazy(() => import("../views/Platform"));
 const NotFound = lazy(() => import("../views/NotFound"));
 
 export type RouterProp<T> = Record<string, T>;
@@ -19,6 +20,7 @@ export interface RouterComponentProps {
     logo?: string;
     subTitle?: string;
     samples?: string[];
+    userName?: string;
 }
 
 export interface RouterConfigRoutes {
@@ -45,6 +47,7 @@ export const routerConfig: RouterConfig = {
         gpts: { prefix: "/gpts", uri: "", suffix: "", element: Gpts },
         my_gpts: { prefix: "/my-gpts", uri: "", suffix: "", element: MyGpts },
         gpts_create: { prefix: "/gpts/create", uri: "", suffix: "", element: CreateGpt },
+        platform: { prefix: "/platform", uri: "", suffix: "", element: Platform },
         g_index: { prefix: "/g/:gid", uri: "", suffix: "", element: HomeGPTsAssistant },
         g_chat: { prefix: "/g/:gid/chat", uri: "/:id", suffix: "", element: Chat },
         default: { prefix: "*", uri: "", suffix: "", element: NotFound },
