@@ -63,6 +63,7 @@ const Platform = (props: RouterComponentProps) => {
     const [usageError, setUsageError] = useState<string | null>(null);
     const [usageRange, setUsageRange] = useState("7d");
     const [copiedToken, setCopiedToken] = useState<string | null>(null);
+    const usageRanking = usageData?.ranking ?? [];
 
     useEffect(() => {
         document.title = `Platform - ${site}`;
@@ -123,7 +124,17 @@ const Platform = (props: RouterComponentProps) => {
                 const payload = await platformUserGet<UserModelRankingResponse>("/usage", {
                     params: { range: usageRange, limit: 10 },
                 });
-                setUsageData(payload);
+                if (payload && Array.isArray(payload.ranking)) {
+                    setUsageData(payload);
+                } else {
+                    setUsageData({
+                        user: payload?.user ?? userName ?? "",
+                        range: payload?.range ?? usageRange,
+                        generatedAt: payload?.generatedAt ?? "",
+                        limit: payload?.limit ?? 0,
+                        ranking: [],
+                    });
+                }
             } catch (error) {
                 setUsageError(error instanceof Error ? error.message : "用量统计加载失败");
             } finally {
@@ -398,7 +409,7 @@ const Platform = (props: RouterComponentProps) => {
                                                     总请求
                                                 </div>
                                                 <div className="mt-2 text-2xl font-semibold text-slate-800">
-                                                    {usageData.ranking.reduce(
+                                                    {usageRanking.reduce(
                                                         (total, item) => total + item.requests,
                                                         0,
                                                     )}
@@ -409,7 +420,7 @@ const Platform = (props: RouterComponentProps) => {
                                                     总 Tokens
                                                 </div>
                                                 <div className="mt-2 text-2xl font-semibold text-slate-800">
-                                                    {usageData.ranking.reduce(
+                                                    {usageRanking.reduce(
                                                         (total, item) => total + item.tokens,
                                                         0,
                                                     )}
@@ -421,7 +432,7 @@ const Platform = (props: RouterComponentProps) => {
                                                 我的模型用量
                                             </div>
                                             <div className="mt-3 space-y-2">
-                                                {usageData.ranking.map((item) => (
+                                                {usageRanking.map((item) => (
                                                     <div
                                                         key={item.name}
                                                         className="flex items-center justify-between text-sm text-slate-600"
@@ -432,7 +443,7 @@ const Platform = (props: RouterComponentProps) => {
                                                         </span>
                                                     </div>
                                                 ))}
-                                                {!usageData.ranking.length && (
+                                                {!usageRanking.length && (
                                                     <div className="text-sm text-slate-400">
                                                         暂无用量数据
                                                     </div>
