@@ -45,6 +45,8 @@ interface UserModelRankingResponse {
 const Platform = (props: RouterComponentProps) => {
     const { site } = globalConfig.title;
     const userName = props.userName?.trim();
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY_MS = 1500;
     const [activeTopMenu, setActiveTopMenu] = useState<
         "console" | "market" | "docs"
     >("console");
@@ -55,12 +57,15 @@ const Platform = (props: RouterComponentProps) => {
     const [visibleModels, setVisibleModels] = useState<UserVisibilityResponse | null>(null);
     const [modelsLoading, setModelsLoading] = useState(false);
     const [modelsError, setModelsError] = useState<string | null>(null);
+    const [modelsRetryCount, setModelsRetryCount] = useState(0);
     const [apiKeyUser, setApiKeyUser] = useState<GatewayUserSummary | null>(null);
     const [apiKeyLoading, setApiKeyLoading] = useState(false);
     const [apiKeyError, setApiKeyError] = useState<string | null>(null);
+    const [apiKeyRetryCount, setApiKeyRetryCount] = useState(0);
     const [usageData, setUsageData] = useState<UserModelRankingResponse | null>(null);
     const [usageLoading, setUsageLoading] = useState(false);
     const [usageError, setUsageError] = useState<string | null>(null);
+    const [usageRetryCount, setUsageRetryCount] = useState(0);
     const [usageRange, setUsageRange] = useState("7d");
     const [copiedToken, setCopiedToken] = useState<string | null>(null);
     const usageRanking = usageData?.ranking ?? [];
@@ -70,7 +75,18 @@ const Platform = (props: RouterComponentProps) => {
     }, [site]);
 
     useEffect(() => {
+        if (activeTopMenu !== "market") {
+            return;
+        }
+        setModelsRetryCount(0);
+        setModelsError(null);
+    }, [activeTopMenu]);
+
+    useEffect(() => {
         if (activeTopMenu !== "market" || modelsLoading || visibleModels) {
+            return;
+        }
+        if (modelsRetryCount >= MAX_RETRIES) {
             return;
         }
         const loadModels = async () => {
@@ -79,14 +95,28 @@ const Platform = (props: RouterComponentProps) => {
             try {
                 const payload = await platformUserGet<UserVisibilityResponse>("/visibility");
                 setVisibleModels(payload);
+                setModelsRetryCount(0);
             } catch (error) {
                 setModelsError(error instanceof Error ? error.message : "模型列表加载失败");
+                setModelsRetryCount((retryCount) => retryCount + 1);
             } finally {
                 setModelsLoading(false);
             }
         };
-        loadModels();
-    }, [activeTopMenu, modelsLoading, visibleModels]);
+        const timer = window.setTimeout(
+            loadModels,
+            modelsRetryCount === 0 ? 0 : RETRY_DELAY_MS,
+        );
+        return () => window.clearTimeout(timer);
+    }, [activeTopMenu, modelsLoading, modelsRetryCount, visibleModels, MAX_RETRIES, RETRY_DELAY_MS]);
+
+    useEffect(() => {
+        if (activeTopMenu !== "console" || activeSideMenu !== "apikey") {
+            return;
+        }
+        setApiKeyRetryCount(0);
+        setApiKeyError(null);
+    }, [activeSideMenu, activeTopMenu]);
 
     useEffect(() => {
         if (activeTopMenu !== "console" || activeSideMenu !== "apikey") {
@@ -95,26 +125,54 @@ const Platform = (props: RouterComponentProps) => {
         if (apiKeyLoading || apiKeyUser) {
             return;
         }
+        if (apiKeyRetryCount >= MAX_RETRIES) {
+            return;
+        }
         const loadApiKeys = async () => {
             setApiKeyLoading(true);
             setApiKeyError(null);
             try {
                 const payload = await platformUserGet<GatewayUserSummary>("/api-keys");
                 setApiKeyUser(payload ?? null);
+                setApiKeyRetryCount(0);
             } catch (error) {
                 setApiKeyError(error instanceof Error ? error.message : "API Keys加载失败");
+                setApiKeyRetryCount((retryCount) => retryCount + 1);
             } finally {
                 setApiKeyLoading(false);
             }
         };
-        loadApiKeys();
-    }, [activeSideMenu, activeTopMenu, apiKeyLoading, apiKeyUser]);
+        const timer = window.setTimeout(
+            loadApiKeys,
+            apiKeyRetryCount === 0 ? 0 : RETRY_DELAY_MS,
+        );
+        return () => window.clearTimeout(timer);
+    }, [
+        activeSideMenu,
+        activeTopMenu,
+        apiKeyLoading,
+        apiKeyRetryCount,
+        apiKeyUser,
+        MAX_RETRIES,
+        RETRY_DELAY_MS,
+    ]);
+
+    useEffect(() => {
+        if (activeTopMenu !== "console" || activeSideMenu !== "usage") {
+            return;
+        }
+        setUsageRetryCount(0);
+        setUsageError(null);
+    }, [activeSideMenu, activeTopMenu, usageRange]);
 
     useEffect(() => {
         if (activeTopMenu !== "console" || activeSideMenu !== "usage") {
             return;
         }
         if (usageLoading || usageData) {
+            return;
+        }
+        if (usageRetryCount >= MAX_RETRIES) {
             return;
         }
         const loadUsage = async () => {
@@ -135,14 +193,29 @@ const Platform = (props: RouterComponentProps) => {
                         ranking: [],
                     });
                 }
+                setUsageRetryCount(0);
             } catch (error) {
                 setUsageError(error instanceof Error ? error.message : "用量统计加载失败");
+                setUsageRetryCount((retryCount) => retryCount + 1);
             } finally {
                 setUsageLoading(false);
             }
         };
-        loadUsage();
-    }, [activeSideMenu, activeTopMenu, usageLoading, usageRange]);
+        const timer = window.setTimeout(
+            loadUsage,
+            usageRetryCount === 0 ? 0 : RETRY_DELAY_MS,
+        );
+        return () => window.clearTimeout(timer);
+    }, [
+        activeSideMenu,
+        activeTopMenu,
+        usageLoading,
+        usageRange,
+        usageRetryCount,
+        usageData,
+        MAX_RETRIES,
+        RETRY_DELAY_MS,
+    ]);
 
     const maskToken = (token: string) => {
         if (!token) return "";
@@ -201,7 +274,7 @@ const Platform = (props: RouterComponentProps) => {
                 <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-4">
                     <div className="flex flex-wrap items-center gap-8">
                         <span className="text-lg font-semibold tracking-wide text-slate-900">
-                            我联大模型
+                            {site}
                         </span>
                         <nav className="flex items-center gap-3 text-sm font-medium text-slate-500">
                             <button
