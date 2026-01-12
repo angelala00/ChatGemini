@@ -114,7 +114,7 @@ const Platform = (props: RouterComponentProps) => {
         if (activeTopMenu !== "console" || activeSideMenu !== "usage") {
             return;
         }
-        if (usageLoading) {
+        if (usageLoading || usageData) {
             return;
         }
         const loadUsage = async () => {
@@ -148,6 +148,21 @@ const Platform = (props: RouterComponentProps) => {
         if (!token) return "";
         if (token.length <= 10) return token;
         return `${token.slice(0, 4)}...${token.slice(-4)}`;
+    };
+
+    const formatTokenCount = (value: number) => {
+        if (!Number.isFinite(value)) return "0";
+        const absValue = Math.abs(value);
+        if (absValue >= 1e9) {
+            return `${(value / 1e9).toFixed(absValue >= 1e10 ? 0 : 1)}B`;
+        }
+        if (absValue >= 1e6) {
+            return `${(value / 1e6).toFixed(absValue >= 1e7 ? 0 : 1)}M`;
+        }
+        if (absValue >= 1e3) {
+            return `${(value / 1e3).toFixed(absValue >= 1e4 ? 0 : 1)}K`;
+        }
+        return `${Math.round(value)}`;
     };
 
     const copyToken = async (token: string) => {
@@ -420,9 +435,11 @@ const Platform = (props: RouterComponentProps) => {
                                                     总 Tokens
                                                 </div>
                                                 <div className="mt-2 text-2xl font-semibold text-slate-800">
-                                                    {usageRanking.reduce(
-                                                        (total, item) => total + item.tokens,
-                                                        0,
+                                                    {formatTokenCount(
+                                                        usageRanking.reduce(
+                                                            (total, item) => total + item.tokens,
+                                                            0,
+                                                        ),
                                                     )}
                                                 </div>
                                             </div>
@@ -439,7 +456,7 @@ const Platform = (props: RouterComponentProps) => {
                                                     >
                                                         <span>{item.name}</span>
                                                         <span>
-                                                            {item.requests} 次 · {item.tokens} tokens
+                                                            {item.requests} 次 · {formatTokenCount(item.tokens)} tokens
                                                         </span>
                                                     </div>
                                                 ))}
