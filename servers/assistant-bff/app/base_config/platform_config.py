@@ -26,8 +26,7 @@ def _normalize_base_url(value: str) -> str:
 
 
 PORTAL_BASE_URL = _normalize_base_url(
-    os.getenv("PLATFORM_PORTAL_BASE_URL", "http://localhost:5015")
+    os.getenv("PLATFORM_PORTAL_BASE_URL", "http://localhost:5015/portal")
 )
 PORTAL_TOKEN = os.getenv("PLATFORM_PORTAL_TOKEN", "").strip()
 PORTAL_TIMEOUT_SECONDS = float(os.getenv("PLATFORM_PORTAL_TIMEOUT_SECONDS", "20"))
-

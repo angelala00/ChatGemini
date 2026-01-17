@@ -90,7 +90,7 @@ async def _fetch_json(request: Request, target_url: str) -> tuple[int, dict]:
 
 @router.api_route("/gateway/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
 async def proxy_gateway(request: Request, path: str) -> Response:
-    target_url = _build_target_url("/gateway", path)
+    target_url = _build_target_url("/gateway/admin", path)
     return await _proxy_request(request, target_url)
 
 
@@ -107,8 +107,8 @@ async def get_user_visibility(
 ) -> Response:
     user_email = _get_user_email(user)
     target_url = _build_target_url(
-        "/gateway",
-        f"/v1/admin/users/{user_email}/visibility",
+        "/gateway/admin",
+        f"/users/{user_email}/visibility",
     )
     return await _proxy_request(request, target_url)
 
@@ -132,7 +132,7 @@ async def get_user_api_keys(
     user: dict = Depends(get_current_user),
 ) -> JSONResponse:
     user_email = _get_user_email(user)
-    target_url = _build_target_url("/gateway", "/v1/admin/users")
+    target_url = _build_target_url("/gateway/admin", "/users")
     status_code, payload = await _fetch_json(request, target_url)
     if status_code >= 400:
         return JSONResponse(status_code=status_code, content=payload)
@@ -162,8 +162,8 @@ async def update_user_token_enabled(
 ) -> Response:
     _get_user_email(user)
     target_url = _build_target_url(
-        "/gateway",
-        f"/v1/admin/tokens/{token}/enabled",
+        "/gateway/admin",
+        f"/tokens/{token}/enabled",
     )
     return await _proxy_request(request, target_url)
 
