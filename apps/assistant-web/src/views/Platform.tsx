@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { globalConfig } from "../config/global";
 import { RouterComponentProps } from "../config/router";
-import { platformUserGet } from "../helpers/platformApi";
+import { platformUserGet, platformUserPatch } from "../helpers/platformApi";
 
 interface GatewayUserTokenInfo {
     token: string;
@@ -9,6 +10,12 @@ interface GatewayUserTokenInfo {
     roles: string[];
     isAdmin: boolean;
     restrictToConfiguredModels: boolean;
+}
+
+interface GatewayUserTokenUpdateResponse {
+    token: string;
+    label: string;
+    enabled: boolean;
 }
 
 interface GatewayUserSummary {
@@ -47,12 +54,25 @@ const Platform = (props: RouterComponentProps) => {
     const userName = props.userName?.trim();
     const MAX_RETRIES = 3;
     const RETRY_DELAY_MS = 1500;
+    const [searchParams, setSearchParams] = useSearchParams();
+    const parseTopMenu = (value?: string | null): "console" | "market" | "docs" => {
+        if (value === "market" || value === "docs" || value === "console") {
+            return value;
+        }
+        return "console";
+    };
+    const parseSideMenu = (value?: string | null): "apikey" | "usage" => {
+        if (value === "usage" || value === "apikey") {
+            return value;
+        }
+        return "apikey";
+    };
     const [activeTopMenu, setActiveTopMenu] = useState<
         "console" | "market" | "docs"
-    >("console");
+    >(() => parseTopMenu(searchParams.get("top")));
     const [activeSideMenu, setActiveSideMenu] = useState<
         "apikey" | "usage"
-    >("apikey");
+    >(() => parseSideMenu(searchParams.get("side")));
     const displayName = useMemo(() => userName || "User", [userName]);
     const [visibleModels, setVisibleModels] = useState<UserVisibilityResponse | null>(null);
     const [modelsLoading, setModelsLoading] = useState(false);
@@ -68,11 +88,31 @@ const Platform = (props: RouterComponentProps) => {
     const [usageRetryCount, setUsageRetryCount] = useState(0);
     const [usageRange, setUsageRange] = useState("7d");
     const [copiedToken, setCopiedToken] = useState<string | null>(null);
+    const [tokenUpdating, setTokenUpdating] = useState<Record<string, boolean>>({});
+    const [tokenActionError, setTokenActionError] = useState<string | null>(null);
     const usageRanking = usageData?.ranking ?? [];
 
     useEffect(() => {
         document.title = `Platform - ${site}`;
     }, [site]);
+
+    useEffect(() => {
+        const nextTopMenu = parseTopMenu(searchParams.get("top"));
+        const nextSideMenu = parseSideMenu(searchParams.get("side"));
+        if (nextTopMenu !== activeTopMenu) {
+            setActiveTopMenu(nextTopMenu);
+        }
+        if (nextSideMenu !== activeSideMenu) {
+            setActiveSideMenu(nextSideMenu);
+        }
+    }, [searchParams, activeTopMenu, activeSideMenu]);
+
+    const syncSearchParams = (topMenu: "console" | "market" | "docs", sideMenu: "apikey" | "usage") => {
+        const nextParams = new URLSearchParams(searchParams);
+        nextParams.set("top", topMenu);
+        nextParams.set("side", sideMenu);
+        setSearchParams(nextParams, { replace: true });
+    };
 
     useEffect(() => {
         if (activeTopMenu !== "market") {
@@ -223,6 +263,32 @@ const Platform = (props: RouterComponentProps) => {
         return `${token.slice(0, 4)}...${token.slice(-4)}`;
     };
 
+    const updateTokenEnabled = async (tokenValue: string, enabled: boolean) => {
+        setTokenActionError(null);
+        setTokenUpdating((prev) => ({ ...prev, [tokenValue]: true }));
+        try {
+            const payload = await platformUserPatch<GatewayUserTokenUpdateResponse>(
+                `/tokens/${encodeURIComponent(tokenValue)}/enabled`,
+                { json: { enabled } },
+            );
+            setApiKeyUser((prev) => {
+                if (!prev) return prev;
+                const nextTokens = prev.tokens.map((token) =>
+                    token.token === tokenValue
+                        ? { ...token, enabled: payload?.enabled ?? enabled }
+                        : token,
+                );
+                return { ...prev, tokens: nextTokens };
+            });
+        } catch (error) {
+            setTokenActionError(
+                error instanceof Error ? error.message : "Token 状态更新失败",
+            );
+        } finally {
+            setTokenUpdating((prev) => ({ ...prev, [tokenValue]: false }));
+        }
+    };
+
     const formatTokenCount = (value: number) => {
         if (!Number.isFinite(value)) return "0";
         const absValue = Math.abs(value);
@@ -279,7 +345,10 @@ const Platform = (props: RouterComponentProps) => {
                         <nav className="flex items-center gap-3 text-sm font-medium text-slate-500">
                             <button
                                 type="button"
-                                onClick={() => setActiveTopMenu("console")}
+                                onClick={() => {
+                                    setActiveTopMenu("console");
+                                    syncSearchParams("console", activeSideMenu);
+                                }}
                                 className={`rounded-full px-4 py-2 transition ${
                                     activeTopMenu === "console"
                                         ? "bg-blue-700 text-white"
@@ -290,7 +359,10 @@ const Platform = (props: RouterComponentProps) => {
                             </button>
                             <button
                                 type="button"
-                                onClick={() => setActiveTopMenu("market")}
+                                onClick={() => {
+                                    setActiveTopMenu("market");
+                                    syncSearchParams("market", activeSideMenu);
+                                }}
                                 className={`rounded-full px-4 py-2 transition ${
                                     activeTopMenu === "market"
                                         ? "bg-blue-700 text-white"
@@ -301,7 +373,10 @@ const Platform = (props: RouterComponentProps) => {
                             </button>
                             <button
                                 type="button"
-                                onClick={() => setActiveTopMenu("docs")}
+                                onClick={() => {
+                                    setActiveTopMenu("docs");
+                                    syncSearchParams("docs", activeSideMenu);
+                                }}
                                 className={`rounded-full px-4 py-2 transition ${
                                     activeTopMenu === "docs"
                                         ? "bg-blue-700 text-white"
@@ -337,7 +412,10 @@ const Platform = (props: RouterComponentProps) => {
                         <div className="mt-4 flex flex-col gap-2 text-sm font-medium text-slate-600">
                             <button
                                 type="button"
-                                onClick={() => setActiveSideMenu("apikey")}
+                                onClick={() => {
+                                    setActiveSideMenu("apikey");
+                                    syncSearchParams(activeTopMenu, "apikey");
+                                }}
                                 className={`rounded-xl px-3 py-2 text-left transition ${
                                     activeSideMenu === "apikey"
                                         ? "bg-blue-700 text-white"
@@ -348,7 +426,10 @@ const Platform = (props: RouterComponentProps) => {
                             </button>
                             <button
                                 type="button"
-                                onClick={() => setActiveSideMenu("usage")}
+                                onClick={() => {
+                                    setActiveSideMenu("usage");
+                                    syncSearchParams(activeTopMenu, "usage");
+                                }}
                                 className={`rounded-xl px-3 py-2 text-left transition ${
                                     activeSideMenu === "usage"
                                         ? "bg-blue-700 text-white"
@@ -412,6 +493,11 @@ const Platform = (props: RouterComponentProps) => {
                                         {apiKeyError}
                                     </div>
                                 )}
+                                {tokenActionError && (
+                                    <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-600">
+                                        {tokenActionError}
+                                    </div>
+                                )}
                                 {!apiKeyLoading && !apiKeyError && (
                                     <div className="overflow-hidden rounded-2xl border border-slate-200">
                                         <table className="w-full text-left text-sm">
@@ -423,45 +509,58 @@ const Platform = (props: RouterComponentProps) => {
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {apiKeyUser && (
-                                                    <tr
-                                                        key={apiKeyUser.name}
-                                                        className="border-t border-slate-100"
-                                                    >
-                                                        <td className="px-4 py-3 text-slate-600">
-                                                            <div className="flex flex-col gap-1">
-                                                                {apiKeyUser.tokens.map((token) => (
-                                                                    <div
-                                                                        key={token.token}
-                                                                        className="flex flex-wrap items-center gap-2"
-                                                                    >
-                                                                        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs">
-                                                                            {maskToken(token.token)}
-                                                                        </span>
+                                                {apiKeyUser?.tokens?.length ? (
+                                                    apiKeyUser.tokens.map((token) => {
+                                                        const isUpdating = tokenUpdating[token.token];
+                                                        return (
+                                                            <tr
+                                                                key={token.token}
+                                                                className="border-t border-slate-100"
+                                                            >
+                                                                <td className="px-4 py-3 text-slate-600">
+                                                                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs">
+                                                                        {maskToken(token.token)}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="px-4 py-3 text-slate-600">
+                                                                    {token.enabled ? "启用" : "禁用"}
+                                                                </td>
+                                                                <td className="px-4 py-3 text-slate-600">
+                                                                    <div className="flex flex-wrap items-center gap-2">
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => copyToken(token.token)}
+                                                                            className="rounded-full border border-slate-200 px-2 py-1 text-xs text-slate-600 transition hover:border-slate-300 hover:text-slate-800"
+                                                                        >
+                                                                            {copiedToken === token.token ? "已复制" : "复制"}
+                                                                        </button>
+                                                                        <button
+                                                                            type="button"
+                                                                            disabled={isUpdating}
+                                                                            onClick={() =>
+                                                                                updateTokenEnabled(
+                                                                                    token.token,
+                                                                                    !token.enabled,
+                                                                                )
+                                                                            }
+                                                                            className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                                                                                token.enabled
+                                                                                    ? "border border-rose-200 text-rose-600 hover:border-rose-300"
+                                                                                    : "border border-emerald-200 text-emerald-600 hover:border-emerald-300"
+                                                                            } ${isUpdating ? "opacity-60" : ""}`}
+                                                                        >
+                                                                            {isUpdating
+                                                                                ? "处理中"
+                                                                                : token.enabled
+                                                                                ? "停用"
+                                                                                : "启用"}
+                                                                        </button>
                                                                     </div>
-                                                                ))}
-                                                            </div>
-                                                        </td>
-                                                        <td className="px-4 py-3 text-slate-600">
-                                                            {apiKeyUser.enabled ? "启用" : "禁用"}
-                                                        </td>
-                                                        <td className="px-4 py-3 text-slate-600">
-                                                            <div className="flex flex-col gap-2">
-                                                                {apiKeyUser.tokens.map((token) => (
-                                                                    <button
-                                                                        key={`${token.token}-copy`}
-                                                                        type="button"
-                                                                        onClick={() => copyToken(token.token)}
-                                                                        className="w-fit self-start rounded-full border border-slate-200 px-2 py-1 text-xs text-slate-600 transition hover:border-slate-300 hover:text-slate-800"
-                                                                    >
-                                                                        {copiedToken === token.token ? "已复制" : "复制"}
-                                                                    </button>
-                                                                ))}
-                                                            </div>
-                                                        </td>
-                                                    </tr>
-                                                )}
-                                                {!apiKeyUser && (
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })
+                                                ) : (
                                                     <tr>
                                                         <td
                                                             colSpan={3}

@@ -154,4 +154,18 @@ async def get_user_api_keys(
     )
 
 
+@router.patch("/user/tokens/{token}/enabled")
+async def update_user_token_enabled(
+    request: Request,
+    token: str,
+    user: dict = Depends(get_current_user),
+) -> Response:
+    _get_user_email(user)
+    target_url = _build_target_url(
+        "/gateway",
+        f"/v1/admin/tokens/{token}/enabled",
+    )
+    return await _proxy_request(request, target_url)
+
+
 __all__ = ["router"]
