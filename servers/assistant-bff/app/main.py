@@ -48,6 +48,11 @@ async def root(request: Request):
     # print(f"User-Agent: {user_agent}")
     return {"message": "服务已启动"}
 
+
+@app.get("/healthz")
+async def healthcheck() -> dict[str, str]:
+    return {"status": "ok"}
+
 if __name__ == "__main__":
     gpt_logger.info("服务启动")
     uvicorn.run(app, host="0.0.0.0", port=5008)

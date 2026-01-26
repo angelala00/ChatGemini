@@ -1,26 +1,56 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Resolve the directory containing this script.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="${SCRIPT_DIR}/.venv"
+LOG_DIR="${SCRIPT_DIR}/logs"
+LOG_FILE="${LOG_DIR}/assistant-metrics-api.log"
+ENV_NAME=""
+INSTALL_DEPS=0
 
-# Create the virtual environment if it does not exist.
-# if [ ! -d "${VENV_DIR}" ]; then
-#   python3 -m venv "${VENV_DIR}"
-# fi
+for arg in "$@"; do
+  case "${arg}" in
+    --install) INSTALL_DEPS=1 ;;
+    *)
+      if [[ -z "${ENV_NAME}" ]]; then
+        ENV_NAME="${arg}"
+      else
+        echo "Unknown argument: ${arg}" >&2
+        exit 1
+      fi
+      ;;
+  esac
+done
 
-# shellcheck disable=SC1091
-source "${VENV_DIR}/bin/activate"
+if [[ -n "${ENV_NAME}" && -f "${SCRIPT_DIR}/.env.${ENV_NAME}" ]]; then
+  cp -f "${SCRIPT_DIR}/.env.${ENV_NAME}" "${SCRIPT_DIR}/.env"
+fi
 
-# Install dependencies before starting.
-# pip install --upgrade pip
-# pip install -r "${SCRIPT_DIR}/requirements.txt"
+if [[ -f "${SCRIPT_DIR}/.env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "${SCRIPT_DIR}/.env"
+  set +a
+fi
 
-# Launch the FastAPI service with Uvicorn in the background.
-LOG_FILE="${SCRIPT_DIR}/assistant-metrics-api.log"
-nohup uvicorn app.main:app --host 0.0.0.0 --port 5010 \
-  >"${LOG_FILE}" 2>&1 &
+if [[ ! -d "${VENV_DIR}" ]]; then
+  python3 -m venv "${VENV_DIR}"
+  # shellcheck disable=SC1091
+  source "${VENV_DIR}/bin/activate"
+  pip install --upgrade pip
+  pip install -r "${SCRIPT_DIR}/requirements.txt"
+else
+  # shellcheck disable=SC1091
+  source "${VENV_DIR}/bin/activate"
+  if [[ "${INSTALL_DEPS}" -eq 1 ]]; then
+    pip install -r "${SCRIPT_DIR}/requirements.txt"
+  fi
+fi
 
-PID=$!
-echo "assistant-metrics-api started in background (PID: ${PID}). Logs: ${LOG_FILE}"
+mkdir -p "${LOG_DIR}"
+nohup uvicorn app.main:app --host 0.0.0.0 --port "${ASSISTANT_METRICS_PORT:-5010}" \
+  > "${LOG_FILE}" 2>&1 &
+
+pid=$!
+echo "assistant-metrics-api started (PID ${pid})"
+echo "logs: ${LOG_FILE}"

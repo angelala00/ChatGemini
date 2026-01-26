@@ -37,3 +37,7 @@
 
 
 根据这个大屏数据接口，研究需要怎样读取日志来实现效果
+## 运行与配置
+
+- 启动脚本：`./start.sh`、`./status.sh`、`./stop.sh`
+- `ASSISTANT_METRICS_PORT`: 服务端口，默认 `5010`
