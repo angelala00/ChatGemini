@@ -5,6 +5,7 @@ import { globalConfig } from "../config/global";
 import { RouterComponentProps } from "../config/router";
 import { setTextAreaHeight } from "../helpers/setTextAreaHeight";
 import regulationIcon from "../assets/icons/zhidu_logo.svg";
+import { normalizeAssetPath } from "../helpers/normalizeAssetPath";
 
 
 const Home = (props: RouterComponentProps) => {
@@ -29,7 +30,7 @@ const Home = (props: RouterComponentProps) => {
     return (
         <Landing
             title={title?title:""}
-            logo={logo?logo:regulationIcon}
+            logo={logo ? normalizeAssetPath(logo) : regulationIcon}
             subTitle={subTitle?subTitle:""}
             samples={randomSamples}
             onSelectSample={handleSelectSample}

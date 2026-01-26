@@ -565,7 +565,7 @@ const App = () => {
     }, [hasLogined]);
 
     // console.log("=====22222"+hasLogined)
-    const currentPath = location.hash.replace("#", "") || location.pathname;
+    const currentPath = location.pathname;
     const gptsRoutes: Array<keyof typeof routes> = [
         "gpts",
         "my_gpts",

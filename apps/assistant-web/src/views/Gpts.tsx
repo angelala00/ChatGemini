@@ -7,6 +7,7 @@ import { getFullPath } from "../helpers/getDomainAndPath";
 import { onUpdate as updatePinnedGpts } from "../store/gpts";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { normalizeAssetPath } from "../helpers/normalizeAssetPath";
 
 interface GptsItem {
     readonly gid: string;
@@ -39,13 +40,13 @@ const Section = ({ title, items, onToggle }: SectionProps) => {
                     key={item.gid}
                     className="relative flex h-full flex-col rounded-xl border bg-gray-50 px-6 pt-6 pb-4 transition-colors hover:bg-gray-100 cursor-pointer"
                     onClick={() => {
-                        window.location.href = "#/g/"+item.gid;
+                        window.location.href = `/g/${item.gid}`;
                     }}
                 >
                     <div className="flex flex-1 gap-4">
                         <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-gray-200 text-2xl overflow-hidden">
                             {item.logo ? (
-                                <img src={item.logo} alt="" className="h-12 w-12" />
+                                <img src={normalizeAssetPath(item.logo)} alt="" className="h-12 w-12" />
                             ) : (
                                 item.name.slice(0, 1)
                             )}

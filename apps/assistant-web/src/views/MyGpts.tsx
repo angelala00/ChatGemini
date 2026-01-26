@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Container } from "../components/Container";
 import { getFullPath } from "../helpers/getDomainAndPath";
+import { normalizeAssetPath } from "../helpers/normalizeAssetPath";
 import editIcon from "../assets/icons/pen-to-square-solid.svg";
 import deleteIcon from "../assets/icons/trash-solid.svg";
 
@@ -52,7 +53,7 @@ const MyGpts = () => {
                                 <div className="flex items-center">
                                     <div className="mr-4 flex h-16 w-16 items-center justify-center rounded-lg bg-gray-200 text-2xl overflow-hidden">
                                         {item.logo ? (
-                                            <img src={item.logo} alt="" className="h-12 w-12" />
+                                            <img src={normalizeAssetPath(item.logo)} alt="" className="h-12 w-12" />
                                         ) : (
                                             item.name.slice(0, 1)
                                         )}

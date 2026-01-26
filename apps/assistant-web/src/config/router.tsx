@@ -40,7 +40,7 @@ type RouterConfig = {
 
 export const routerConfig: RouterConfig = {
     basename: "/",
-    mode: "hash",
+    mode: "history",
     routes: {
         index: { prefix: "/", uri: "", suffix: "", element: Home },
         chat: { prefix: "/chat", uri: "/:id", suffix: "", element: Chat },

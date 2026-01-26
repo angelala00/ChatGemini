@@ -19,6 +19,7 @@ import { onUpdate as updatePinnedGpts } from "../store/gpts";
 import { handleRequest } from "../helpers/handleRequest";
 import { getFullPath } from "../helpers/getDomainAndPath";
 import { globalConfig } from "../config/global";
+import { normalizeAssetPath } from "../helpers/normalizeAssetPath";
 
 interface SidebarProps {
     readonly title: string;
@@ -181,7 +182,10 @@ export const Sidebar = (props: SidebarProps) => {
                             navigate("/g/"+gid)
                         }}
                     >
-                        <img src={logo ? logo : regulationIcon} className="w-9 h-9 object-contain"/>
+                        <img
+                            src={logo ? normalizeAssetPath(logo) : regulationIcon}
+                            className="w-9 h-9 object-contain"
+                        />
                         {name}
                     </div>
                 )
