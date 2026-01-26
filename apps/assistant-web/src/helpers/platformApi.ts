@@ -93,5 +93,8 @@ export const platformMetricsGet = <T>(path: string, options?: RequestOptions) =>
 export const platformUserGet = <T>(path: string, options?: RequestOptions) =>
     request<T>(userBase, path, options);
 
+export const platformUserPost = <T>(path: string, options?: RequestOptions) =>
+    request<T>(userBase, path, { ...options, method: "POST" });
+
 export const platformUserPatch = <T>(path: string, options?: RequestOptions) =>
     request<T>(userBase, path, { ...options, method: "PATCH" });

@@ -25,8 +25,18 @@ def _normalize_base_url(value: str) -> str:
     return trimmed[:-1] if trimmed.endswith("/") else trimmed
 
 
+def _parse_bool(value: str | None, default: bool = True) -> bool:
+    if not isinstance(value, str):
+        return default
+    normalized = value.strip().lower()
+    if not normalized:
+        return default
+    return normalized not in {"0", "false", "no", "off"}
+
+
 PORTAL_BASE_URL = _normalize_base_url(
     os.getenv("PLATFORM_PORTAL_BASE_URL", "http://localhost:5015/portal")
 )
 PORTAL_TOKEN = os.getenv("PLATFORM_PORTAL_TOKEN", "").strip()
 PORTAL_TIMEOUT_SECONDS = float(os.getenv("PLATFORM_PORTAL_TIMEOUT_SECONDS", "20"))
+PORTAL_TRUST_ENV = _parse_bool(os.getenv("PLATFORM_TRUST_ENV", "true"), True)

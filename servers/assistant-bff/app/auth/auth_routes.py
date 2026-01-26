@@ -55,7 +55,7 @@ def get_current_user() -> dict[str, str]:
     setup.
     """
 
-    return {"sub": "user2-claude@nu.com", "email": "user2-claude@nu.com"}
+    return {"sub": "user2-claude@nu.com", "email": "user2-claude@nu.com", "group": "CN=jc,OU=平台组,OU=平台运维,OU=nuuser,DC=nu,DC=com"}
 
 
 __all__ = ["router", "get_current_user"]

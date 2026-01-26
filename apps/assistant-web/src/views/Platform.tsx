@@ -1,20 +1,19 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { globalConfig } from "../config/global";
 import { RouterComponentProps } from "../config/router";
-import { platformUserGet, platformUserPatch } from "../helpers/platformApi";
+import { platformUserGet, platformUserPatch, platformUserPost } from "../helpers/platformApi";
 
 interface GatewayUserTokenInfo {
     token: string;
     enabled: boolean;
-    roles: string[];
-    isAdmin: boolean;
-    restrictToConfiguredModels: boolean;
+    ownerType: "user" | "project";
+    projectId?: string;
+    projectName?: string;
 }
 
 interface GatewayUserTokenUpdateResponse {
     token: string;
-    label: string;
     enabled: boolean;
 }
 
@@ -24,6 +23,15 @@ interface GatewayUserSummary {
     isAdmin: boolean;
     tokenCount: number;
     tokens: GatewayUserTokenInfo[];
+    projects?: Array<{
+        id: string;
+        name: string;
+        department?: string;
+    }>;
+    limits?: {
+        userMax: number;
+        projectMax: number;
+    };
 }
 
 interface RankingEntry {
@@ -82,6 +90,9 @@ const Platform = (props: RouterComponentProps) => {
     const [apiKeyLoading, setApiKeyLoading] = useState(false);
     const [apiKeyError, setApiKeyError] = useState<string | null>(null);
     const [apiKeyRetryCount, setApiKeyRetryCount] = useState(0);
+    const [createTokenLoading, setCreateTokenLoading] = useState<Record<string, boolean>>({});
+    const [createTokenError, setCreateTokenError] = useState<string | null>(null);
+    const [createdTokenValue, setCreatedTokenValue] = useState<string | null>(null);
     const [usageData, setUsageData] = useState<UserModelRankingResponse | null>(null);
     const [usageLoading, setUsageLoading] = useState(false);
     const [usageError, setUsageError] = useState<string | null>(null);
@@ -91,6 +102,22 @@ const Platform = (props: RouterComponentProps) => {
     const [tokenUpdating, setTokenUpdating] = useState<Record<string, boolean>>({});
     const [tokenActionError, setTokenActionError] = useState<string | null>(null);
     const usageRanking = usageData?.ranking ?? [];
+    const ownedProjects = apiKeyUser?.projects ?? [];
+    const userTokenLimit = apiKeyUser?.limits?.userMax ?? 0;
+    const projectTokenLimit = apiKeyUser?.limits?.projectMax ?? 0;
+    const userTokenCount = useMemo(
+        () => (apiKeyUser?.tokens ?? []).filter((token) => token.ownerType === "user").length,
+        [apiKeyUser?.tokens],
+    );
+    const projectTokenCounts = useMemo(() => {
+        const counts: Record<string, number> = {};
+        for (const token of apiKeyUser?.tokens ?? []) {
+            if (token.ownerType !== "project" || !token.projectId) continue;
+            counts[token.projectId] = (counts[token.projectId] ?? 0) + 1;
+        }
+        return counts;
+    }, [apiKeyUser?.tokens]);
+    const userLimitReached = userTokenLimit > 0 && userTokenCount >= userTokenLimit;
 
     useEffect(() => {
         document.title = `Platform - ${site}`;
@@ -156,7 +183,23 @@ const Platform = (props: RouterComponentProps) => {
         }
         setApiKeyRetryCount(0);
         setApiKeyError(null);
+        setCreatedTokenValue(null);
     }, [activeSideMenu, activeTopMenu]);
+
+    const loadApiKeys = useCallback(async () => {
+        setApiKeyLoading(true);
+        setApiKeyError(null);
+        try {
+            const payload = await platformUserGet<GatewayUserSummary>("/api-keys");
+            setApiKeyUser(payload ?? null);
+            setApiKeyRetryCount(0);
+        } catch (error) {
+            setApiKeyError(error instanceof Error ? error.message : "API Keys加载失败");
+            setApiKeyRetryCount((retryCount) => retryCount + 1);
+        } finally {
+            setApiKeyLoading(false);
+        }
+    }, []);
 
     useEffect(() => {
         if (activeTopMenu !== "console" || activeSideMenu !== "apikey") {
@@ -168,20 +211,6 @@ const Platform = (props: RouterComponentProps) => {
         if (apiKeyRetryCount >= MAX_RETRIES) {
             return;
         }
-        const loadApiKeys = async () => {
-            setApiKeyLoading(true);
-            setApiKeyError(null);
-            try {
-                const payload = await platformUserGet<GatewayUserSummary>("/api-keys");
-                setApiKeyUser(payload ?? null);
-                setApiKeyRetryCount(0);
-            } catch (error) {
-                setApiKeyError(error instanceof Error ? error.message : "API Keys加载失败");
-                setApiKeyRetryCount((retryCount) => retryCount + 1);
-            } finally {
-                setApiKeyLoading(false);
-            }
-        };
         const timer = window.setTimeout(
             loadApiKeys,
             apiKeyRetryCount === 0 ? 0 : RETRY_DELAY_MS,
@@ -193,6 +222,7 @@ const Platform = (props: RouterComponentProps) => {
         apiKeyLoading,
         apiKeyRetryCount,
         apiKeyUser,
+        loadApiKeys,
         MAX_RETRIES,
         RETRY_DELAY_MS,
     ]);
@@ -286,6 +316,52 @@ const Platform = (props: RouterComponentProps) => {
             );
         } finally {
             setTokenUpdating((prev) => ({ ...prev, [tokenValue]: false }));
+        }
+    };
+
+    const createToken = async (ownerType: "user" | "project", projectId?: string) => {
+        setCreateTokenError(null);
+        setCreatedTokenValue(null);
+        const createKey = ownerType === "project" ? `project:${projectId ?? ""}` : "user";
+        if (createTokenLoading[createKey]) {
+            return;
+        }
+
+        if (ownerType === "project") {
+            if (!projectId) {
+                setCreateTokenError("请选择项目");
+                return;
+            }
+            const activeProjectTokenCount = projectTokenCounts[projectId] ?? 0;
+            if (projectTokenLimit > 0 && activeProjectTokenCount >= projectTokenLimit) {
+                setCreateTokenError("项目 API Key 已达上限");
+                return;
+            }
+        } else if (userLimitReached) {
+            setCreateTokenError("个人 API Key 已达上限");
+            return;
+        }
+
+        setCreateTokenLoading((prev) => ({ ...prev, [createKey]: true }));
+        try {
+            const payload =
+                ownerType === "project"
+                    ? { ownerType: "project", projectId }
+                    : { ownerType: "user" };
+            const response = await platformUserPost<{ token?: string }>(
+                "/tokens",
+                { json: payload },
+            );
+            if (response?.token) {
+                setCreatedTokenValue(response.token);
+            }
+            await loadApiKeys();
+        } catch (error) {
+            setCreateTokenError(
+                error instanceof Error ? error.message : "创建 API Key 失败",
+            );
+        } finally {
+            setCreateTokenLoading((prev) => ({ ...prev, [createKey]: false }));
         }
     };
 
@@ -474,14 +550,87 @@ const Platform = (props: RouterComponentProps) => {
                         )}
                         {activeSideMenu === "apikey" && (
                             <div className="mt-6 flex flex-col gap-4">
-                                <div className="flex flex-wrap items-center justify-between gap-3">
-                                    <button
-                                        type="button"
-                                        disabled
-                                        className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-400 opacity-70"
-                                    >
-                                        新建 API Key（待接入）
-                                    </button>
+                                <div className="flex flex-col gap-4">
+                                    {ownedProjects.length > 0 && (
+                                        <div className="grid gap-3">
+                                            {ownedProjects.map((project) => {
+                                                const projectKey = `project:${project.id}`;
+                                                const projectCount =
+                                                    projectTokenCounts[project.id] ?? 0;
+                                                const projectLimitReached =
+                                                    projectTokenLimit > 0 &&
+                                                    projectCount >= projectTokenLimit;
+                                                return (
+                                                    <div
+                                                        key={project.id}
+                                                        className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                                                    >
+                                                        <div className="flex flex-wrap items-center justify-between gap-3">
+                                                            <div>
+                                                                <div className="text-sm font-semibold text-slate-800">
+                                                                    {project.name}
+                                                                </div>
+                                                                <div className="text-xs text-slate-500">
+                                                                    项目 API Key: {projectCount}/
+                                                                    {projectTokenLimit || "-"}
+                                                                </div>
+                                                            </div>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() =>
+                                                                    createToken("project", project.id)
+                                                                }
+                                                                disabled={
+                                                                    createTokenLoading[projectKey] ||
+                                                                    projectLimitReached
+                                                                }
+                                                                className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                                                                    createTokenLoading[projectKey] ||
+                                                                    projectLimitReached
+                                                                        ? "border border-slate-200 text-slate-400"
+                                                                        : "border border-blue-600 text-blue-700 hover:bg-blue-50"
+                                                                }`}
+                                                            >
+                                                                {createTokenLoading[projectKey]
+                                                                    ? "创建中..."
+                                                                    : "新建项目 API Key"}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                                        <div className="flex flex-wrap items-center justify-between gap-3">
+                                            <div>
+                                                <div className="text-sm font-semibold text-slate-800">
+                                                    {ownedProjects.length > 0 ? "个人 API Key" : "API Key"}
+                                                </div>
+                                                <div className="text-xs text-slate-500">
+                                                    已创建 {userTokenCount}/{userTokenLimit || "-"}
+                                                </div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => createToken("user")}
+                                                disabled={
+                                                    createTokenLoading.user || userLimitReached
+                                                }
+                                                className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                                                    createTokenLoading.user || userLimitReached
+                                                        ? "border border-slate-200 text-slate-400"
+                                                        : "border border-blue-600 text-blue-700 hover:bg-blue-50"
+                                                }`}
+                                            >
+                                                {createTokenLoading.user
+                                                    ? "创建中..."
+                                                    : ownedProjects.length > 0
+                                                    ? "新建个人 API Key"
+                                                    : "新建 API Key"}
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
                                 {apiKeyLoading && (
                                     <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
@@ -498,12 +647,37 @@ const Platform = (props: RouterComponentProps) => {
                                         {tokenActionError}
                                     </div>
                                 )}
+                                {createTokenError && (
+                                    <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-600">
+                                        {createTokenError}
+                                    </div>
+                                )}
+                                {createdTokenValue && (
+                                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
+                                        <div className="flex flex-wrap items-center justify-between gap-3">
+                                            <span>新建 API Key</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => copyToken(createdTokenValue)}
+                                                className="rounded-full border border-emerald-200 px-3 py-1 text-xs text-emerald-700 transition hover:border-emerald-300"
+                                            >
+                                                {copiedToken === createdTokenValue ? "已复制" : "复制"}
+                                            </button>
+                                        </div>
+                                        <div className="mt-2 rounded-lg bg-white px-3 py-2 font-mono text-xs text-emerald-800">
+                                            {createdTokenValue}
+                                        </div>
+                                    </div>
+                                )}
                                 {!apiKeyLoading && !apiKeyError && (
                                     <div className="overflow-hidden rounded-2xl border border-slate-200">
                                         <table className="w-full text-left text-sm">
                                             <thead className="bg-slate-50 text-xs uppercase tracking-widest text-slate-400">
                                                 <tr>
                                                     <th className="px-4 py-3">API Keys</th>
+                                                    {ownedProjects.length > 0 && (
+                                                        <th className="px-4 py-3">归属</th>
+                                                    )}
                                                     <th className="px-4 py-3">状态</th>
                                                     <th className="px-4 py-3">操作</th>
                                                 </tr>
@@ -522,6 +696,13 @@ const Platform = (props: RouterComponentProps) => {
                                                                         {maskToken(token.token)}
                                                                     </span>
                                                                 </td>
+                                                                {ownedProjects.length > 0 && (
+                                                                    <td className="px-4 py-3 text-slate-600">
+                                                                        {token.ownerType === "project"
+                                                                            ? `项目 · ${token.projectName ?? token.projectId ?? ""}`
+                                                                            : "个人"}
+                                                                    </td>
+                                                                )}
                                                                 <td className="px-4 py-3 text-slate-600">
                                                                     {token.enabled ? "启用" : "禁用"}
                                                                 </td>
@@ -563,7 +744,7 @@ const Platform = (props: RouterComponentProps) => {
                                                 ) : (
                                                     <tr>
                                                         <td
-                                                            colSpan={3}
+                                                            colSpan={ownedProjects.length > 0 ? 4 : 3}
                                                             className="px-4 py-6 text-center text-sm text-slate-400"
                                                         >
                                                             暂无 API Keys 数据
@@ -690,8 +871,11 @@ const Platform = (props: RouterComponentProps) => {
                     <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
                         <h2 className="text-xl font-semibold">API文档</h2>
                         <p className="mt-3 text-sm text-slate-600">
-                            这里可以接入你的 API 文档内容或跳转链接。
+                            API 文档正在完善中，当前页面暂未开放。
                         </p>
+                        <div className="mt-4 text-sm text-slate-500">
+                            你可以先参考公司内的接口说明或联系管理员获取最新文档。
+                        </div>
                     </div>
                 </div>
             )}
