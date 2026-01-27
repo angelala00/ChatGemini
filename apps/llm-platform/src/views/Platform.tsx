@@ -722,7 +722,7 @@ const Platform = (props: RouterComponentProps) => {
                                                 className={`rounded-full px-4 py-2 text-sm font-medium transition ${
                                                     createTokenLoading.user || userLimitReached
                                                         ? "bg-slate-100 text-slate-400"
-                                                        : "bg-slate-900 text-white hover:bg-slate-800"
+                                                        : "bg-blue-800 text-white hover:bg-blue-700"
                                                 }`}
                                             >
                                                 {createTokenLoading.user
@@ -755,7 +755,7 @@ const Platform = (props: RouterComponentProps) => {
                                                             (projectTokenLimit > 0 &&
                                                                 (projectTokenCounts[project.id] ?? 0) >= projectTokenLimit)
                                                                 ? "bg-slate-100 text-slate-400"
-                                                                : "bg-slate-900 text-white hover:bg-slate-800"
+                                                                : "bg-blue-800 text-white hover:bg-blue-700"
                                                         }`}
                                                         onClick={() => createToken("project", project.id)}
                                                         disabled={
