@@ -10,7 +10,11 @@ interface LoginByOAuthProps {
 
 export const LoginByOAuth = (props: LoginByOAuthProps) => {
     const { logo, title, isNoAuthorized, onLogined } = props;
+    const mockLoginEnabled = import.meta.env.VITE_MOCK_LOGIN === "true";
     const checkHasLoggedIn = useCallback(async () => {
+        if (mockLoginEnabled) {
+            return "Mock User";
+        }
         const resp = await fetch(
             getFullPath(`/api/auth/status?w=${window.innerWidth}&h=${window.innerHeight}`),
             {

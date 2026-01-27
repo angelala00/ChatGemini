@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { globalConfig } from "../config/global";
 import { RouterComponentProps } from "../config/router";
 import {
@@ -62,11 +62,14 @@ interface UserModelRankingResponse {
 }
 
 const Platform = (props: RouterComponentProps) => {
-    const { site } = globalConfig.title;
+    const { site, header } = globalConfig.title;
+    const gatewayBaseUrl =
+        globalConfig.gateway.baseUrl || "请配置 REACT_APP_GATEWAY_BASE_URL";
     const userName = props.userName?.trim();
     const MAX_RETRIES = 3;
     const RETRY_DELAY_MS = 1500;
-    const [searchParams, setSearchParams] = useSearchParams();
+    const location = useLocation();
+    const navigate = useNavigate();
     const parseTopMenu = (value?: string | null): "console" | "market" | "docs" => {
         if (value === "market" || value === "docs" || value === "console") {
             return value;
@@ -79,12 +82,23 @@ const Platform = (props: RouterComponentProps) => {
         }
         return "apikey";
     };
+    const getMenuStateFromPath = (pathname: string) => {
+        const cleanedPath = pathname.replace(/^\/+|\/+$/g, "");
+        const parts = cleanedPath ? cleanedPath.split("/") : [];
+        const topMenu = parseTopMenu(parts[0]);
+        const sideMenu = parseSideMenu(parts[1]);
+        return {
+            topMenu,
+            sideMenu: topMenu === "console" ? sideMenu : "apikey",
+        };
+    };
+    const initialMenuState = getMenuStateFromPath(location.pathname);
     const [activeTopMenu, setActiveTopMenu] = useState<
         "console" | "market" | "docs"
-    >(() => parseTopMenu(searchParams.get("top")));
+    >(() => initialMenuState.topMenu);
     const [activeSideMenu, setActiveSideMenu] = useState<
         "apikey" | "usage"
-    >(() => parseSideMenu(searchParams.get("side")));
+    >(() => initialMenuState.sideMenu);
     const displayName = useMemo(() => userName || "User", [userName]);
     const [visibleModels, setVisibleModels] = useState<UserVisibilityResponse | null>(null);
     const [modelsLoading, setModelsLoading] = useState(false);
@@ -105,6 +119,140 @@ const Platform = (props: RouterComponentProps) => {
     const [copiedToken, setCopiedToken] = useState<string | null>(null);
     const [tokenUpdating, setTokenUpdating] = useState<Record<string, boolean>>({});
     const [tokenActionError, setTokenActionError] = useState<string | null>(null);
+    const apiDocs = [
+        {
+            title: "GET /v1/models",
+            summary: "获取可用模型列表（OpenAI 兼容）。",
+            request: `curl -X GET \\
+  -H "Authorization: Bearer $API_KEY" \\
+  https://{HOST}/v1/models`,
+            response: `{
+  "object": "list",
+  "data": [
+    {
+      "id": "gpt-4o-mini",
+      "object": "model",
+      "created": 0,
+      "owned_by": "gateway"
+    }
+  ]
+}`,
+            notes: [
+                "需要 Authorization Bearer Token。",
+                "返回字段遵循 OpenAI 模型列表结构，网关会基于 token 权限过滤。",
+            ],
+        },
+        {
+            title: "POST /v1/chat/completions",
+            summary: "聊天对话（OpenAI 兼容，支持 stream、tools）。",
+            request: `curl -X POST \\
+  -H "Authorization: Bearer $API_KEY" \\
+  -H "Content-Type: application/json" \\
+  https://{HOST}/v1/chat/completions \\
+  -d '{
+    "model": "gpt-4o-mini",
+    "messages": [
+      {"role": "system", "content": "You are a helpful assistant."},
+      {"role": "user", "content": "Say hi"}
+    ],
+    "temperature": 0.7,
+    "stream": false
+  }'`,
+            response: `{
+  "id": "chatcmpl_xxx",
+  "object": "chat.completion",
+  "choices": [
+    {
+      "index": 0,
+      "message": {"role": "assistant", "content": "Hi!"},
+      "finish_reason": "stop"
+    }
+  ],
+  "model": "gpt-4o-mini"
+}`,
+            notes: [
+                "Header 可选：`x-tool-mode` 支持 `native`/`prompt`/`auto`。",
+                "stream=true 时返回 SSE（text/event-stream）。",
+            ],
+        },
+        {
+            title: "POST /v1/embeddings",
+            summary: "文本向量（OpenAI 兼容请求体）。",
+            request: `curl -X POST \\
+  -H "Authorization: Bearer $API_KEY" \\
+  -H "Content-Type: application/json" \\
+  https://{HOST}/v1/embeddings \\
+  -d '{
+    "model": "text-embedding-3-large",
+    "input": "hello world"
+  }'`,
+            response: `{
+  "object": "list",
+  "data": [
+    {"object": "embedding", "index": 0, "embedding": [0.01, 0.02]}
+  ],
+  "model": "text-embedding-3-large"
+}`,
+            notes: [
+                "input 支持字符串或数组。",
+                "网关会将 model 名称映射到后端实际模型。",
+            ],
+        },
+        {
+            title: "POST /v1/rerank",
+            summary: "相关性重排（Rerank 请求体）。",
+            request: `curl -X POST \\
+  -H "Authorization: Bearer $API_KEY" \\
+  -H "Content-Type: application/json" \\
+  https://{HOST}/v1/rerank \\
+  -d '{
+    "model": "rerank-multilingual-v3.0",
+    "query": "how to reset password",
+    "documents": [
+      "Reset your password in settings",
+      "Pricing and billing guide"
+    ],
+    "top_n": 2
+  }'`,
+            response: `{
+  "results": [
+    {"index": 0, "relevance_score": 0.92},
+    {"index": 1, "relevance_score": 0.12}
+  ],
+  "model": "rerank-multilingual-v3.0"
+}`,
+            notes: [
+                "documents 通常为字符串数组（部分后端也接受对象数组）。",
+                "返回 results 按相关性排序。",
+            ],
+        },
+        {
+            title: "POST /v1/messages",
+            summary: "Claude Messages 兼容接口（自动转 OpenAI 再返回 Claude 结构）。",
+            request: `curl -X POST \\
+  -H "Authorization: Bearer $API_KEY" \\
+  -H "Content-Type: application/json" \\
+  https://{HOST}/v1/messages \\
+  -d '{
+    "model": "claude-3-5-sonnet",
+    "max_tokens": 256,
+    "messages": [
+      {"role": "user", "content": "Hello from Claude format"}
+    ]
+  }'`,
+            response: `{
+  "id": "msg_xxx",
+  "type": "message",
+  "role": "assistant",
+  "content": [{"type": "text", "text": "Hello!"}],
+  "model": "claude-3-5-sonnet"
+}`,
+            notes: [
+                "支持 stream，返回 SSE（text/event-stream）。",
+                "metadata 字段会被忽略。",
+            ],
+        },
+    ];
     const usageRanking = usageData?.ranking ?? [];
     const ownedProjects = apiKeyUser?.projects ?? [];
     const userTokenLimit = apiKeyUser?.limits?.userMax ?? 0;
@@ -128,24 +276,36 @@ const Platform = (props: RouterComponentProps) => {
     }, [site]);
 
     useEffect(() => {
-        const nextTopMenu = parseTopMenu(searchParams.get("top"));
-        const nextSideMenu = parseSideMenu(searchParams.get("side"));
+        const legacyParams = new URLSearchParams(location.search);
+        const legacyTop = legacyParams.get("top");
+        const legacySide = legacyParams.get("side");
+        if (legacyTop || legacySide) {
+            const legacyTopMenu = parseTopMenu(legacyTop);
+            const legacySideMenu = parseSideMenu(legacySide);
+            const legacyPath =
+                legacyTopMenu === "console"
+                    ? `/${legacyTopMenu}/${legacySideMenu}`
+                    : `/${legacyTopMenu}`;
+            navigate(legacyPath, { replace: true });
+            return;
+        }
+        const { topMenu: nextTopMenu, sideMenu: nextSideMenu } = getMenuStateFromPath(
+            location.pathname,
+        );
         if (nextTopMenu !== activeTopMenu) {
             setActiveTopMenu(nextTopMenu);
         }
         if (nextSideMenu !== activeSideMenu) {
             setActiveSideMenu(nextSideMenu);
         }
-    }, [searchParams, activeTopMenu, activeSideMenu]);
+    }, [location.pathname, location.search, activeTopMenu, activeSideMenu, navigate]);
 
-    const syncSearchParams = (
+    const syncPath = (
         topMenu: "console" | "market" | "docs",
         sideMenu: "apikey" | "usage",
     ) => {
-        const nextParams = new URLSearchParams(searchParams);
-        nextParams.set("top", topMenu);
-        nextParams.set("side", sideMenu);
-        setSearchParams(nextParams, { replace: true });
+        const nextPath = topMenu === "console" ? `/${topMenu}/${sideMenu}` : `/${topMenu}`;
+        navigate(nextPath, { replace: true });
     };
 
     useEffect(() => {
@@ -295,7 +455,7 @@ const Platform = (props: RouterComponentProps) => {
         setCreateTokenError(null);
         try {
             const payload = await platformUserPost<{ token?: string }>(
-                "/api-keys",
+                "/tokens",
                 ownerType === "project" ? { json: { ownerType, projectId } } : { json: { ownerType } },
             );
             await loadApiKeys();
@@ -315,7 +475,7 @@ const Platform = (props: RouterComponentProps) => {
         setTokenActionError(null);
         try {
             const payload = await platformUserPatch<GatewayUserTokenUpdateResponse>(
-                `/api-keys/${token}`,
+                `/tokens/${token}/enabled`,
                 { json: { enabled } },
             );
             setApiKeyUser((prev) => {
@@ -360,17 +520,17 @@ const Platform = (props: RouterComponentProps) => {
                 <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-4">
                     <div className="flex flex-wrap items-center gap-8">
                         <span className="text-lg font-semibold tracking-wide text-slate-900">
-                            LLM Platform
+                            {header}
                         </span>
                         <nav className="flex items-center gap-3 text-sm font-medium text-slate-500">
                             {["console", "market", "docs"].map((item) => (
                                 <button
                                     key={item}
                                     type="button"
-                                    onClick={() => {
-                                        setActiveTopMenu(item as "console" | "market" | "docs");
-                                        syncSearchParams(item as "console" | "market" | "docs", activeSideMenu);
-                                    }}
+                                        onClick={() => {
+                                            setActiveTopMenu(item as "console" | "market" | "docs");
+                                            syncPath(item as "console" | "market" | "docs", activeSideMenu);
+                                        }}
                                     className={`rounded-full px-4 py-2 transition ${
                                         activeTopMenu === item
                                             ? "bg-slate-900 text-white"
@@ -410,10 +570,10 @@ const Platform = (props: RouterComponentProps) => {
                                 <button
                                     key={item}
                                     type="button"
-                                    onClick={() => {
-                                        setActiveSideMenu(item as "apikey" | "usage");
-                                        syncSearchParams(activeTopMenu, item as "apikey" | "usage");
-                                    }}
+                                        onClick={() => {
+                                            setActiveSideMenu(item as "apikey" | "usage");
+                                            syncPath(activeTopMenu, item as "apikey" | "usage");
+                                        }}
                                     className={`rounded-xl px-3 py-2 text-left transition ${
                                         activeSideMenu === item
                                             ? "bg-slate-900 text-white"
@@ -758,13 +918,50 @@ const Platform = (props: RouterComponentProps) => {
             {activeTopMenu === "docs" && (
                 <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-12">
                     <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-                        <h2 className="text-xl font-semibold">API文档</h2>
+                        <h2 className="text-xl font-semibold">API 文档</h2>
                         <p className="mt-3 text-sm text-slate-600">
-                            访问内部 API 文档或接入指南。
+                            Gateway Server 提供的 OpenAI 兼容接口与 Claude Messages 接口。
+                            Base URL 为当前网关地址：`{gatewayBaseUrl}`。
                         </p>
-                        <div className="mt-4 text-sm text-slate-500">
-                            请联系管理员获取最新文档地址。
+                        <div className="mt-4 text-xs text-slate-500">
+                            本页面文档由 AI 自动生成，如有问题请联系管理员。
                         </div>
+                    </div>
+                    <div className="grid gap-6">
+                        {apiDocs.map((doc) => (
+                            <div
+                                key={doc.title}
+                                className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+                            >
+                                <div className="text-sm font-semibold text-slate-900">
+                                    {doc.title}
+                                </div>
+                                <div className="mt-2 text-sm text-slate-600">
+                                    {doc.summary}
+                                </div>
+                                <div className="mt-4">
+                                    <div className="text-xs font-semibold text-slate-500">
+                                        请求示例
+                                    </div>
+                                    <pre className="mt-2 overflow-x-auto rounded-xl bg-slate-900 p-4 text-xs text-slate-100">
+                                        {doc.request}
+                                    </pre>
+                                </div>
+                                <div className="mt-4">
+                                    <div className="text-xs font-semibold text-slate-500">
+                                        响应示例
+                                    </div>
+                                    <pre className="mt-2 overflow-x-auto rounded-xl bg-slate-900 p-4 text-xs text-slate-100">
+                                        {doc.response}
+                                    </pre>
+                                </div>
+                                <div className="mt-4 text-xs text-slate-500">
+                                    {doc.notes.map((note) => (
+                                        <div key={note}>• {note}</div>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 </div>
             )}

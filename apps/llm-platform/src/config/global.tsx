@@ -28,4 +28,9 @@ export const globalConfig = {
             ? env["REACT_APP_TITLE_HEADER"]
             : "Platform",
     },
+    gateway: {
+        baseUrl: !!env["REACT_APP_GATEWAY_BASE_URL"]?.length
+            ? env["REACT_APP_GATEWAY_BASE_URL"]
+            : "",
+    },
 };

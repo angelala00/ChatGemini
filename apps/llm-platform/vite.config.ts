@@ -12,6 +12,12 @@ export default defineConfig(({ mode }) => {
         server: {
             host: true,
             port: 3010,
+            proxy: {
+                "/api": {
+                    target: "http://localhost:5008",
+                    changeOrigin: true,
+                },
+            },
         },
         build: {
             reportCompressedSize: false,

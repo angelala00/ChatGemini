@@ -57,9 +57,10 @@ const request = async <T>(base: string, path: string, options?: RequestOptions):
     });
 
     if (!response.ok) {
+        const rawText = await response.text();
         let message: string | null = null;
         try {
-            const errorPayload = await response.json();
+            const errorPayload = JSON.parse(rawText);
             if (typeof errorPayload === "object" && errorPayload && "detail" in errorPayload) {
                 message = String((errorPayload as Record<string, unknown>).detail);
             } else if (typeof errorPayload === "string") {
@@ -68,7 +69,7 @@ const request = async <T>(base: string, path: string, options?: RequestOptions):
                 message = JSON.stringify(errorPayload);
             }
         } catch {
-            message = await response.text();
+            message = rawText;
         }
         throw new Error(message || `请求失败：${response.status}`);
     }

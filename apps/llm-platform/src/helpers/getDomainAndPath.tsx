@@ -5,6 +5,10 @@ export const getDomainAndPath = () => {
 };
 
 export const getFullPath = (path: string) => {
+    const apiOrigin = import.meta.env.VITE_API_ORIGIN as string | undefined;
+    if (apiOrigin) {
+        return apiOrigin.replace(/\/$/, "") + path;
+    }
     return location.origin + joinPath(getBasePath(), path);
 };
 
