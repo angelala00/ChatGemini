@@ -9,11 +9,11 @@ export interface RouterWrapperProps {
 }
 
 export const RouterWrapper = (props: RouterWrapperProps) => {
-    const { mode, children } = props;
+    const { mode, basename, children } = props;
 
     return mode === "hash" ? (
-        <HashRouter>{children}</HashRouter>
+        <HashRouter basename={basename}>{children}</HashRouter>
     ) : (
-        <BrowserRouter>{children}</BrowserRouter>
+        <BrowserRouter basename={basename}>{children}</BrowserRouter>
     );
 };

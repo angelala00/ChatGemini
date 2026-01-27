@@ -88,5 +88,6 @@ run_backend "assistant-metrics-api" "servers/assistant-metrics-api"
 
 build_frontend "assistant-web" "apps/assistant-web"
 build_frontend "assistant-dashboard" "apps/assistant-dashboard"
+build_frontend "llm-platform" "apps/llm-platform"
 
 echo "Deployment finished."

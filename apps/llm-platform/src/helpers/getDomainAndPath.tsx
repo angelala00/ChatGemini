@@ -5,21 +5,17 @@ export const getDomainAndPath = () => {
 };
 
 export const getFullPath = (path: string) => {
-    if (location.host === "localhost:3000"){
-        return "http://localhost:5008" + path
-    } else {
-        return location.origin + joinPath(getBasePath(), path);
-    }
+    return location.origin + joinPath(getBasePath(), path);
 };
 
-function joinPath(basePath: string, path: string){
+function joinPath(basePath: string, path: string) {
     if (!basePath) {
         return path.startsWith("/") ? path : `/${path}`;
     }
-    if(basePath.endsWith('/') && path.startsWith('/')) {
+    if (basePath.endsWith("/") && path.startsWith("/")) {
         return basePath + path.slice(1);
     }
-    if(!basePath.endsWith('/') && !path.startsWith('/')) {
+    if (!basePath.endsWith("/") && !path.startsWith("/")) {
         return `${basePath}/${path}`;
     }
     return basePath + path;

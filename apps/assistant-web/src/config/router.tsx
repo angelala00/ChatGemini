@@ -1,5 +1,6 @@
 import { LazyExoticComponent, RefObject, lazy } from "react";
 import { RouterMode } from "../components/RouterWrapper";
+import { getBasePath } from "../helpers/getBasePath";
 
 const Home = lazy(() => import("../views/Home"));
 const HomeGPTsAssistant = lazy(() => import("../views/HomeGPTsAssistant"));
@@ -39,7 +40,7 @@ type RouterConfig = {
 };
 
 export const routerConfig: RouterConfig = {
-    basename: "/",
+    basename: getBasePath() || "/",
     mode: "history",
     routes: {
         index: { prefix: "/", uri: "", suffix: "", element: Home },

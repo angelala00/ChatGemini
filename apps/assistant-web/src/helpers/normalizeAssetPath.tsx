@@ -1,3 +1,5 @@
+import { getBasePath } from "./getBasePath";
+
 export const normalizeAssetPath = (path?: string) => {
     if (!path) {
         return "";
@@ -12,5 +14,12 @@ export const normalizeAssetPath = (path?: string) => {
         return path;
     }
 
-    return path.startsWith("/") ? path : `/${path}`;
+    const normalizedBase = getBasePath();
+    const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+
+    if (normalizedBase && normalizedPath.startsWith(`${normalizedBase}/`)) {
+        return normalizedPath;
+    }
+
+    return normalizedBase ? `${normalizedBase}${normalizedPath}` : normalizedPath;
 };

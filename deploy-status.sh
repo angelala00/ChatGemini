@@ -150,6 +150,7 @@ if [[ "${RUN_PROCESS}" -eq 1 ]]; then
 
   check_frontend_build "assistant-web" "apps/assistant-web"
   check_frontend_build "assistant-dashboard" "apps/assistant-dashboard"
+  check_frontend_build "llm-platform" "apps/llm-platform"
 fi
 
 if [[ "${RUN_HEALTH}" -eq 1 ]]; then
