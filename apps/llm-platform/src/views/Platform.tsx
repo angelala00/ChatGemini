@@ -533,7 +533,7 @@ const Platform = (props: RouterComponentProps) => {
                                         }}
                                     className={`rounded-full px-4 py-2 transition ${
                                         activeTopMenu === item
-                                            ? "bg-slate-900 text-white"
+                                            ? "bg-blue-800 text-white"
                                             : "hover:bg-slate-100"
                                     }`}
                                 >
@@ -576,7 +576,7 @@ const Platform = (props: RouterComponentProps) => {
                                         }}
                                     className={`rounded-xl px-3 py-2 text-left transition ${
                                         activeSideMenu === item
-                                            ? "bg-slate-900 text-white"
+                                            ? "bg-blue-800 text-white"
                                             : "hover:bg-slate-100"
                                     }`}
                                 >
@@ -801,7 +801,7 @@ const Platform = (props: RouterComponentProps) => {
                                             onClick={() => setUsageRange(range)}
                                             className={`rounded-full px-4 py-2 text-sm font-medium transition ${
                                                 usageRange === range
-                                                    ? "bg-slate-900 text-white"
+                                                    ? "bg-blue-800 text-white"
                                                     : "bg-slate-100 text-slate-600"
                                             }`}
                                         >
