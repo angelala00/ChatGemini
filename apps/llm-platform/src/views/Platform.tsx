@@ -119,6 +119,17 @@ const Platform = (props: RouterComponentProps) => {
     const [copiedToken, setCopiedToken] = useState<string | null>(null);
     const [tokenUpdating, setTokenUpdating] = useState<Record<string, boolean>>({});
     const [tokenActionError, setTokenActionError] = useState<string | null>(null);
+    const maskToken = (token: string, head = 6, tail = 4) => {
+        const safeToken = token?.trim() ?? "";
+        if (!safeToken) {
+            return "";
+        }
+        if (safeToken.length <= head + tail) {
+            return "*".repeat(Math.max(safeToken.length, head + tail));
+        }
+        const maskedLength = Math.max(4, safeToken.length - head - tail);
+        return `${safeToken.slice(0, head)}${"*".repeat(maskedLength)}${safeToken.slice(-tail)}`;
+    };
     const apiDocs = [
         {
             title: "GET /v1/models",
@@ -630,7 +641,10 @@ const Platform = (props: RouterComponentProps) => {
                                             </button>
                                         </div>
                                         <div className="mt-2 rounded-lg bg-white px-3 py-2 font-mono text-xs text-emerald-800">
-                                            {createdTokenValue}
+                                            {maskToken(createdTokenValue)}
+                                        </div>
+                                        <div className="mt-1 text-xs text-emerald-600">
+                                            为安全起见已打码，可使用复制获取完整 Token。
                                         </div>
                                     </div>
                                 )}
@@ -656,7 +670,7 @@ const Platform = (props: RouterComponentProps) => {
                                                         <tr key={token.token} className="border-t border-slate-100">
                                                             <td className="px-4 py-3 text-slate-600">
                                                                 <span className="rounded-full bg-slate-100 px-3 py-1 text-xs">
-                                                                    {token.token}
+                                                                    {maskToken(token.token)}
                                                                 </span>
                                                             </td>
                                                             <td className="px-4 py-3 text-slate-600">
