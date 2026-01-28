@@ -899,9 +899,6 @@ const Platform = (props: RouterComponentProps) => {
                                             <div className="text-sm font-semibold text-slate-800">
                                                 {model.name}
                                             </div>
-                                            <div className="mt-2 text-xs text-slate-500">
-                                                {model.backends.join(" · ")}
-                                            </div>
                                         </div>
                                     ))}
                                 </div>
