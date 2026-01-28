@@ -192,7 +192,7 @@ async def get_user_visibility(
     user_email = _get_user_email(user)
     target_url = _build_target_url(
         "/gateway/admin",
-        f"/users/{user_email}/visibility",
+        f"/users/{user_email}/visibility/public",
     )
     return await _proxy_request(request, target_url)
 
