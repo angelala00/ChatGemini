@@ -61,6 +61,17 @@ interface UserModelRankingResponse {
     ranking: RankingEntry[];
 }
 
+interface ProjectUsageSummary {
+    id: string;
+    name: string;
+    usage?: UserModelRankingResponse | null;
+    error?: string;
+}
+
+interface UserUsageResponse extends UserModelRankingResponse {
+    projects?: ProjectUsageSummary[];
+}
+
 const Platform = (props: RouterComponentProps) => {
     const { site, header } = globalConfig.title;
     const gatewayBaseUrl =
@@ -111,7 +122,7 @@ const Platform = (props: RouterComponentProps) => {
     const [createTokenLoading, setCreateTokenLoading] = useState<Record<string, boolean>>({});
     const [createTokenError, setCreateTokenError] = useState<string | null>(null);
     const [createdTokenValue, setCreatedTokenValue] = useState<string | null>(null);
-    const [usageData, setUsageData] = useState<UserModelRankingResponse | null>(null);
+    const [usageData, setUsageData] = useState<UserUsageResponse | null>(null);
     const [usageLoading, setUsageLoading] = useState(false);
     const [usageError, setUsageError] = useState<string | null>(null);
     const [usageRetryCount, setUsageRetryCount] = useState(0);
@@ -130,6 +141,10 @@ const Platform = (props: RouterComponentProps) => {
         const maskedLength = Math.max(4, safeToken.length - head - tail);
         return `${safeToken.slice(0, head)}${"*".repeat(maskedLength)}${safeToken.slice(-tail)}`;
     };
+    const getUsageTotals = (ranking: RankingEntry[] = []) => ({
+        requests: ranking.reduce((sum, item) => sum + item.requests, 0),
+        tokens: ranking.reduce((sum, item) => sum + item.tokens, 0),
+    });
     const apiDocs = [
         {
             title: "GET /v1/models",
@@ -265,6 +280,8 @@ const Platform = (props: RouterComponentProps) => {
         },
     ];
     const usageRanking = usageData?.ranking ?? [];
+    const projectUsage = usageData?.projects ?? [];
+    const usageTotals = getUsageTotals(usageRanking);
     const ownedProjects = apiKeyUser?.projects ?? [];
     const userTokenLimit = apiKeyUser?.limits?.userMax ?? 0;
     const projectTokenLimit = apiKeyUser?.limits?.projectMax ?? 0;
@@ -409,8 +426,8 @@ const Platform = (props: RouterComponentProps) => {
         setUsageLoading(true);
         setUsageError(null);
         try {
-            const payload = await platformUserGet<UserModelRankingResponse>("/usage", {
-                params: { range: usageRange },
+            const payload = await platformUserGet<UserUsageResponse>("/usage", {
+                params: { range: usageRange, includeProjects: "true" },
             });
             setUsageData(payload);
             setUsageRetryCount(0);
@@ -842,7 +859,7 @@ const Platform = (props: RouterComponentProps) => {
                                                 总请求
                                             </div>
                                             <div className="mt-2 text-2xl font-semibold text-slate-800">
-                                                {usageData.ranking.reduce((sum, item) => sum + item.requests, 0)}
+                                                {usageTotals.requests}
                                             </div>
                                         </div>
                                         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -850,7 +867,7 @@ const Platform = (props: RouterComponentProps) => {
                                                 总 Token
                                             </div>
                                             <div className="mt-2 text-2xl font-semibold text-slate-800">
-                                                {usageData.ranking.reduce((sum, item) => sum + item.tokens, 0)}
+                                                {usageTotals.tokens}
                                             </div>
                                         </div>
                                     </div>
@@ -877,6 +894,87 @@ const Platform = (props: RouterComponentProps) => {
                                                     暂无数据
                                                 </div>
                                             )}
+                                        </div>
+                                    </div>
+                                )}
+                                {!usageLoading && usageData && (
+                                    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                                        <div className="text-sm font-semibold text-slate-700">
+                                            项目用量
+                                        </div>
+                                        <div className="mt-3 space-y-3">
+                                            {projectUsage.length === 0 && (
+                                                <div className="text-sm text-slate-400">
+                                                    暂无可见项目用量
+                                                </div>
+                                            )}
+                                            {projectUsage.map((project) => {
+                                                const ranking = project.usage?.ranking ?? [];
+                                                const totals = getUsageTotals(ranking);
+                                                return (
+                                                    <div
+                                                        key={project.id}
+                                                        className="rounded-xl border border-slate-200 bg-slate-50 p-4"
+                                                    >
+                                                        <div className="text-sm font-semibold text-slate-700">
+                                                            {project.name}
+                                                        </div>
+                                                        {project.error && (
+                                                            <div className="mt-2 text-sm text-rose-600">
+                                                                {project.error}
+                                                            </div>
+                                                        )}
+                                                        {!project.error && !project.usage && (
+                                                            <div className="mt-2 text-sm text-slate-400">
+                                                                暂无数据
+                                                            </div>
+                                                        )}
+                                                        {!project.error && project.usage && (
+                                                            <div className="mt-3 grid gap-3 md:grid-cols-2">
+                                                                <div className="rounded-xl border border-slate-200 bg-white p-3">
+                                                                    <div className="text-xs uppercase tracking-widest text-slate-400">
+                                                                        总请求
+                                                                    </div>
+                                                                    <div className="mt-1 text-lg font-semibold text-slate-800">
+                                                                        {totals.requests}
+                                                                    </div>
+                                                                </div>
+                                                                <div className="rounded-xl border border-slate-200 bg-white p-3">
+                                                                    <div className="text-xs uppercase tracking-widest text-slate-400">
+                                                                        总 Token
+                                                                    </div>
+                                                                    <div className="mt-1 text-lg font-semibold text-slate-800">
+                                                                        {totals.tokens}
+                                                                    </div>
+                                                                </div>
+                                                                <div className="md:col-span-2">
+                                                                    <div className="text-xs uppercase tracking-widest text-slate-400">
+                                                                        模型排行
+                                                                    </div>
+                                                                    <div className="mt-2 space-y-1 text-sm text-slate-600">
+                                                                        {ranking.map((item) => (
+                                                                            <div
+                                                                                key={`${project.id}-${item.name}`}
+                                                                                className="flex items-center justify-between"
+                                                                            >
+                                                                                <span>{item.name}</span>
+                                                                                <span>
+                                                                                    {item.requests} 次 · {item.tokens} token
+                                                                                </span>
+                                                                            </div>
+                                                                        ))}
+                                                                        {ranking.length === 0 && (
+                                                                            <div className="text-sm text-slate-400">
+                                                                                暂无数据
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                 )}

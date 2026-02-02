@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import JSONResponse
 import httpx
 
@@ -115,6 +115,38 @@ async def _fetch_json(request: Request, target_url: str, method: str | None = No
         return status.HTTP_502_BAD_GATEWAY, {"detail": "上游返回非 JSON 数据"}
 
 
+async def _fetch_json_with_params(
+    request: Request,
+    target_url: str,
+    params: dict[str, str],
+    method: str | None = None,
+) -> tuple[int, dict]:
+    headers = _build_headers(request)
+    request_method = method or request.method
+    async with httpx.AsyncClient(
+        timeout=platform_config.PORTAL_TIMEOUT_SECONDS,
+        trust_env=platform_config.PORTAL_TRUST_ENV,
+    ) as client:
+        upstream = await client.request(
+            request_method,
+            target_url,
+            params=params,
+            headers=headers,
+        )
+    if upstream.status_code >= 400:
+        return upstream.status_code, {
+            "detail": upstream.text or "上游请求失败",
+        }
+    try:
+        return upstream.status_code, upstream.json()
+    except ValueError:
+        return status.HTTP_502_BAD_GATEWAY, {"detail": "上游返回非 JSON 数据"}
+
+
+def _filter_query_params(request: Request, excluded: set[str]) -> dict[str, str]:
+    return {key: value for key, value in request.query_params.items() if key not in excluded}
+
+
 async def _ensure_user_registered(
     request: Request,
     user: dict,
@@ -201,13 +233,75 @@ async def get_user_visibility(
 async def get_user_usage(
     request: Request,
     user: dict = Depends(get_current_user),
+    include_projects: bool = Query(False, alias="includeProjects"),
 ) -> Response:
     user_email = _get_user_email(user)
-    target_url = _build_target_url(
-        "/metrics",
-        f"/rankings/users/{user_email}/models",
-    )
-    return await _proxy_request(request, target_url)
+    params = _filter_query_params(request, {"includeProjects"})
+    target_url = _build_target_url("/metrics", f"/rankings/users/{user_email}/models")
+    status_code, payload = await _fetch_json_with_params(request, target_url, params, method="GET")
+    if status_code >= 400:
+        return JSONResponse(status_code=status_code, content=payload)
+    if not include_projects:
+        return JSONResponse(status_code=status_code, content=payload)
+    if not isinstance(payload, dict):
+        return JSONResponse(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            content={"detail": "上游返回数据缺失"},
+        )
+
+    access_url = _build_target_url("/access", "/db")
+    access_status, access_db = await _fetch_json(request, access_url)
+    if access_status >= 400:
+        return JSONResponse(status_code=access_status, content=access_db)
+    access_db, error_response = await _ensure_user_registered(request, user, access_db)
+    if error_response is not None:
+        return error_response
+
+    projects = access_db.get("projects") if isinstance(access_db, dict) else None
+    owned_projects: dict[str, dict] = {}
+    if isinstance(projects, dict):
+        for project_id, entry in projects.items():
+            if not isinstance(entry, dict):
+                continue
+            owners = entry.get("owners")
+            if isinstance(owners, list) and user_email in owners:
+                owned_projects[project_id] = entry
+
+    project_usages: list[dict] = []
+    for project_id, entry in owned_projects.items():
+        project_name = entry.get("name") or project_id
+        project_url = _build_target_url(
+            "/metrics",
+            f"/rankings/users/project:{project_id}/models",
+        )
+        project_status, project_payload = await _fetch_json_with_params(
+            request,
+            project_url,
+            params,
+            method="GET",
+        )
+        if project_status >= 400:
+            detail = project_payload.get("detail") if isinstance(project_payload, dict) else None
+            project_usages.append(
+                {
+                    "id": project_id,
+                    "name": project_name,
+                    "usage": None,
+                    "error": detail or "项目用量加载失败",
+                }
+            )
+        else:
+            project_usages.append(
+                {
+                    "id": project_id,
+                    "name": project_name,
+                    "usage": project_payload,
+                }
+            )
+
+    payload = dict(payload)
+    payload["projects"] = project_usages
+    return JSONResponse(status_code=status_code, content=payload)
 
 
 @router.get("/user/api-keys")
