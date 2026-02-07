@@ -22,7 +22,8 @@ interface GatewayUserTokenUpdateResponse {
 }
 
 interface GatewayUserSummary {
-    name: string;
+    id?: string;
+    displayName?: string | null;
     enabled: boolean;
     isAdmin: boolean;
     tokenCount: number;
@@ -49,6 +50,7 @@ interface UserVisibilityResponse {
     user: string;
     models: Array<{
         name: string;
+        type?: string | null;
         backends: string[];
     }>;
 }
@@ -202,6 +204,42 @@ const Platform = (props: RouterComponentProps) => {
             ],
         },
         {
+            title: "POST /v1/chat/completions（多模态）",
+            summary: "多模态对话（OpenAI 兼容，支持图片输入）。",
+            request: `curl -X POST \\
+  -H "Authorization: Bearer $API_KEY" \\
+  -H "Content-Type: application/json" \\
+  https://{HOST}/v1/chat/completions \\
+  -d '{
+    "model": "gpt-4o-mini",
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {"type": "text", "text": "这张图里有什么？"},
+          {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUA..."}}
+        ]
+      }
+    ]
+  }'`,
+            response: `{
+  "id": "chatcmpl_xxx",
+  "object": "chat.completion",
+  "choices": [
+    {
+      "index": 0,
+      "message": {"role": "assistant", "content": "图中是..."},
+      "finish_reason": "stop"
+    }
+  ],
+  "model": "gpt-4o-mini"
+}`,
+            notes: [
+                "图片可使用 data URL（Base64）。",
+                "仅支持视觉/多模态的模型可用传图片参数调用该接口。",
+            ],
+        },
+        {
             title: "POST /v1/embeddings",
             summary: "文本向量（OpenAI 兼容请求体）。",
             request: `curl -X POST \\
@@ -298,6 +336,27 @@ const Platform = (props: RouterComponentProps) => {
         return counts;
     }, [apiKeyUser?.tokens]);
     const userLimitReached = userTokenLimit > 0 && userTokenCount >= userTokenLimit;
+    const groupedVisibleModels = useMemo(() => {
+        const entries = visibleModels?.models ?? [];
+        const groups: Record<string, typeof entries> = {};
+        for (const model of entries) {
+            const typeLabel = model.type?.trim() || "其他";
+            if (!groups[typeLabel]) {
+                groups[typeLabel] = [];
+            }
+            groups[typeLabel].push(model);
+        }
+        const orderedTypes = Object.keys(groups).sort((a, b) => {
+            const aKey = a.toLowerCase();
+            const bKey = b.toLowerCase();
+            if (aKey === "llm" && bKey !== "llm") return -1;
+            if (bKey === "llm" && aKey !== "llm") return 1;
+            if (a === "其他") return 1;
+            if (b === "其他") return -1;
+            return a.localeCompare(b);
+        });
+        return orderedTypes.map((type) => ({ type, models: groups[type] }));
+    }, [visibleModels]);
 
     useEffect(() => {
         document.title = `Platform - ${site}`;
@@ -1002,14 +1061,23 @@ const Platform = (props: RouterComponentProps) => {
                                 </div>
                             )}
                             {!modelsLoading && visibleModels && (
-                                <div className="grid gap-4 md:grid-cols-2">
-                                    {visibleModels.models.map((model) => (
-                                        <div
-                                            key={model.name}
-                                            className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
-                                        >
-                                            <div className="text-sm font-semibold text-slate-800">
-                                                {model.name}
+                                <div className="space-y-6">
+                                    {groupedVisibleModels.map((group) => (
+                                        <div key={group.type}>
+                                            <div className="text-xs uppercase tracking-widest text-slate-400">
+                                                {group.type}
+                                            </div>
+                                            <div className="mt-3 grid gap-4 md:grid-cols-2">
+                                                {group.models.map((model) => (
+                                                    <div
+                                                        key={model.name}
+                                                        className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                                                    >
+                                                        <div className="text-sm font-semibold text-slate-800">
+                                                            {model.name}
+                                                        </div>
+                                                    </div>
+                                                ))}
                                             </div>
                                         </div>
                                     ))}

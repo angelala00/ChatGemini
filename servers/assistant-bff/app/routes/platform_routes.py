@@ -169,9 +169,12 @@ async def _ensure_user_registered(
     if not department_id and isinstance(departments, dict) and len(departments) == 1:
         department_id = next(iter(departments))
     if not department_id:
+        detail = "用户未注册且无法解析部门"
+        if department_name:
+            detail = f"{detail}（{department_name}）"
         return None, JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
-            content={"detail": "用户未注册且无法解析部门"},
+            content={"detail": detail},
         )
     if not isinstance(departments, dict) or department_id not in departments:
         return None, JSONResponse(
@@ -325,6 +328,11 @@ async def get_user_api_keys(
     if not isinstance(users, dict) or not isinstance(tokens, dict):
         return JSONResponse(status_code=status.HTTP_502_BAD_GATEWAY, content={"detail": "上游返回数据缺失"})
 
+    user_entry = users.get(user_email) if isinstance(users, dict) else None
+    display_name = None
+    if isinstance(user_entry, dict):
+        display_name = user_entry.get("displayName") or None
+
     owned_projects: dict[str, dict] = {}
     if isinstance(projects, dict):
         for project_id, entry in projects.items():
@@ -373,7 +381,8 @@ async def get_user_api_keys(
 
     return JSONResponse(
         content={
-            "name": user_email,
+            "id": user_email,
+            "displayName": display_name,
             "enabled": enabled,
             "isAdmin": False,
             "tokenCount": len(token_entries),
