@@ -74,6 +74,10 @@ interface UserUsageResponse extends UserModelRankingResponse {
     projects?: ProjectUsageSummary[];
 }
 
+type TopMenu = "console" | "market" | "docs";
+type ConsoleSideMenu = "apikey" | "usage";
+type DocsPage = "gateway-api" | "claude-zhipu";
+
 const Platform = (props: RouterComponentProps) => {
     const { site, header } = globalConfig.title;
     const gatewayBaseUrl =
@@ -83,35 +87,44 @@ const Platform = (props: RouterComponentProps) => {
     const RETRY_DELAY_MS = 1500;
     const location = useLocation();
     const navigate = useNavigate();
-    const parseTopMenu = (value?: string | null): "console" | "market" | "docs" => {
+    const parseTopMenu = (value?: string | null): TopMenu => {
         if (value === "market" || value === "docs" || value === "console") {
             return value;
         }
         return "console";
     };
-    const parseSideMenu = (value?: string | null): "apikey" | "usage" => {
+    const parseSideMenu = (value?: string | null): ConsoleSideMenu => {
         if (value === "usage" || value === "apikey") {
             return value;
         }
         return "apikey";
+    };
+    const parseDocsPage = (value?: string | null): DocsPage => {
+        if (value === "claude-zhipu" || value === "gateway-api") {
+            return value;
+        }
+        return "gateway-api";
     };
     const getMenuStateFromPath = (pathname: string) => {
         const cleanedPath = pathname.replace(/^\/+|\/+$/g, "");
         const parts = cleanedPath ? cleanedPath.split("/") : [];
         const topMenu = parseTopMenu(parts[0]);
         const sideMenu = parseSideMenu(parts[1]);
+        const docsPage = parseDocsPage(parts[1]);
         return {
             topMenu,
             sideMenu: topMenu === "console" ? sideMenu : "apikey",
+            docsPage: topMenu === "docs" ? docsPage : "gateway-api",
         };
     };
     const initialMenuState = getMenuStateFromPath(location.pathname);
-    const [activeTopMenu, setActiveTopMenu] = useState<
-        "console" | "market" | "docs"
-    >(() => initialMenuState.topMenu);
-    const [activeSideMenu, setActiveSideMenu] = useState<
-        "apikey" | "usage"
-    >(() => initialMenuState.sideMenu);
+    const [activeTopMenu, setActiveTopMenu] = useState<TopMenu>(() => initialMenuState.topMenu);
+    const [activeSideMenu, setActiveSideMenu] = useState<ConsoleSideMenu>(
+        () => initialMenuState.sideMenu,
+    );
+    const [activeDocsPage, setActiveDocsPage] = useState<DocsPage>(
+        () => initialMenuState.docsPage,
+    );
     const displayName = useMemo(() => userName || "User", [userName]);
     const [visibleModels, setVisibleModels] = useState<UserVisibilityResponse | null>(null);
     const [modelsLoading, setModelsLoading] = useState(false);
@@ -327,6 +340,20 @@ const Platform = (props: RouterComponentProps) => {
         () => (apiKeyUser?.tokens ?? []).filter((token) => token.ownerType === "user").length,
         [apiKeyUser?.tokens],
     );
+    const claudeSettingsExample = `{
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "your_api_key",
+    "ANTHROPIC_BASE_URL": "https://${gatewayBaseUrl}",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "模型名(强)",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "模型名(默认)",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "模型名(快)",
+    "API_TIMEOUT_MS": "3000000",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": 1
+  }
+}`;
+    const claudeOnboardingExample = `{
+  "hasCompletedOnboarding": true
+}`;
     const projectTokenCounts = useMemo(() => {
         const counts: Record<string, number> = {};
         for (const token of apiKeyUser?.tokens ?? []) {
@@ -379,19 +406,29 @@ const Platform = (props: RouterComponentProps) => {
         const { topMenu: nextTopMenu, sideMenu: nextSideMenu } = getMenuStateFromPath(
             location.pathname,
         );
+        const { docsPage: nextDocsPage } = getMenuStateFromPath(location.pathname);
         if (nextTopMenu !== activeTopMenu) {
             setActiveTopMenu(nextTopMenu);
         }
         if (nextSideMenu !== activeSideMenu) {
             setActiveSideMenu(nextSideMenu);
         }
-    }, [location.pathname, location.search, activeTopMenu, activeSideMenu, navigate]);
+        if (nextDocsPage !== activeDocsPage) {
+            setActiveDocsPage(nextDocsPage);
+        }
+    }, [location.pathname, location.search, activeTopMenu, activeSideMenu, activeDocsPage, navigate]);
 
     const syncPath = (
-        topMenu: "console" | "market" | "docs",
-        sideMenu: "apikey" | "usage",
+        topMenu: TopMenu,
+        sideMenu: ConsoleSideMenu,
+        docsPage: DocsPage,
     ) => {
-        const nextPath = topMenu === "console" ? `/${topMenu}/${sideMenu}` : `/${topMenu}`;
+        const nextPath =
+            topMenu === "console"
+                ? `/${topMenu}/${sideMenu}`
+                : topMenu === "docs"
+                    ? `/${topMenu}/${docsPage}`
+                    : `/${topMenu}`;
         navigate(nextPath, { replace: true });
     };
 
@@ -615,8 +652,8 @@ const Platform = (props: RouterComponentProps) => {
                                     key={item}
                                     type="button"
                                         onClick={() => {
-                                            setActiveTopMenu(item as "console" | "market" | "docs");
-                                            syncPath(item as "console" | "market" | "docs", activeSideMenu);
+                                            setActiveTopMenu(item as TopMenu);
+                                            syncPath(item as TopMenu, activeSideMenu, activeDocsPage);
                                         }}
                                     className={`rounded-full px-4 py-2 transition ${
                                         activeTopMenu === item
@@ -658,8 +695,8 @@ const Platform = (props: RouterComponentProps) => {
                                     key={item}
                                     type="button"
                                         onClick={() => {
-                                            setActiveSideMenu(item as "apikey" | "usage");
-                                            syncPath(activeTopMenu, item as "apikey" | "usage");
+                                            setActiveSideMenu(item as ConsoleSideMenu);
+                                            syncPath(activeTopMenu, item as ConsoleSideMenu, activeDocsPage);
                                         }}
                                     className={`rounded-xl px-3 py-2 text-left transition ${
                                         activeSideMenu === item
@@ -1093,53 +1130,164 @@ const Platform = (props: RouterComponentProps) => {
                 </div>
             )}
             {activeTopMenu === "docs" && (
-                <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-12">
-                    <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-                        <h2 className="text-xl font-semibold">API 文档</h2>
-                        <p className="mt-3 text-sm text-slate-600">
-                            Gateway Server 提供的 OpenAI 兼容接口与 Claude Messages 接口。
-                            Base URL 为当前网关地址：`{gatewayBaseUrl}`。
-                        </p>
-                        <div className="mt-4 text-xs text-slate-500">
-                            本页面文档由 AI 自动生成，如有问题请联系管理员。
+                <div className="mx-auto flex w-full max-w-6xl gap-6 px-6 py-8">
+                    <aside className="w-full max-w-[260px] rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                        <div className="text-xs font-semibold uppercase tracking-widest text-slate-400">
+                            API 文档
                         </div>
-                    </div>
-                    <div className="grid gap-6">
-                        {apiDocs.map((doc) => (
-                            <div
-                                key={doc.title}
-                                className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
-                            >
-                                <div className="text-sm font-semibold text-slate-900">
-                                    {doc.title}
-                                </div>
-                                <div className="mt-2 text-sm text-slate-600">
-                                    {doc.summary}
-                                </div>
-                                <div className="mt-4">
-                                    <div className="text-xs font-semibold text-slate-500">
-                                        请求示例
+                        <div className="mt-4 flex flex-col gap-2 text-sm font-medium text-slate-600">
+                            {[
+                                { key: "gateway-api", label: "Gateway API 文档" },
+                                { key: "claude-zhipu", label: "Claude Code 接入" },
+                            ].map((item) => (
+                                <button
+                                    key={item.key}
+                                    type="button"
+                                    onClick={() => {
+                                        setActiveDocsPage(item.key as DocsPage);
+                                        syncPath("docs", activeSideMenu, item.key as DocsPage);
+                                    }}
+                                    className={`rounded-xl px-3 py-2 text-left transition ${
+                                        activeDocsPage === item.key
+                                            ? "bg-blue-800 text-white"
+                                            : "hover:bg-slate-100"
+                                    }`}
+                                >
+                                    {item.label}
+                                </button>
+                            ))}
+                        </div>
+                    </aside>
+                    <main className="flex-1 rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+                        {activeDocsPage === "gateway-api" && (
+                            <div className="flex flex-col gap-6">
+                                <div>
+                                    <h2 className="text-xl font-semibold">Gateway API 文档</h2>
+                                    <p className="mt-3 text-sm text-slate-600">
+                                        Gateway Server 提供的 OpenAI 兼容接口与 Claude Messages 接口。
+                                        Base URL 为当前网关地址：`{gatewayBaseUrl}`。
+                                    </p>
+                                    <div className="mt-4 text-xs text-slate-500">
+                                        本页面文档由 AI 自动生成，如有问题请联系管理员。
                                     </div>
-                                    <pre className="mt-2 overflow-x-auto rounded-xl bg-slate-900 p-4 text-xs text-slate-100">
-                                        {doc.request}
-                                    </pre>
                                 </div>
-                                <div className="mt-4">
-                                    <div className="text-xs font-semibold text-slate-500">
-                                        响应示例
-                                    </div>
-                                    <pre className="mt-2 overflow-x-auto rounded-xl bg-slate-900 p-4 text-xs text-slate-100">
-                                        {doc.response}
-                                    </pre>
-                                </div>
-                                <div className="mt-4 text-xs text-slate-500">
-                                    {doc.notes.map((note) => (
-                                        <div key={note}>• {note}</div>
+                                <div className="grid gap-6">
+                                    {apiDocs.map((doc) => (
+                                        <div
+                                            key={doc.title}
+                                            className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+                                        >
+                                            <div className="text-sm font-semibold text-slate-900">
+                                                {doc.title}
+                                            </div>
+                                            <div className="mt-2 text-sm text-slate-600">
+                                                {doc.summary}
+                                            </div>
+                                            <div className="mt-4">
+                                                <div className="text-xs font-semibold text-slate-500">
+                                                    请求示例
+                                                </div>
+                                                <pre className="mt-2 overflow-x-auto rounded-xl bg-slate-900 p-4 text-xs text-slate-100">
+                                                    {doc.request}
+                                                </pre>
+                                            </div>
+                                            <div className="mt-4">
+                                                <div className="text-xs font-semibold text-slate-500">
+                                                    响应示例
+                                                </div>
+                                                <pre className="mt-2 overflow-x-auto rounded-xl bg-slate-900 p-4 text-xs text-slate-100">
+                                                    {doc.response}
+                                                </pre>
+                                            </div>
+                                            <div className="mt-4 text-xs text-slate-500">
+                                                {doc.notes.map((note) => (
+                                                    <div key={note}>• {note}</div>
+                                                ))}
+                                            </div>
+                                        </div>
                                     ))}
                                 </div>
                             </div>
-                        ))}
-                    </div>
+                        )}
+                        {activeDocsPage === "claude-zhipu" && (
+                            <div className="flex flex-col gap-6">
+                                <div>
+                                    <h2 className="text-xl font-semibold">
+                                        Claude Code 接入大模型
+                                    </h2>
+                                    <p className="mt-3 text-sm text-slate-600">
+                                        该页内容整理自智谱官方文档：
+                                        https://docs.bigmodel.cn/cn/coding-plan/tool/claude
+                                        ，用于在本地平台内快速查阅。
+                                    </p>
+                                    <div className="mt-2 text-xs text-slate-500">
+                                        主要覆盖：安装、环境配置、启动使用、模型切换和常见故障排查。
+                                    </div>
+                                </div>
+                                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                                    <div className="text-sm font-semibold text-slate-800">步骤一：安装 Claude Code</div>
+                                    <div className="mt-2 text-sm text-slate-600">
+                                        前提条件：Node.js 18+；Windows 需安装 Git for Windows。
+                                    </div>
+                                    <pre className="mt-3 overflow-x-auto rounded-xl bg-slate-900 p-4 text-xs text-slate-100">
+                                        npm install -g @anthropic-ai/claude-code
+                                    </pre>
+                                    <pre className="mt-3 overflow-x-auto rounded-xl bg-slate-900 p-4 text-xs text-slate-100">
+                                        claude --version
+                                    </pre>
+                                </div>
+                                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                                    <div className="text-sm font-semibold text-slate-800">步骤二：修改配置文件</div>
+                                    <div className="mt-2 text-sm text-slate-600">
+                                        <a
+                                            href="/console/apikey"
+                                            className="text-blue-700 underline hover:text-blue-800"
+                                        >
+                                            在这里申请 API Key
+                                        </a>
+                                        ；随后配置 Claude 所需环境变量。
+                                    </div>
+                                    <div className="mt-3 text-xs font-semibold text-slate-500">
+                                        手动配置 `~/.claude/settings.json`
+                                    </div>
+                                    <pre className="mt-2 overflow-x-auto rounded-xl bg-slate-900 p-4 text-xs text-slate-100">
+                                        {claudeSettingsExample}
+                                    </pre>
+                                    <div className="mt-3 text-xs font-semibold text-slate-500">
+                                        同时配置 `~/.claude.json`
+                                    </div>
+                                    <pre className="mt-2 overflow-x-auto rounded-xl bg-slate-900 p-4 text-xs text-slate-100">
+                                        {claudeOnboardingExample}
+                                    </pre>
+                                </div>
+                                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                                    <div className="text-sm font-semibold text-slate-800">步骤三：开始使用</div>
+                                    <div className="mt-2 text-sm text-slate-600">
+                                        在代码目录执行 `claude` 启动；首次询问 API Key 使用授权时选择 Yes。
+                                        配置改动后建议打开新终端窗口再启动。
+                                    </div>
+                                    <pre className="mt-3 overflow-x-auto rounded-xl bg-slate-900 p-4 text-xs text-slate-100">
+                                        claude
+                                    </pre>
+                                </div>
+                                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                                    <div className="text-sm font-semibold text-slate-800">常见问题</div>
+                                    <div className="mt-3 text-sm text-slate-600">
+                                        若手工配置不生效：关闭所有 Claude Code 窗口、重开终端后再启动；
+                                        必要时删除 `~/.claude/settings.json` 后重新配置，并校验 JSON 格式。
+                                    </div>
+                                    <div className="mt-3 text-sm text-slate-600">
+                                        推荐使用较新版本，可通过以下命令检查与升级：
+                                    </div>
+                                    <pre className="mt-2 overflow-x-auto rounded-xl bg-slate-900 p-4 text-xs text-slate-100">
+                                        claude --version
+
+claude update
+                                    </pre>
+                                </div>
+                            </div>
+                        )}
+                    </main>
                 </div>
             )}
         </div>
