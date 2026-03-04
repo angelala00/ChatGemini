@@ -161,7 +161,7 @@ export const Sidebar = (props: SidebarProps) => {
                 <div
                     className="p-1 mx-3 my-1 py-1 text-sm text-center text-gray-200 hover:bg-slate-600 transition-all rounded-lg cursor-pointer flex items-center justify-start gap-2"
                     onClick={() => {
-                        navigate("/gpts")
+                        navigate("/gpts/")
                     }}
                 >
                     <img src={appsIcon} className="w-8 h-8 object-contain"/>
