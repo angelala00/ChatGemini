@@ -9,6 +9,7 @@ import logoIcon from "../assets/logo.svg";
 const Home = (props: RouterComponentProps) => {
     const { t } = useTranslation();
     const { site: siteTitle } = globalConfig.title;
+    const { assistantName } = globalConfig;
     const textAreaRef =
         (props.refs?.textAreaRef.current as HTMLTextAreaElement) ?? null;
     const [randomSamples] = useState<string[]>([]);
@@ -25,7 +26,7 @@ const Home = (props: RouterComponentProps) => {
 
     return (
         <Landing
-            title="我是 GPT助手,　很高兴见到你！"
+            title={`我是 ${assistantName},　很高兴见到你！`}
             logo={logoIcon}
             subTitle="我可以帮你写代码、读文件、写作各种创意内容，请把你的任务交给我吧～"
             samples={randomSamples}

@@ -3,7 +3,7 @@ from app.utils.model_tool import MODEL_NAME_VL, MODEL_NAME_INSTRUCT, MODEL_NAME_
 
 register_gpt({
     "gptassistant": {
-        "name": "GPT Assistant",
+        "name": "AI助手",
         "title": "通用对话助手",
         "sub_title": "通用对话助手111",
         "system_prompt": "You are a helpful assistant.",

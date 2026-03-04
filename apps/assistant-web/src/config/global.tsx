@@ -40,6 +40,9 @@ export const globalConfig = {
             ? env["REACT_APP_TITLE_HEADER"]
             : "Chat",
     },
+    assistantName: !!env["REACT_APP_ASSISTANT_NAME"]?.length
+        ? env["REACT_APP_ASSISTANT_NAME"]
+        : "GPT助手",
     api: env["REACT_APP_GEMINI_API_URL"],
     sse: env["REACT_APP_GEMINI_API_SSE"] === "false" ? false : true,
     difyappid: env["REACT_APP_NEXT_PUBLIC_APP_ID"],
