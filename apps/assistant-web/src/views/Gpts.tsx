@@ -5,7 +5,7 @@ import pinnedIcon from "../assets/icons/thumbtack-solid.svg";
 import unpinnedIcon from "../assets/icons/map-pin-solid.svg";
 import { getFullPath } from "../helpers/getDomainAndPath";
 import { onUpdate as updatePinnedGpts } from "../store/gpts";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { normalizeAssetPath } from "../helpers/normalizeAssetPath";
 
@@ -28,6 +28,7 @@ interface SectionProps {
 
 const Section = ({ title, items, onToggle }: SectionProps) => {
     const { t } = useTranslation();
+    const navigate = useNavigate();
 
     return (
     <section className="mb-16">
@@ -40,7 +41,7 @@ const Section = ({ title, items, onToggle }: SectionProps) => {
                     key={item.gid}
                     className="relative flex h-full flex-col rounded-xl border bg-gray-50 px-6 pt-6 pb-4 transition-colors hover:bg-gray-100 cursor-pointer"
                     onClick={() => {
-                        window.location.href = `/g/${item.gid}`;
+                        navigate(`/g/${item.gid}`);
                     }}
                 >
                     <div className="flex flex-1 gap-4">
