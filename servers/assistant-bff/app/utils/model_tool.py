@@ -21,7 +21,7 @@ for _env_file in _env_candidates:
 
 
 MODEL_NAME_VL = os.getenv("MODEL_NAME_VL", "qwen3-vl-8b-instruct")
-MODEL_NAME_INSTRUCT = os.getenv("MODEL_NAME_INSTRUCT", "qwen3-30b-a3b-instruct-2507")
+MODEL_NAME_INSTRUCT = os.getenv("MODEL_NAME_INSTRUCT", "qwen3.5-35b-a3b")
 MODEL_NAME_THINKING = os.getenv("MODEL_NAME_THINKING", "deepseek-r1-distill-qwen-32b")
 MODEL_NAME_QWQ = os.getenv("MODEL_NAME_QWQ", "QwQ-32B")
 MODEL_NAME_DS = os.getenv("MODEL_NAME_DS", "deepseek-r1-distill-qwen-32b")
