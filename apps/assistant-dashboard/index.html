@@ -8,6 +8,13 @@
   </head>
   <body class="h-full">
     <div id="root" class="h-full"></div>
+    <script>
+      if (typeof Object.hasOwn !== "function") {
+        Object.hasOwn = function (obj, prop) {
+          return Object.prototype.hasOwnProperty.call(obj, prop);
+        };
+      }
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
