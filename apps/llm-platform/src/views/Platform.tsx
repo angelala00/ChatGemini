@@ -52,6 +52,8 @@ interface UserVisibilityResponse {
         name: string;
         type?: string | null;
         backends: string[];
+        is_new?: boolean;
+        sunset_soon?: boolean;
     }>;
 }
 
@@ -78,8 +80,50 @@ type TopMenu = "console" | "market" | "docs";
 type ConsoleSideMenu = "apikey" | "usage";
 type DocsPage = "gateway-api" | "claude-zhipu";
 
+const StatusBadge = ({
+    children,
+    tone,
+}: {
+    children: string;
+    tone: "accent" | "warning";
+}) => {
+    const toneClasses =
+        tone === "accent"
+            ? "border-rose-200 bg-rose-50 text-rose-700"
+            : "border-slate-300 bg-slate-100 text-slate-600";
+    return (
+        <span
+            className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${toneClasses}`}
+        >
+            {children}
+        </span>
+    );
+};
+
+const API_DOC_GROUP_ORDER = ["模型", "对话", "检索", "音频", "Claude", "其他"] as const;
+
+const getApiDocGroupLabel = (title: string) => {
+    if (title.startsWith("GET /v1/models")) {
+        return "模型";
+    }
+    if (title.includes("/v1/chat/completions")) {
+        return "对话";
+    }
+    if (title.includes("/v1/embeddings") || title.includes("/v1/rerank")) {
+        return "检索";
+    }
+    if (title.includes("/v1/audio/")) {
+        return "音频";
+    }
+    if (title.includes("/v1/messages")) {
+        return "Claude";
+    }
+    return "其他";
+};
+
 const Platform = (props: RouterComponentProps) => {
     const { site, header } = globalConfig.title;
+    const adminContact = globalConfig.support.adminContact;
     const gatewayBaseUrl =
         globalConfig.gateway.baseUrl || "请配置 REACT_APP_GATEWAY_BASE_URL";
     const userName = props.userName?.trim();
@@ -276,6 +320,42 @@ const Platform = (props: RouterComponentProps) => {
             ],
         },
         {
+            title: "POST /v1/audio/transcriptions",
+            summary: "音频转写（multipart/form-data 文件上传）。",
+            request: `curl -X POST \
+  -H "Authorization: Bearer $API_KEY" \
+  https://{HOST}/v1/audio/transcriptions \
+  -F 'file=@/path/to/audio.wav' \
+  -F 'model=whisper-1'`,
+            response: `{
+  "text": "hello world"
+}`,
+            notes: [
+                "file 必须作为真实文件上传，不要写成带额外引号的 @ 路径。",
+                "model 传网关暴露的模型名，网关会映射到后端实际模型。",
+            ],
+        },
+        {
+            title: "POST /v1/audio/speech",
+            summary: "文本转语音（返回音频二进制）。",
+            request: `curl -X POST \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  https://{HOST}/v1/audio/speech \
+  -d '{
+    "model": "tts-1",
+    "input": "你好，欢迎使用网关服务。",
+    "voice": "alloy",
+    "response_format": "mp3"
+  }' \
+  --output speech.mp3`,
+            response: `Binary audio stream (for example: audio/mpeg)`,
+            notes: [
+                "该接口返回音频二进制，不是 JSON。",
+                "可用字段与后端 TTS 模型能力保持一致，常见字段包括 input、voice、response_format。",
+            ],
+        },
+        {
             title: "POST /v1/rerank",
             summary: "相关性重排（Rerank 请求体）。",
             request: `curl -X POST \\
@@ -330,6 +410,11 @@ const Platform = (props: RouterComponentProps) => {
             ],
         },
     ];
+    const [expandedApiDoc, setExpandedApiDoc] = useState<string>("GET /v1/models");
+    const groupedApiDocs = API_DOC_GROUP_ORDER.map((label) => ({
+        label,
+        docs: apiDocs.filter((doc) => getApiDocGroupLabel(doc.title) === label),
+    })).filter((group) => group.docs.length > 0);
     const usageRanking = usageData?.ranking ?? [];
     const projectUsage = usageData?.projects ?? [];
     const usageTotals = getUsageTotals(usageRanking);
@@ -343,7 +428,7 @@ const Platform = (props: RouterComponentProps) => {
     const claudeSettingsExample = `{
   "env": {
     "ANTHROPIC_AUTH_TOKEN": "your_api_key",
-    "ANTHROPIC_BASE_URL": "https://${gatewayBaseUrl}",
+    "ANTHROPIC_BASE_URL": "${gatewayBaseUrl}",
     "ANTHROPIC_DEFAULT_OPUS_MODEL": "模型名(强)",
     "ANTHROPIC_DEFAULT_SONNET_MODEL": "模型名(默认)",
     "ANTHROPIC_DEFAULT_HAIKU_MODEL": "模型名(快)",
@@ -382,7 +467,17 @@ const Platform = (props: RouterComponentProps) => {
             if (b === "其他") return -1;
             return a.localeCompare(b);
         });
-        return orderedTypes.map((type) => ({ type, models: groups[type] }));
+        return orderedTypes.map((type) => ({
+            type,
+            models: [...groups[type]].sort((a, b) => {
+                const aRank = a.is_new ? 0 : a.sunset_soon ? 2 : 1;
+                const bRank = b.is_new ? 0 : b.sunset_soon ? 2 : 1;
+                if (aRank !== bRank) {
+                    return aRank - bRank;
+                }
+                return a.name.localeCompare(b.name);
+            }),
+        }));
     }, [visibleModels]);
 
     useEffect(() => {
@@ -710,7 +805,7 @@ const Platform = (props: RouterComponentProps) => {
                             ))}
                         </div>
                     </aside>
-                    <main className="flex-1 rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+                    <main className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
                         {activeSideMenu === "apikey" && (
                             <div className="flex flex-col gap-3">
                                 <h2 className="text-xl font-semibold text-slate-900">API Keys</h2>
@@ -1113,6 +1208,20 @@ const Platform = (props: RouterComponentProps) => {
                                                         <div className="text-sm font-semibold text-slate-800">
                                                             {model.name}
                                                         </div>
+                                                        {(model.is_new || model.sunset_soon) && (
+                                                            <div className="mt-2 flex flex-wrap gap-2">
+                                                                {model.is_new && (
+                                                                    <StatusBadge tone="accent">
+                                                                        新上
+                                                                    </StatusBadge>
+                                                                )}
+                                                                {model.sunset_soon && (
+                                                                    <StatusBadge tone="warning">
+                                                                        即将下线
+                                                                    </StatusBadge>
+                                                                )}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 ))}
                                             </div>
@@ -1131,7 +1240,7 @@ const Platform = (props: RouterComponentProps) => {
             )}
             {activeTopMenu === "docs" && (
                 <div className="mx-auto flex w-full max-w-6xl gap-6 px-6 py-8">
-                    <aside className="w-full max-w-[260px] rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <aside className="w-full max-w-[260px] shrink-0 basis-[260px] rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                         <div className="text-xs font-semibold uppercase tracking-widest text-slate-400">
                             API 文档
                         </div>
@@ -1158,7 +1267,7 @@ const Platform = (props: RouterComponentProps) => {
                             ))}
                         </div>
                     </aside>
-                    <main className="flex-1 rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+                    <main className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
                         {activeDocsPage === "gateway-api" && (
                             <div className="flex flex-col gap-6">
                                 <div>
@@ -1168,43 +1277,82 @@ const Platform = (props: RouterComponentProps) => {
                                         Base URL 为当前网关地址：`{gatewayBaseUrl}`。
                                     </p>
                                     <div className="mt-4 text-xs text-slate-500">
-                                        本页面文档由 AI 自动生成，如有问题请联系管理员。
+                                        本页面文档由 AI 自动生成，如有问题请联系管理员{adminContact ? ` ${adminContact}` : ""}。
                                     </div>
                                 </div>
-                                <div className="grid gap-6">
-                                    {apiDocs.map((doc) => (
-                                        <div
-                                            key={doc.title}
-                                            className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
-                                        >
-                                            <div className="text-sm font-semibold text-slate-900">
-                                                {doc.title}
-                                            </div>
-                                            <div className="mt-2 text-sm text-slate-600">
-                                                {doc.summary}
-                                            </div>
-                                            <div className="mt-4">
-                                                <div className="text-xs font-semibold text-slate-500">
-                                                    请求示例
+                                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                                    当前共 {apiDocs.length} 个接口，已按能力分组展示。点击卡片可展开请求示例、响应示例和备注。
+                                </div>
+                                <div className="space-y-6">
+                                    {groupedApiDocs.map((group) => (
+                                        <section key={group.label} className="space-y-3">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div className="text-xs font-semibold uppercase tracking-widest text-slate-400">
+                                                    {group.label}
                                                 </div>
-                                                <pre className="mt-2 overflow-x-auto rounded-xl bg-slate-900 p-4 text-xs text-slate-100">
-                                                    {doc.request}
-                                                </pre>
-                                            </div>
-                                            <div className="mt-4">
-                                                <div className="text-xs font-semibold text-slate-500">
-                                                    响应示例
+                                                <div className="text-xs text-slate-400">
+                                                    {group.docs.length} 个接口
                                                 </div>
-                                                <pre className="mt-2 overflow-x-auto rounded-xl bg-slate-900 p-4 text-xs text-slate-100">
-                                                    {doc.response}
-                                                </pre>
                                             </div>
-                                            <div className="mt-4 text-xs text-slate-500">
-                                                {doc.notes.map((note) => (
-                                                    <div key={note}>• {note}</div>
-                                                ))}
+                                            <div className="space-y-3">
+                                                {group.docs.map((doc) => {
+                                                    const isExpanded = expandedApiDoc === doc.title;
+                                                    return (
+                                                        <div
+                                                            key={doc.title}
+                                                            className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+                                                        >
+                                                            <button
+                                                                type="button"
+                                                                onClick={() =>
+                                                                    setExpandedApiDoc((current) =>
+                                                                        current === doc.title ? "" : doc.title
+                                                                    )
+                                                                }
+                                                                className="flex w-full items-start justify-between gap-4 text-left"
+                                                            >
+                                                                <div className="min-w-0">
+                                                                    <div className="text-sm font-semibold text-slate-900">
+                                                                        {doc.title}
+                                                                    </div>
+                                                                    <div className="mt-2 text-sm text-slate-600">
+                                                                        {doc.summary}
+                                                                    </div>
+                                                                </div>
+                                                                <span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-500">
+                                                                    {isExpanded ? "收起" : "展开"}
+                                                                </span>
+                                                            </button>
+                                                            {isExpanded && (
+                                                                <div className="mt-4 border-t border-slate-200 pt-4">
+                                                                    <div>
+                                                                        <div className="text-xs font-semibold text-slate-500">
+                                                                            请求示例
+                                                                        </div>
+                                                                        <pre className="mt-2 overflow-x-auto rounded-xl bg-slate-900 p-4 text-xs text-slate-100">
+                                                                            {doc.request}
+                                                                        </pre>
+                                                                    </div>
+                                                                    <div className="mt-4">
+                                                                        <div className="text-xs font-semibold text-slate-500">
+                                                                            响应示例
+                                                                        </div>
+                                                                        <pre className="mt-2 overflow-x-auto rounded-xl bg-slate-900 p-4 text-xs text-slate-100">
+                                                                            {doc.response}
+                                                                        </pre>
+                                                                    </div>
+                                                                    <div className="mt-4 text-xs text-slate-500">
+                                                                        {doc.notes.map((note) => (
+                                                                            <div key={note}>• {note}</div>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
                                             </div>
-                                        </div>
+                                        </section>
                                     ))}
                                 </div>
                             </div>
@@ -1239,12 +1387,17 @@ const Platform = (props: RouterComponentProps) => {
                                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
                                     <div className="text-sm font-semibold text-slate-800">步骤二：修改配置文件</div>
                                     <div className="mt-2 text-sm text-slate-600">
-                                        <a
-                                            href="/console/apikey"
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setActiveTopMenu("console");
+                                                setActiveSideMenu("apikey");
+                                                syncPath("console", "apikey", activeDocsPage);
+                                            }}
                                             className="text-blue-700 underline hover:text-blue-800"
                                         >
                                             在这里申请 API Key
-                                        </a>
+                                        </button>
                                         ；随后配置 Claude 所需环境变量。
                                     </div>
                                     <div className="mt-3 text-xs font-semibold text-slate-500">

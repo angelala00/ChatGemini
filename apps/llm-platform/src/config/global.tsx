@@ -33,4 +33,9 @@ export const globalConfig = {
             ? env["REACT_APP_GATEWAY_BASE_URL"]
             : "",
     },
+    support: {
+        adminContact: !!env["REACT_APP_PLATFORM_ADMIN_CONTACT"]?.length
+            ? env["REACT_APP_PLATFORM_ADMIN_CONTACT"]
+            : "",
+    },
 };
