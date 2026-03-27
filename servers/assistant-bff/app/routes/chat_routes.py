@@ -60,6 +60,25 @@ class QueryRequest(BaseModel):
     conversation_id: str = None
     file_ids: str = None
     model: str = None
+    base_model: str = None
+    reasoning_enabled: Optional[bool] = None
+
+
+def _get_gptassistant_model_config(requested_model: Optional[str]):
+    assistant_config = gpts.get("gptassistant", {})
+    models = assistant_config.get("models", [])
+    default_model = assistant_config.get("default_model", "")
+    selected_model = requested_model or default_model
+
+    for item in models:
+        if item.get("id") == selected_model:
+            return item
+
+    for item in models:
+        if item.get("id") == default_model:
+            return item
+
+    return models[0] if models else None
 
 
 @router.post("/chat")
@@ -68,9 +87,20 @@ async def chat_with_gpt_assistant(request: QueryRequest, user: dict = Depends(ge
     if not request.conversation_id:
         request.conversation_id = await generate_conversation_id()
     cid = request.conversation_id
-    system_prompt = gpts["gptassistant"]["system_prompt"]
+    assistant_config = gpts["gptassistant"]
+    system_prompt = assistant_config["system_prompt"]
     user_prompt = request.query
-    model_name = request.model
+    selected_model_config = _get_gptassistant_model_config(request.base_model or request.model)
+    if not selected_model_config:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "no available models")
+    model_name = selected_model_config.get("model_name") or selected_model_config.get("id")
+    reasoning_enabled = (
+        bool(request.reasoning_enabled)
+        if request.reasoning_enabled is not None
+        else bool(assistant_config.get("default_reasoning", True))
+    )
+    if not selected_model_config.get("supports_reasoning", False):
+        reasoning_enabled = False
     print(f"request.file_ids:{request.file_ids}")
     # if request.file_ids:
     #     user_prompt += extract_text_from_file_ids(request.file_ids)
@@ -88,7 +118,16 @@ async def chat_with_gpt_assistant(request: QueryRequest, user: dict = Depends(ge
     try:
         generator = _invoke_chat_function(
             chat_function,
-            (user_prompt, cid, system_prompt, model_name, "gptassistant", request.file_ids),
+            (
+                user_prompt,
+                cid,
+                system_prompt,
+                model_name,
+                "gptassistant",
+                request.file_ids,
+                reasoning_enabled,
+                selected_model_config,
+            ),
             usage_tracker=tracker,
         )
     except Exception as exc:

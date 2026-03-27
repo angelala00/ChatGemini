@@ -1,9 +1,8 @@
 import submitIcon from "../assets/icons/paper-plane-solid.svg";
-import clearInputIcon from "../assets/icons/circle-xmark-solid.svg";
 import ejectionIcon from "../assets/icons/eject-solid.svg";
 import attachmentIcon from "../assets/icons/paperclip-solid.svg";
-import disabledIcon from "../assets/icons/comment-dots-regular.svg";
 import abortIcon from "../assets/icons/stop.svg";
+import reasoningIcon from "../assets/icons/wand-sparkles-solid.svg";
 import {
     ForwardedRef,
     KeyboardEvent,
@@ -31,15 +30,32 @@ interface InputAreaProps {
     readonly fileUploadEnabled: boolean;
     readonly minHeight: number;
     readonly maxHeight?: number;
+    readonly showReasoningToggle?: boolean;
+    readonly reasoningEnabled?: boolean;
+    readonly reasoningAvailable?: boolean;
     readonly onSubmit: (prompt: string) => void;
     readonly onUpload: (file: File | null) => void;
     readonly onAbort: () => void;
+    readonly onReasoningChange?: (enabled: boolean) => void;
     readonly allowedFileTypes?: UploadCategory[];
 }
 
 export const InputArea = forwardRef(
     (props: InputAreaProps, ref: ForwardedRef<HTMLTextAreaElement>) => {
-        const { busy, fileUploadEnabled, minHeight, maxHeight, onSubmit, onUpload, onAbort, allowedFileTypes } = props;
+        const {
+            busy,
+            fileUploadEnabled,
+            minHeight,
+            maxHeight,
+            showReasoningToggle,
+            reasoningEnabled,
+            reasoningAvailable,
+            onSubmit,
+            onUpload,
+            onAbort,
+            onReasoningChange,
+            allowedFileTypes,
+        } = props;
         const { t, i18n } = useTranslation();
 
         const fileInputRef = useRef<HTMLInputElement>(null);
@@ -197,7 +213,49 @@ export const InputArea = forwardRef(
                     />
 
                     {/* 按钮区域 - 适配小屏幕 */}
-                    <div className="flex justify-end items-center space-x-2 h-[30px] mt-1">
+                    <div className="flex justify-between items-center gap-2 min-h-[30px] mt-1">
+                        <div className="flex items-center">
+                            {showReasoningToggle && (
+                                <button
+                                    type="button"
+                                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
+                                        reasoningAvailable
+                                            ? reasoningEnabled
+                                                ? "border-amber-500 bg-amber-500 text-white shadow-sm hover:bg-amber-400"
+                                                : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                                            : "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400"
+                                    }`}
+                                    disabled={!reasoningAvailable}
+                                    onClick={() => onReasoningChange?.(!(reasoningEnabled ?? false))}
+                                >
+                                    <span
+                                        className={`inline-block size-2 rounded-full ${
+                                            reasoningAvailable
+                                                ? reasoningEnabled
+                                                    ? "bg-white"
+                                                    : "bg-slate-400"
+                                                : "bg-gray-300"
+                                        }`}
+                                    />
+                                    <img src={reasoningIcon} className="size-3.5" alt="" />
+                                    <span>{t("components.InputArea.reasoning_toggle.label")}</span>
+                                    <span
+                                        className={`rounded-full px-1.5 py-0.5 text-[10px] leading-none ${
+                                            reasoningAvailable
+                                                ? reasoningEnabled
+                                                    ? "bg-white/20 text-white"
+                                                    : "bg-slate-200 text-slate-700"
+                                                : "bg-gray-200 text-gray-500"
+                                        }`}
+                                    >
+                                        {reasoningEnabled
+                                            ? t("components.InputArea.reasoning_toggle.enabled")
+                                            : t("components.InputArea.reasoning_toggle.disabled")}
+                                    </span>
+                                </button>
+                            )}
+                        </div>
+                        <div className="flex items-center space-x-2">
                         {fileUploadEnabled && (
                             /* 上传按钮 */
                             <div>
@@ -248,6 +306,7 @@ export const InputArea = forwardRef(
                             <img className={busy ? "hidden" : "size-4"} src={submitIcon} alt="" />
                             <img className={busy ? "size-4 animate-pulse animate-infinite animate-duration-1000" : "hidden"} src={abortIcon} alt="" />
                         </button>
+                        </div>
                     </div>
                 </div>
             </div>

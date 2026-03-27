@@ -110,6 +110,11 @@
                 "type_image": "image",
                 "upload_success": "Click the icon again to cancel uploading"
             },
+            "reasoning_toggle": {
+                "label": "Reason",
+                "enabled": "On",
+                "disabled": "Off"
+            },
             "setPlaceholderByWidth": {
                 "placeholder_for_pc": "Press Enter to send",
                 "placeholder_for_mobile": "Your prompts here..."

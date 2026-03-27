@@ -1,5 +1,14 @@
 from .config_gpts import register_gpt
-from app.utils.model_tool import MODEL_NAME_VL, MODEL_NAME_INSTRUCT, MODEL_NAME_THINKING
+from .model_registry import (
+    GLM47_MODEL,
+    GLM5_MODEL,
+    QWEN35_MODEL,
+)
+from app.utils.model_tool import (
+    MODEL_NAME_THINKING,
+)
+
+DEFAULT_GPTASSISTANT_MODEL = GLM47_MODEL["model_name"]
 
 register_gpt({
     "gptassistant": {
@@ -8,33 +17,35 @@ register_gpt({
         "sub_title": "通用对话助手111",
         "system_prompt": "You are a helpful assistant.",
         "file_upload_enabled": True,
-        "default_model": "auto",
+        "upload_file_types": ["document", "image"],
+        "default_model": DEFAULT_GPTASSISTANT_MODEL,
+        "default_reasoning": True,
         "auth": {"type": "all"},
         "sort": 0,
         "models": [
             {
-                "id": "auto",
-                "name": "Auto",
-                "description": "自动选择最合适的模型",
-                "upload_file_types": ["document", "image"],
+                "id": GLM47_MODEL["model_name"],
+                "name": "GLM 4.7",
+                "description": "默认通用模型，适合文本问答、分析，以及结合图片解析后的多模态问答",
+                "model_name": GLM47_MODEL["model_name"],
+                "supports_reasoning": GLM47_MODEL["supports_reasoning"],
+                "supports_native_image_input": GLM47_MODEL["supports_native_image_input"],
             },
             {
-                "id": MODEL_NAME_THINKING,
-                "name": "Deepseek(思考)",
-                "description": "提供深度思考与分析输出",
-                "upload_file_types": ["document"],
+                "id": QWEN35_MODEL["model_name"],
+                "name": "Qwen 3.5",
+                "description": "支持思考开关与原生视觉理解，适合快速响应和多模态输入",
+                "model_name": QWEN35_MODEL["model_name"],
+                "supports_reasoning": QWEN35_MODEL["supports_reasoning"],
+                "supports_native_image_input": QWEN35_MODEL["supports_native_image_input"],
             },
             {
-                "id": MODEL_NAME_INSTRUCT,
-                "name": "Qwen(立即回答)",
-                "description": "快速响应的即时回答模式",
-                "upload_file_types": ["document"],
-            },
-            {
-                "id": MODEL_NAME_VL,
-                "name": "Qwen-VL(多模态)",
-                "description": "支持图像与文本输入，可进行看图问答、内容理解与多模态分析",
-                "upload_file_types": ["image"],
+                "id": GLM5_MODEL["model_name"],
+                "name": "GLM 5",
+                "description": "更强的综合能力，适合复杂推理、长文本任务，以及结合图片解析后的问答",
+                "model_name": GLM5_MODEL["model_name"],
+                "supports_reasoning": GLM5_MODEL["supports_reasoning"],
+                "supports_native_image_input": GLM5_MODEL["supports_native_image_input"],
             },
         ]
     },

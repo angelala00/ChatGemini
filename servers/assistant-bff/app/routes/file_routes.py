@@ -1,6 +1,7 @@
 import time
 import os
 import uuid
+import imghdr
 from apscheduler.schedulers.background import BackgroundScheduler
 from ..utils import extract_text
 from fastapi import APIRouter, Request, Depends, File, UploadFile, HTTPException, status, Form
@@ -10,6 +11,7 @@ import mimetypes
 from app.auth.auth_routes import get_current_user
 from app.logger import gpt_logger
 from app.base_config import model_config
+from app.gpts.config_gpts import gpts, refresh_gpts
 from app.utils.model_tool import (
     MODEL_NAME_INSTRUCT,
     MODEL_NAME_THINKING,
@@ -36,9 +38,31 @@ MODEL_UPLOAD_RULES = {
 FILE_LIFETIME_DAYS = 7  # 可配置的过期时间，单位为天
 
 
+def _get_gptassistant_model_ids():
+    refresh_gpts()
+    assistant_config = gpts.get("gptassistant", {})
+    return {
+        item["id"]
+        for item in assistant_config.get("models", [])
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+    }
+
+
+def _get_gptassistant_upload_rule():
+    assistant_config = gpts.get("gptassistant", {})
+    upload_types = assistant_config.get("upload_file_types", [])
+    return {
+        "documents": "document" in upload_types,
+        "images": "image" in upload_types,
+    }
+
+
 # 判断文件扩展名是否允许
 def _get_allowed_extensions_by_model(model_id: str):
-    model_rule = MODEL_UPLOAD_RULES.get(model_id) or MODEL_UPLOAD_RULES["auto"]
+    if model_id in _get_gptassistant_model_ids():
+        model_rule = _get_gptassistant_upload_rule()
+    else:
+        model_rule = MODEL_UPLOAD_RULES.get(model_id) or MODEL_UPLOAD_RULES["auto"]
     allowed_extensions = set()
     if model_rule.get("documents"):
         allowed_extensions.update(DOCUMENT_EXTENSIONS)
@@ -300,6 +324,36 @@ def get_file_paths(file_ids: str):
             continue
         paths.append(file_path)
     return paths
+
+
+def split_file_ids_by_type(file_ids: str):
+    if not file_ids:
+        return None, None
+
+    file_mapping = load_file_mapping()
+    image_file_ids = []
+    document_file_ids = []
+    for file_id in file_ids.split(","):
+        current_file_id = file_id.strip()
+        if not current_file_id:
+            continue
+        if current_file_id not in file_mapping:
+            print(f"file_id:{current_file_id} is not found")
+            continue
+
+        file_path = file_mapping[current_file_id]["path"]
+        if not os.path.exists(file_path):
+            print(f"file_path:{file_path} is not found")
+            continue
+
+        if imghdr.what(file_path) is not None:
+            image_file_ids.append(current_file_id)
+        else:
+            document_file_ids.append(current_file_id)
+
+    image_ids = ",".join(image_file_ids) if image_file_ids else None
+    document_ids = ",".join(document_file_ids) if document_file_ids else None
+    return image_ids, document_ids
 
 
 async def extract_text_from_file_ids(file_ids: str):

@@ -8,9 +8,32 @@ from typing import AsyncGenerator, Dict, Any, List, Optional
 import traceback
 from app.routes.file_routes import extract_text_from_file_ids
 from app.routes.file_routes import get_file_paths
+from app.routes.file_routes import split_file_ids_by_type
 from app.utils.model_tool import convert_image_message, is_image_only
-from app.utils.model_tool import MODEL_NAME_VL, MODEL_NAME_INSTRUCT, MODEL_NAME_THINKING, MODEL_NAME_DS, MODEL_NAME_QWQ
+from app.utils.model_tool import (
+    MODEL_NAME_VL,
+    MODEL_NAME_INSTRUCT,
+    MODEL_NAME_THINKING,
+    MODEL_NAME_DS,
+    MODEL_NAME_QWQ,
+)
 from app.metrics.events import UsageEventTracker
+
+
+LEGACY_REASONING_MODELS = {
+    MODEL_NAME_DS,
+    MODEL_NAME_QWQ,
+    MODEL_NAME_THINKING,
+}
+LEGACY_MULTIMODAL_MODELS = {MODEL_NAME_VL}
+
+
+def _is_reasoning_model(model_name: str | None):
+    return bool(model_name and model_name in LEGACY_REASONING_MODELS)
+
+
+def _is_multimodal_model(model_name: str | None):
+    return bool(model_name and model_name in LEGACY_MULTIMODAL_MODELS)
 
 
 class StreamHandledError(Exception):
@@ -23,6 +46,8 @@ async def chat_with_react_as_function_call(
     system_prompt,
     model_name,
     gid,
+    file_ids: str = None,
+    show_reasoning: bool = True,
     usage_tracker: Optional[UsageEventTracker] = None,
 ):
     print(f"query:{query}")
@@ -34,8 +59,11 @@ async def chat_with_react_as_function_call(
     # 确保 system prompt 只添加一次
     if not messages or messages[0]["role"] != "system":
         messages.insert(0, {"role": "system", "content": system_prompt})
-        # 添加当前用户的提问
-    messages.append({"role": "user", "content": query})
+    if file_ids:
+        file_paths = get_file_paths(file_ids)
+        messages.append({"role": "user", "content": convert_image_message(file_paths, query)})
+    else:
+        messages.append({"role": "user", "content": query})
     try:
         # 3. 调用大模型
         # 使用异步方式调用模型
@@ -66,23 +94,28 @@ async def chat_with_react_as_function_call(
                     sum_content = sum_content + content
                     if start_token:
                         start_token = False
-                        if not think_begin:
+                        if show_reasoning and not think_begin:
                             think_begin = True
                             temp = {"event": "message", "conversation_id": conversation_id, "answer": "<think>"}
                             yield f"data: {json.dumps(temp)}\n\n"
-                        temp = {"event": "message", "conversation_id": conversation_id,
-                                "answer": "<step><summary>思考中</summary>"}
-                        yield f"data: {json.dumps(temp)}\n\n"
+                        if show_reasoning:
+                            temp = {"event": "message", "conversation_id": conversation_id,
+                                    "answer": "<step><summary>思考中</summary>"}
+                            yield f"data: {json.dumps(temp)}\n\n"
                     if not think_tag_detected:
                         # 还未遇到 </think>，直接转发内容
                         if "</think>" in content:
                             think_tag_detected = True
                             # 分割出 </think> 前后的内容
                             parts = content.split("</think>", 1)
-                            temp = {"event": "message", "conversation_id": conversation_id,
-                                    "answer": parts[0] + "</step>"}
-                            print(f"found </think>,content: {content}")
-                            yield f"data: {json.dumps(temp)}\n\n"
+                            if show_reasoning:
+                                temp = {"event": "message", "conversation_id": conversation_id,
+                                        "answer": parts[0] + "</step>"}
+                                print(f"found </think>,content: {content}")
+                                yield f"data: {json.dumps(temp)}\n\n"
+                            elif parts[1]:
+                                temp = {"event": "message", "conversation_id": conversation_id, "answer": parts[1]}
+                                yield f"data: {json.dumps(temp)}\n\n"
                             # 将标签后的部分先加入缓冲区，后续用于判断
                             if parts[1]:
                                 post_think_tokens.append(parts[1])
@@ -328,31 +361,42 @@ async def _chat_with_agent(
     yield {"type": "assistant.final", "data": {"text": ""}}
 
 
-async def chat_with_agent(query, conversation_id, system_prompt, model_name, gid, file_ids=None):
+async def chat_with_agent(
+    query,
+    conversation_id,
+    system_prompt,
+    model_name,
+    gid,
+    file_ids=None,
+    show_reasoning: bool = True,
+):
     first = True
     think_end = False
     async for ev in _chat_with_agent(query, conversation_id, system_prompt, get_tools(gid), model_name, file_ids):
         # print(f"ev:{ev}")
-        if first:
+        if first and show_reasoning:
             first = False
             temp = {"event": "message", "conversation_id": conversation_id, "answer": "<think>"}
             yield f"data: {json.dumps(temp)}\n\n"
+        if first:
+            first = False
         # if ev["type"] == "tool.delta":
         #     delta = ev["data"]["name"] if ev["data"]["name"] else ev["data"]["arguments_delta"]
         #     temp = {"event": "message", "conversation_id": conversation_id, "answer": delta}
         #     yield f"data: {json.dumps(temp)}\n\n"
         if ev["type"] == "tool.calls":
-            temp = {"event": "message", "conversation_id": conversation_id, "answer": f"<step><summary>工具调用中</summary>"}
-            yield f"data: {json.dumps(temp)}\n\n"
-            temp = {"event": "message", "conversation_id": conversation_id, "answer": f"正在调用工具{ev['data']['calls'][0]['name']}，{ev['data']['calls'][0]['arguments']}"}
-            yield f"data: {json.dumps(temp)}\n\n"
-            temp = {"event": "message", "conversation_id": conversation_id, "answer": f"工具调用结果："}
-            print(f"result:{temp}")
-            # yield f"data: {json.dumps(temp)}\n\n"
-            temp = {"event": "message", "conversation_id": conversation_id, "answer": f"</step>"}
-            yield f"data: {json.dumps(temp)}\n\n"
+            if show_reasoning:
+                temp = {"event": "message", "conversation_id": conversation_id, "answer": f"<step><summary>工具调用中</summary>"}
+                yield f"data: {json.dumps(temp)}\n\n"
+                temp = {"event": "message", "conversation_id": conversation_id, "answer": f"正在调用工具{ev['data']['calls'][0]['name']}，{ev['data']['calls'][0]['arguments']}"}
+                yield f"data: {json.dumps(temp)}\n\n"
+                temp = {"event": "message", "conversation_id": conversation_id, "answer": f"工具调用结果："}
+                print(f"result:{temp}")
+                # yield f"data: {json.dumps(temp)}\n\n"
+                temp = {"event": "message", "conversation_id": conversation_id, "answer": f"</step>"}
+                yield f"data: {json.dumps(temp)}\n\n"
         if ev["type"] == "text.delta":
-            if not think_end:
+            if show_reasoning and not think_end:
                 think_end = True
                 temp = {"event": "message", "conversation_id": conversation_id, "answer": "<step><summary>完成</summary>完成</step></think>"}
                 yield f"data: {json.dumps(temp)}\n\n"
@@ -375,6 +419,8 @@ async def chat_with_gpt(
     model_name,
     gid,
     file_ids,
+    reasoning_enabled,
+    model_config,
     usage_tracker: Optional[UsageEventTracker] = None,
 ):
     print(f"model_name===1:{model_name}")
@@ -382,6 +428,10 @@ async def chat_with_gpt(
     file_paths = get_file_paths(file_ids)
     has_file_ids = bool(file_ids)
     image_only = is_image_only(file_paths)
+    image_file_ids, document_file_ids = split_file_ids_by_type(file_ids)
+    native_image_input = bool(model_config.get("supports_native_image_input"))
+    forwarded_image_file_ids = image_file_ids if native_image_input else None
+    use_reasoning = bool(reasoning_enabled)
 
     if model_name == "auto":
         if image_only:
@@ -393,28 +443,54 @@ async def chat_with_gpt(
             model_name = MODEL_NAME_THINKING
         else:
             model_name = MODEL_NAME_INSTRUCT
-    elif has_file_ids and not image_only and model_name != MODEL_NAME_VL:
-        query += await extract_text_from_file_ids(file_ids)
+        use_reasoning = model_name == MODEL_NAME_THINKING
+    else:
+        if document_file_ids:
+            query += await extract_text_from_file_ids(document_file_ids)
+        if image_file_ids and not native_image_input:
+            query += await extract_text_from_file_ids(image_file_ids)
 
     print(f"model_name===2:{model_name}")
     if usage_tracker:
         usage_tracker.set_model(model_name)
 
-    if model_name == MODEL_NAME_DS or model_name == MODEL_NAME_QWQ or model_name == MODEL_NAME_THINKING:
+    if use_reasoning or _is_reasoning_model(model_name):
         async for ev in chat_with_react_as_function_call(
             query,
             conversation_id,
             system_prompt,
             model_name,
             gid,
+            file_ids=forwarded_image_file_ids,
+            show_reasoning=use_reasoning,
             usage_tracker=usage_tracker,
         ):
             yield ev
-    if model_name == MODEL_NAME_INSTRUCT:
-        async for ev in chat_with_agent(query, conversation_id, system_prompt, model_name, gid):
+        return
+    if model_name == MODEL_NAME_INSTRUCT or (
+        not _is_reasoning_model(model_name) and not _is_multimodal_model(model_name)
+    ):
+        async for ev in chat_with_agent(
+            query,
+            conversation_id,
+            system_prompt,
+            model_name,
+            gid,
+            forwarded_image_file_ids,
+            show_reasoning=False,
+        ):
             yield ev
-    if model_name == MODEL_NAME_VL:
-        async for ev in chat_with_agent(query, conversation_id, system_prompt, model_name, gid, file_ids):
+        return
+    if _is_multimodal_model(model_name):
+        async for ev in chat_with_agent(
+            query,
+            conversation_id,
+            system_prompt,
+            model_name,
+            gid,
+            forwarded_image_file_ids or file_ids,
+            show_reasoning=False,
+        ):
             yield ev
 
 

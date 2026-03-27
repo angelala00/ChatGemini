@@ -22,10 +22,8 @@ import { handleRequest } from "./helpers/handleRequest";
 import { sendUserAlert } from "./helpers/sendUserAlert";
 import { sendUserConfirm } from "./helpers/sendUserConfirm";
 import { PageScroller } from "./components/PageScroller";
-import { LoginForm } from "./components/LoginForm";
 import { LoginByOAuth } from "./components/LoginByOAuth";
 import siteLogo from "./assets/logo.svg";
-import setLocalStorage from "./helpers/setLocalStorage";
 import i18n, { i18nConfig } from "./config/i18n";
 import { setUserLocale } from "./helpers/setUserLocale";
 import { useTranslation } from "react-i18next";
@@ -59,7 +57,7 @@ const writePreferredModel = (modelId: string) => {
 
 const App = () => {
     const { t } = useTranslation();
-    const { sse, title, passcodes } = globalConfig;
+    const { title, passcodes } = globalConfig;
     const { header, site } = title;
     const { routes } = routerConfig;
     const { fallback, resources } = i18nConfig;
@@ -103,6 +101,8 @@ const App = () => {
     const [serverDefaultModel, setServerDefaultModel] = useState("");
     const [defaultModel, setDefaultModel] = useState("");
     const [selectedModel, setSelectedModel] = useState("");
+    const [serverDefaultReasoning, setServerDefaultReasoning] = useState(true);
+    const [selectedReasoningEnabled, setSelectedReasoningEnabled] = useState(true);
     const [pendingManualModel, setPendingManualModel] = useState<string | null>(
         null,
     );
@@ -262,6 +262,9 @@ const App = () => {
         () => models?.find((item) => item.id === resolvedModelId),
         [models, resolvedModelId],
     );
+    const showReasoningToggle = r_gid === "gptassistant" && !!models?.length;
+    const reasoningAvailable = !!resolvedModelOption?.supportsReasoning;
+    const effectiveReasoningEnabled = reasoningAvailable && selectedReasoningEnabled;
     const resolvedUploadCategories = resolvedModelOption?.uploadFileTypes;
     function encodeBase64(text: string) {
         try {
@@ -377,6 +380,7 @@ const App = () => {
                     (previousExtension && previousExtension.gid) ||
                     "",
                 selectedModel: selectedModelId,
+                reasoningEnabled: selectedReasoningEnabled,
             },
         };
         dispatch(updateSessionExtensions(nextSessionExtensions));
@@ -396,6 +400,7 @@ const App = () => {
                         ...currentSessionExtensionsState[id],
                         conversationId: convId,
                         selectedModel: selectedModelId,
+                        reasoningEnabled: selectedReasoningEnabled,
                     },
                 };
                 dispatch(updateSessionExtensions(currentSessionExtensionsState));
@@ -434,6 +439,7 @@ const App = () => {
             gid,
             handler,
             selectedModelId,
+            effectiveReasoningEnabled,
         );
         onAbortUpdate(abort)
         try {
@@ -462,6 +468,16 @@ const App = () => {
                                 ? data.default_model
                                 : "",
                         )
+                        setServerDefaultReasoning(
+                            typeof data.default_reasoning === "boolean"
+                                ? data.default_reasoning
+                                : true,
+                        )
+                        const defaultUploadTypes: UploadCategory[] | undefined = Array.isArray(data.upload_file_types)
+                            ? data.upload_file_types.filter((type: unknown): type is UploadCategory =>
+                                type === "document" || type === "image",
+                            )
+                            : undefined
                         const normalizedModels: ModelOption[] | undefined = Array.isArray(data.models)
                             ? data.models.reduce(
                                 (acc: ModelOption[], item: any) => {
@@ -470,12 +486,15 @@ const App = () => {
                                             ? item.upload_file_types.filter((type: unknown): type is UploadCategory =>
                                                 type === "document" || type === "image",
                                             )
-                                            : undefined
+                                            : defaultUploadTypes
                                         acc.push({
                                             id: item.id,
                                             name: item.name,
                                             description: typeof item.description === "string" ? item.description : "",
                                             uploadFileTypes: uploadTypes,
+                                            supportsReasoning: typeof item.supports_reasoning === "boolean"
+                                                ? item.supports_reasoning
+                                                : undefined,
                                         })
                                     }
                                     return acc
@@ -536,6 +555,22 @@ const App = () => {
             setDefaultModel(targetModel);
         }
     }, [defaultModel, id, models, serverDefaultModel, sessionExtensions]);
+
+    useEffect(() => {
+        const sessionId = id;
+
+        if (
+            sessionId &&
+            typeof sessionExtensions[sessionId]?.reasoningEnabled === "boolean"
+        ) {
+            setSelectedReasoningEnabled(
+                !!sessionExtensions[sessionId].reasoningEnabled,
+            );
+            return;
+        }
+
+        setSelectedReasoningEnabled(serverDefaultReasoning);
+    }, [id, serverDefaultReasoning, sessionExtensions]);
 
     useEffect(() => {
         // console.log("====="+hasLogined)
@@ -644,11 +679,15 @@ const App = () => {
                                     ref={textAreaRef}
                                     busy={ai.busy}
                                     fileUploadEnabled={fileUploadEnabled}
+                                    showReasoningToggle={showReasoningToggle}
+                                    reasoningEnabled={effectiveReasoningEnabled}
+                                    reasoningAvailable={reasoningAvailable}
                                     allowedFileTypes={resolvedUploadCategories}
                                     key={location.pathname}
                                     onSubmit={handleSubmit}
                                     onUpload={handleUpload}
                                     onAbort={handleAbort}
+                                    onReasoningChange={setSelectedReasoningEnabled}
                                 />
                                 {!ai.busy && (
                                     <PageScroller

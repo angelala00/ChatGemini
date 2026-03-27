@@ -4,6 +4,7 @@ export interface SessionExtension {
     readonly conversationId: string;
     readonly gid: string;
     readonly selectedModel: string;
+    readonly reasoningEnabled?: boolean;
 }
 export type SessionExtensions = Record<string, SessionExtension>;
 export const initialSessionExtensions: SessionExtensions = {};

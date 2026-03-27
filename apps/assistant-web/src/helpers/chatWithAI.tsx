@@ -84,7 +84,8 @@ export const chatWithAI = (
     conversationId: string,
     gid: string,
     onChatMessage: (message: string, end: boolean, conversationId: string) => void,
-    selectedModel: string
+    selectedModel: string,
+    reasoningEnabled: boolean,
 ) => {
     const controller = new AbortController();
     const TypeWriterEffectThreshold = 30;
@@ -117,7 +118,8 @@ export const chatWithAI = (
                 user: "user-abc-0987654321",
                 response_mode: "streaming",
                 conversation_id: conversationId,
-                model: selectedModel,
+                base_model: selectedModel,
+                reasoning_enabled: reasoningEnabled,
             };
 
             let streamCb = function(chatResponse: any) {

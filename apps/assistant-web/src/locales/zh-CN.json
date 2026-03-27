@@ -110,6 +110,11 @@
                 "type_image": "图片",
                 "upload_success": "再次点击图标即可取消上传"
             },
+            "reasoning_toggle": {
+                "label": "思考",
+                "enabled": "已开",
+                "disabled": "已关"
+            },
             "setPlaceholderByWidth": {
                 "placeholder_for_pc": "按下 Enter 快捷发送",
                 "placeholder_for_mobile": "请输入内容..."
