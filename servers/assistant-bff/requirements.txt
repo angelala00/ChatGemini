@@ -6,6 +6,7 @@ openai
 httpx
 apscheduler
 pydantic
+jsonschema
 starlette
 python-multipart
 aiofiles

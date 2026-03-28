@@ -1,0 +1,611 @@
+from __future__ import annotations
+
+import asyncio
+import json
+import time
+from typing import Any, Optional
+
+from ..event_stream import AssistantMessageEventStream, create_assistant_message_event_stream
+from ..models import calculate_cost
+from ..transform_messages import transform_messages
+from ..types import (
+    AssistantMessage,
+    Context,
+    DoneEvent,
+    ErrorEvent,
+    ImageContent,
+    Model,
+    OpenAICompatOptions,
+    OpenAICompletionsCompat,
+    ProviderStreamOptions,
+    SimpleStreamOptions,
+    StartEvent,
+    StreamOptions,
+    TextContent,
+    TextDeltaEvent,
+    TextEndEvent,
+    TextStartEvent,
+    ThinkingContent,
+    ThinkingDeltaEvent,
+    ThinkingEndEvent,
+    ThinkingStartEvent,
+    ToolCallContent,
+    ToolCallDeltaEvent,
+    ToolCallEndEvent,
+    ToolCallStartEvent,
+    ToolResultMessage,
+    Usage,
+)
+
+
+class OpenAICompatProvider:
+    api = "openai-compat-chat-completions"
+
+    def __init__(self, client: Any) -> None:
+        self._client = client
+
+    def stream(
+        self,
+        model: Model,
+        context: Context,
+        options: Optional[OpenAICompatOptions] = None,
+    ) -> AssistantMessageEventStream:
+        stream = create_assistant_message_event_stream()
+        asyncio.create_task(self._run_stream(stream, model, context, options or OpenAICompatOptions()))
+        return stream
+
+    def stream_simple(
+        self,
+        model: Model,
+        context: Context,
+        options: Optional[SimpleStreamOptions] = None,
+    ) -> AssistantMessageEventStream:
+        provider_options = OpenAICompatOptions()
+        if options:
+            provider_options.temperature = options.temperature
+            provider_options.max_tokens = options.max_tokens
+            provider_options.signal = options.signal
+            provider_options.api_key = options.api_key
+            provider_options.transport = options.transport
+            provider_options.cache_retention = options.cache_retention
+            provider_options.session_id = options.session_id
+            provider_options.on_payload = options.on_payload
+            provider_options.headers = dict(options.headers)
+            provider_options.max_retry_delay_ms = options.max_retry_delay_ms
+            provider_options.metadata = dict(options.metadata)
+            if options.reasoning:
+                provider_options.reasoning_effort = options.reasoning
+        return self.stream(model, context, provider_options)
+
+    async def _run_stream(
+        self,
+        stream: AssistantMessageEventStream,
+        model: Model,
+        context: Context,
+        options: OpenAICompatOptions,
+    ) -> None:
+        output = AssistantMessage(
+            content=[],
+            api=model.api,
+            provider=model.provider,
+            model=model.id,
+            timestamp=int(time.time() * 1000),
+        )
+
+        try:
+            payload = self._build_payload(model, context, options)
+            if options.on_payload:
+                next_payload = options.on_payload(payload, model)
+                if asyncio.iscoroutine(next_payload):
+                    next_payload = await next_payload
+                if next_payload is not None:
+                    payload = next_payload
+
+            openai_stream = await self._client.chat.completions.create(
+                **payload,
+                stream=True,
+            )
+            stream.push(StartEvent(partial=output))
+
+            current_block: TextContent | ThinkingContent | ToolCallContent | None = None
+
+            def content_index() -> int:
+                return len(output.content) - 1
+
+            def finish_current_block() -> None:
+                nonlocal current_block
+                if isinstance(current_block, TextContent):
+                    stream.push(
+                        TextEndEvent(
+                            content_index=content_index(),
+                            content=current_block.text,
+                            partial=output,
+                        )
+                    )
+                elif isinstance(current_block, ThinkingContent):
+                    stream.push(
+                        ThinkingEndEvent(
+                            content_index=content_index(),
+                            content=current_block.thinking,
+                            partial=output,
+                        )
+                    )
+                elif isinstance(current_block, ToolCallContent):
+                    stream.push(
+                        ToolCallEndEvent(
+                            content_index=content_index(),
+                            tool_call=current_block,
+                            partial=output,
+                        )
+                    )
+                current_block = None
+
+            async for chunk in openai_stream:
+                if getattr(chunk, "id", None):
+                    output.response_id = chunk.id
+                if getattr(chunk, "usage", None):
+                    output.usage = _parse_chunk_usage(chunk.usage, model)
+
+                choices = getattr(chunk, "choices", None) or []
+                if not choices:
+                    continue
+
+                choice = choices[0]
+                if getattr(choice, "finish_reason", None):
+                    stop_reason, error_message = self._map_stop_reason(choice.finish_reason)
+                    output.stop_reason = stop_reason
+                    if error_message:
+                        output.error_message = error_message
+
+                delta = getattr(choice, "delta", None)
+                if not delta:
+                    continue
+
+                text_delta = getattr(delta, "content", None)
+                if text_delta:
+                    if not isinstance(current_block, TextContent):
+                        finish_current_block()
+                        current_block = TextContent()
+                        output.content.append(current_block)
+                        stream.push(TextStartEvent(content_index=content_index(), partial=output))
+                    current_block.text += text_delta
+                    stream.push(
+                        TextDeltaEvent(
+                            content_index=content_index(),
+                            delta=text_delta,
+                            partial=output,
+                        )
+                    )
+
+                reasoning_delta = self._extract_reasoning_delta(delta)
+                if reasoning_delta:
+                    if not isinstance(current_block, ThinkingContent):
+                        finish_current_block()
+                        current_block = ThinkingContent()
+                        output.content.append(current_block)
+                        stream.push(ThinkingStartEvent(content_index=content_index(), partial=output))
+                    current_block.thinking += reasoning_delta
+                    stream.push(
+                        ThinkingDeltaEvent(
+                            content_index=content_index(),
+                            delta=reasoning_delta,
+                            partial=output,
+                        )
+                    )
+
+                tool_calls = getattr(delta, "tool_calls", None) or []
+                for tool_call in tool_calls:
+                    if (
+                        not isinstance(current_block, ToolCallContent)
+                        or (
+                            getattr(tool_call, "id", None)
+                            and current_block.id
+                            and getattr(tool_call, "id", None) != current_block.id
+                        )
+                    ):
+                        finish_current_block()
+                        current_block = ToolCallContent(arguments={})
+                        output.content.append(current_block)
+                        stream.push(ToolCallStartEvent(content_index=content_index(), partial=output))
+
+                    if getattr(tool_call, "id", None):
+                        current_block.id = tool_call.id
+                    fn = getattr(tool_call, "function", None)
+                    if fn and getattr(fn, "name", None):
+                        current_block.name = fn.name
+                    delta_args = ""
+                    if fn and getattr(fn, "arguments", None):
+                        delta_args = fn.arguments
+                        current_block.partial_arguments_raw += delta_args
+                        current_block.arguments = _parse_streaming_json_best_effort(
+                            current_block.partial_arguments_raw
+                        )
+                    stream.push(
+                        ToolCallDeltaEvent(
+                            content_index=content_index(),
+                            delta=delta_args,
+                            partial=output,
+                        )
+                    )
+
+                reasoning_details = getattr(delta, "reasoning_details", None) or []
+                if isinstance(current_block, ToolCallContent):
+                    for detail in reasoning_details:
+                        if (
+                            getattr(detail, "type", None) == "reasoning.encrypted"
+                            and getattr(detail, "id", None) == current_block.id
+                            and getattr(detail, "data", None)
+                        ):
+                            current_block.thought_signature = json.dumps(
+                                {
+                                    "type": detail.type,
+                                    "id": detail.id,
+                                    "data": detail.data,
+                                },
+                                ensure_ascii=False,
+                            )
+
+            finish_current_block()
+            if output.stop_reason in {"error", "aborted"}:
+                stream.push(
+                    ErrorEvent(
+                        reason="aborted" if output.stop_reason == "aborted" else "error",
+                        error=output,
+                    )
+                )
+            else:
+                done_reason = output.stop_reason if output.stop_reason in {"stop", "length", "tool_use"} else "stop"
+                stream.push(DoneEvent(reason=done_reason, message=output))
+            stream.finish(output)
+        except asyncio.CancelledError as exc:
+            output.stop_reason = "aborted"
+            output.error_message = str(exc)
+            stream.push(
+                ErrorEvent(
+                    reason="aborted",
+                    error=output,
+                )
+            )
+            stream.finish(output)
+        except Exception as exc:
+            output.stop_reason = "aborted" if _is_abort_error(exc) else "error"
+            output.error_message = str(exc)
+            stream.push(
+                ErrorEvent(
+                    reason="aborted" if output.stop_reason == "aborted" else "error",
+                    error=output,
+                )
+            )
+            stream.finish(output)
+
+    def _build_payload(
+        self,
+        model: Model,
+        context: Context,
+        options: OpenAICompatOptions,
+    ) -> dict[str, Any]:
+        compat = _compat_settings(model)
+        messages = []
+        if context.system_prompt:
+            system_role = "developer" if model.reasoning and compat.supports_developer_role else "system"
+            messages.append({"role": system_role, "content": context.system_prompt})
+        messages.extend(_messages_to_openai(transform_messages(context.messages, model), model, compat))
+
+        payload: dict[str, Any] = {
+            "model": model.id,
+            "messages": messages,
+        }
+        if model.headers:
+            payload["extra_headers"] = {**model.headers}
+        if options.include_usage and compat.supports_usage_in_streaming:
+            payload["stream_options"] = {"include_usage": True}
+        if context.tools:
+            payload["tools"] = [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": tool.name,
+                        "description": tool.description,
+                        "parameters": tool.parameters,
+                        **({"strict": False} if compat.supports_strict_mode else {}),
+                    },
+                }
+                for tool in context.tools
+            ]
+        elif _has_tool_history(context.messages):
+            payload["tools"] = []
+        if options.temperature is not None:
+            payload["temperature"] = options.temperature
+        if options.max_tokens is not None:
+            payload[compat.max_tokens_field] = options.max_tokens
+        if options.tool_choice is not None:
+            payload["tool_choice"] = options.tool_choice
+        if model.reasoning:
+            _apply_reasoning_payload(payload, options, compat)
+        if options.provider_options:
+            payload.update(options.provider_options)
+        return payload
+
+    @staticmethod
+    def _extract_reasoning_delta(delta: Any) -> str:
+        for field in ("reasoning_content", "reasoning", "reasoning_text"):
+            value = getattr(delta, field, None)
+            if value:
+                return value
+        return ""
+
+    @staticmethod
+    def _map_stop_reason(finish_reason: str | None) -> tuple[str, str | None]:
+        if finish_reason is None:
+            return "stop", None
+        if finish_reason in {"stop", "end"}:
+            return "stop", None
+        if finish_reason == "length":
+            return "length", None
+        if finish_reason in {"function_call", "tool_calls"}:
+            return "tool_use", None
+        if finish_reason in {"content_filter", "network_error"}:
+            return "error", f"Provider finish_reason: {finish_reason}"
+        return "error", f"Provider finish_reason: {finish_reason}"
+
+
+def _message_to_openai(message: Any, compat: OpenAICompletionsCompat) -> dict[str, Any]:
+    if message.role == "user":
+        if isinstance(message.content, str):
+            return {"role": "user", "content": message.content}
+        return {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": block.text}
+                if isinstance(block, TextContent)
+                else {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:{block.mime_type};base64,{block.data}",
+                    },
+                }
+                for block in message.content
+            ],
+        }
+
+    if message.role == "assistant":
+        tool_calls = []
+        text_parts = []
+        thinking_parts = []
+        thinking_signature = None
+        for block in message.content:
+            if isinstance(block, TextContent):
+                if block.text and block.text.strip():
+                    text_parts.append(block.text)
+            elif isinstance(block, ThinkingContent):
+                if block.thinking_signature and not thinking_signature:
+                    thinking_signature = block.thinking_signature
+                if block.thinking_signature or (block.thinking and block.thinking.strip()):
+                    thinking_parts.append(block.thinking)
+            elif isinstance(block, ToolCallContent):
+                tool_calls.append(
+                    {
+                        "id": block.id,
+                        "type": "function",
+                        "function": {
+                            "name": block.name,
+                            "arguments": json.dumps(block.arguments, ensure_ascii=False),
+                        },
+                    }
+                )
+        payload: dict[str, Any] = {
+            "role": "assistant",
+            "content": "".join(text_parts) or None,
+        }
+        if thinking_parts:
+            joined_thinking = "\n\n".join(part for part in thinking_parts if part)
+            if compat.requires_thinking_as_text and joined_thinking:
+                payload["content"] = f"{joined_thinking}{payload['content'] or ''}" or None
+            elif thinking_signature:
+                payload[thinking_signature] = joined_thinking
+            elif joined_thinking:
+                payload["content"] = f"{joined_thinking}{payload['content'] or ''}" or None
+        if tool_calls:
+            payload["tool_calls"] = tool_calls
+        return payload
+
+    return {
+        "role": "tool",
+        "tool_call_id": message.tool_call_id,
+        "name": message.tool_name,
+        "content": "\n".join(
+            block.text
+            for block in message.content
+            if isinstance(block, TextContent)
+        ),
+    }
+
+
+def _messages_to_openai(
+    messages: list[Any],
+    model: Model,
+    compat: OpenAICompletionsCompat | None = None,
+) -> list[dict[str, Any]]:
+    compat = compat or _compat_settings(model)
+    output: list[dict[str, Any]] = []
+    index = 0
+    last_role: str | None = None
+
+    while index < len(messages):
+        message = messages[index]
+
+        if message.role == "user":
+            if compat.requires_assistant_after_tool_result and last_role == "tool_result":
+                output.append({"role": "assistant", "content": "I have processed the tool results."})
+                last_role = "assistant"
+            payload = _message_to_openai(message, compat)
+            content = payload.get("content")
+            if not content:
+                index += 1
+                continue
+            output.append(payload)
+            last_role = "user"
+            index += 1
+            continue
+
+        if message.role == "assistant":
+            payload = _message_to_openai(message, compat)
+            has_content = bool(payload.get("content"))
+            has_thinking_signature = any(
+                key not in {"role", "content", "tool_calls"}
+                for key in payload.keys()
+            )
+            has_tool_calls = bool(payload.get("tool_calls"))
+            if not has_content and not has_tool_calls and not has_thinking_signature:
+                index += 1
+                continue
+            output.append(payload)
+            last_role = "assistant"
+            index += 1
+            continue
+
+        image_blocks: list[ImageContent] = []
+        while index < len(messages) and messages[index].role == "tool_result":
+            tool_result_message: ToolResultMessage = messages[index]
+            text_content = "\n".join(
+                block.text
+                for block in tool_result_message.content
+                if isinstance(block, TextContent) and block.text
+            )
+            tool_payload = {
+                "role": "tool",
+                "tool_call_id": tool_result_message.tool_call_id,
+                "content": text_content or "(see attached image)",
+            }
+            if compat.requires_tool_result_name and tool_result_message.tool_name:
+                tool_payload["name"] = tool_result_message.tool_name
+            output.append(tool_payload)
+            for block in tool_result_message.content:
+                if isinstance(block, ImageContent):
+                    image_blocks.append(block)
+            last_role = "tool_result"
+            index += 1
+
+        if image_blocks:
+            if compat.requires_assistant_after_tool_result:
+                output.append({"role": "assistant", "content": "I have processed the tool results."})
+            output.append(
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Attached image(s) from tool result:"},
+                        *[
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:{block.mime_type};base64,{block.data}",
+                                },
+                            }
+                            for block in image_blocks
+                            if model.supports_input("image")
+                        ],
+                    ],
+                }
+            )
+            last_role = "user"
+
+    return output
+
+
+def _compat_settings(model: Model) -> OpenAICompletionsCompat:
+    compat = model.compat if isinstance(model.compat, OpenAICompletionsCompat) else OpenAICompletionsCompat()
+    return OpenAICompletionsCompat(
+        supports_developer_role=compat.supports_developer_role,
+        supports_reasoning_effort=compat.supports_reasoning_effort,
+        supports_usage_in_streaming=compat.supports_usage_in_streaming,
+        reasoning_effort_map=dict(compat.reasoning_effort_map),
+        thinking_format=compat.thinking_format,
+        max_tokens_field=compat.max_tokens_field,
+        requires_tool_result_name=compat.requires_tool_result_name,
+        requires_assistant_after_tool_result=compat.requires_assistant_after_tool_result,
+        requires_thinking_as_text=compat.requires_thinking_as_text,
+        supports_strict_mode=compat.supports_strict_mode,
+    )
+
+
+def _map_reasoning_effort(effort: str, reasoning_effort_map: dict[str, str]) -> str:
+    return reasoning_effort_map.get(effort, effort)
+
+
+def _apply_reasoning_payload(
+    payload: dict[str, Any],
+    options: OpenAICompatOptions,
+    compat: OpenAICompletionsCompat,
+) -> None:
+    thinking_format = compat.thinking_format
+    mapped_effort = None
+    if options.reasoning_effort is not None:
+        mapped_effort = _map_reasoning_effort(
+            options.reasoning_effort,
+            compat.reasoning_effort_map,
+        )
+
+    if thinking_format in {"zai", "qwen"}:
+        payload["enable_thinking"] = bool(options.reasoning_effort)
+        return
+
+    if thinking_format == "qwen-chat-template":
+        payload["chat_template_kwargs"] = {
+            "enable_thinking": bool(options.reasoning_effort),
+        }
+        return
+
+    if thinking_format == "openrouter":
+        payload["reasoning"] = {
+            "effort": mapped_effort or "none",
+        }
+        return
+
+    if mapped_effort is not None and compat.supports_reasoning_effort:
+        payload["reasoning_effort"] = mapped_effort
+
+
+def _parse_chunk_usage(raw_usage: Any, model: Model) -> Any:
+    cached_tokens = getattr(getattr(raw_usage, "prompt_tokens_details", None), "cached_tokens", 0) or 0
+    reasoning_tokens = getattr(
+        getattr(raw_usage, "completion_tokens_details", None),
+        "reasoning_tokens",
+        0,
+    ) or 0
+    input_tokens = max((getattr(raw_usage, "prompt_tokens", 0) or 0) - cached_tokens, 0)
+    output_tokens = (getattr(raw_usage, "completion_tokens", 0) or 0) + reasoning_tokens
+    total_tokens = input_tokens + output_tokens + cached_tokens
+
+    usage = Usage()
+    usage.input = input_tokens
+    usage.output = output_tokens
+    usage.cache_read = cached_tokens
+    usage.cache_write = 0
+    usage.total_tokens = total_tokens
+    calculate_cost(model, usage)
+    return usage
+
+
+def _parse_streaming_json_best_effort(raw: str) -> dict[str, Any]:
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+        return parsed if isinstance(parsed, dict) else {"value": parsed}
+    except Exception:
+        return {"_partial": raw}
+
+
+def _is_abort_error(exc: Exception) -> bool:
+    name = exc.__class__.__name__
+    return name == "CancelledError" or "abort" in str(exc).lower()
+
+
+def _has_tool_history(messages: list[Any]) -> bool:
+    for message in messages:
+        if getattr(message, "role", None) == "tool_result":
+            return True
+        if getattr(message, "role", None) == "assistant":
+            if any(isinstance(block, ToolCallContent) for block in getattr(message, "content", [])):
+                return True
+    return False
