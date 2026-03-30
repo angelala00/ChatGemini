@@ -635,9 +635,7 @@ const App = () => {
                         onRenameSession={handleRenameSession}
                     />
                     <Container
-                        ref={mainSectionRef}
-                        className={`min-w-full overflow-y-auto overflow-x-hidden flex flex-col h-screen ${isGptsPage ? "" : "justify-between "}
-                        ${
+                        className={`min-w-full flex flex-col h-screen ${
                             !sidebarExpand ? "col-span-2" : ""
                         }`}
                     >
@@ -658,20 +656,27 @@ const App = () => {
                                 onModelChange={handleModelChange}
                             />
                         )}
-                        <RouterView
-                            routes={routes}
-                            suspense={<Skeleton />}
-                            routerProps={{
-                                refs: { mainSectionRef, textAreaRef },
-                                onAbortUpdate: onAbortUpdate,
-                                gid: gid,
-                                title: pageTitle,
-                                logo: pageLogo,
-                                subTitle: pageSubTitle,
-                                samples: pageSamples,
-                                userName: userName,
-                            }}
-                        />
+                        <div
+                            ref={mainSectionRef}
+                            className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden ${
+                                isGptsPage ? "h-screen" : ""
+                            }`}
+                        >
+                            <RouterView
+                                routes={routes}
+                                suspense={<Skeleton />}
+                                routerProps={{
+                                    refs: { mainSectionRef, textAreaRef },
+                                    onAbortUpdate: onAbortUpdate,
+                                    gid: gid,
+                                    title: pageTitle,
+                                    logo: pageLogo,
+                                    subTitle: pageSubTitle,
+                                    samples: pageSamples,
+                                    userName: userName,
+                                }}
+                            />
+                        </div>
                         {!isGptsPage && (
                             <>
                                 <InputArea
