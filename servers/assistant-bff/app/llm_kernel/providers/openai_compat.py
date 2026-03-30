@@ -320,10 +320,10 @@ class OpenAICompatProvider:
             payload[compat.max_tokens_field] = options.max_tokens
         if options.tool_choice is not None:
             payload["tool_choice"] = options.tool_choice
-        if model.reasoning:
-            _apply_reasoning_payload(payload, options, compat)
         if options.provider_options:
             payload.update(options.provider_options)
+        if model.reasoning:
+            _apply_reasoning_payload(payload, options, compat)
         return payload
 
     @staticmethod
@@ -545,18 +545,25 @@ def _apply_reasoning_payload(
             compat.reasoning_effort_map,
         )
 
+    def extra_body() -> dict[str, Any]:
+        current = payload.get("extra_body")
+        if not isinstance(current, dict):
+            current = {}
+            payload["extra_body"] = current
+        return current
+
     if thinking_format in {"zai", "qwen"}:
-        payload["enable_thinking"] = bool(options.reasoning_effort)
+        extra_body()["enable_thinking"] = bool(options.reasoning_effort)
         return
 
     if thinking_format == "qwen-chat-template":
-        payload["chat_template_kwargs"] = {
+        extra_body()["chat_template_kwargs"] = {
             "enable_thinking": bool(options.reasoning_effort),
         }
         return
 
     if thinking_format == "openrouter":
-        payload["reasoning"] = {
+        extra_body()["reasoning"] = {
             "effort": mapped_effort or "none",
         }
         return
