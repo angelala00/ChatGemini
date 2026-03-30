@@ -11,7 +11,6 @@ from app.attachments import (
     execute_attachment_tool,
     get_attachment_tool_definitions,
 )
-from app.base_config import model_config
 from app.chat_base import client, match_history, save_match_history
 from app.gptassistant_planner import PlannerRuntimeCapabilities, build_execution_plan
 from app.llm_kernel import (
@@ -70,17 +69,12 @@ def _ensure_openai_compat_provider() -> None:
         register_openai_compat_provider(client)
 
 
-def _model_compat(model_name: str) -> OpenAICompletionsCompat:
-    configured_thinking_format = model_config.OPENAI_COMPAT_THINKING_FORMAT
-    if configured_thinking_format:
-        return OpenAICompletionsCompat(
-            thinking_format=configured_thinking_format,
-            supports_reasoning_effort=configured_thinking_format == "openai",
-            requires_assistant_after_tool_result=False
-            if configured_thinking_format == "qwen-chat-template"
-            else True,
-        )
+def _model_compat(model_config: dict[str, Any]) -> OpenAICompletionsCompat:
+    configured_compat = model_config.get("compat")
+    if isinstance(configured_compat, dict):
+        return OpenAICompletionsCompat(**configured_compat)
 
+    model_name = model_config.get("model_name") or model_config.get("id") or ""
     lowered = (model_name or "").lower()
     if "qwen" in lowered:
         return OpenAICompletionsCompat(
@@ -119,7 +113,7 @@ def _kernel_model_from_config(model_config: dict[str, Any], reasoning_enabled: b
         reasoning=supports_reasoning,
         input=["text", "image"] if supports_native_image_input else ["text"],
         image_input=supports_native_image_input,
-        compat=_model_compat(model_name),
+        compat=_model_compat(model_config),
     )
 
 

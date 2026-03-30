@@ -22,11 +22,6 @@ API_KEY: str = os.getenv("OPENAI_API_KEY", "")
 BASE_URL: str = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
 FILE_BASE: str = os.getenv("FILE_BASE", "/tmp")
 LOG_BASE: str = os.getenv("LOG_BASE", "/tmp")
-_thinking_format = os.getenv("OPENAI_COMPAT_THINKING_FORMAT", "").strip().lower()
-if _thinking_format in {"openai", "openrouter", "zai", "qwen", "qwen-chat-template"}:
-    OPENAI_COMPAT_THINKING_FORMAT: str = _thinking_format
-else:
-    OPENAI_COMPAT_THINKING_FORMAT = ""
 _allow_origins_env = os.getenv("ALLOW_ORIGINS", "*")
 ALLOW_ORIGINS: List[str] = [
     origin.strip() for origin in _allow_origins_env.split(",") if origin.strip()
