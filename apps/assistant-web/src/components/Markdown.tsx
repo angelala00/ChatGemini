@@ -205,25 +205,25 @@ export const Markdown = (props: MarkdownProps) => {
         <div className={`relative ${className ?? ""}`}>
             {/* 如果有 <think> 标签，则显示思考内容 */}
             {thinkTexts.length > 0 && (
-                <div className="bg-yellow-100 border-l-4 border-yellow-500 p-3 rounded-lg mb-4">
+                <div className="mb-4 rounded-2xl border border-stone-200 bg-stone-100/90 px-4 py-3">
                     <div
                         className="flex items-center justify-between cursor-pointer"
                         onClick={() => setIsThinkingExpanded(!isThinkingExpanded)}
                     >
-                        <span className="font-semibold text-yellow-800">{t("components.Markdown.thinking_title", isThinking ? lastSummary : "已思考")}</span>
+                        <span className="text-sm font-semibold text-stone-700">{t("components.Markdown.thinking_title", isThinking ? lastSummary : "已思考")}</span>
                         {isThinkingExpanded ? (
-                            <ChevronUpIcon className="w-5 h-5 text-yellow-600" />
+                            <ChevronUpIcon className="h-5 w-5 text-stone-500" />
                         ) : (
-                            <ChevronDownIcon className="w-5 h-5 text-yellow-600" />
+                            <ChevronDownIcon className="h-5 w-5 text-stone-500" />
                         )}
                     </div>
                     {!isThinkingExpanded && lastSummary == "思考中" &&(
-                        <span className="text-yellow-800">{lastContent}</span>
+                        <span className="text-sm text-stone-600">{lastContent}</span>
                     )}
                     {isThinkingExpanded && (
                         <div className="timeline-container">
                             {stepData.map((step, index) => (
-                                <p key={index} className="text-yellow-700 mt-2">{step?.content}</p>
+                                <p key={index} className="mt-2 text-sm leading-7 text-stone-600">{step?.content}</p>
                             ))}
                         </div>
                     )}

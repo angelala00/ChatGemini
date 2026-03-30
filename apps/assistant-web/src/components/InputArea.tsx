@@ -2,7 +2,6 @@ import submitIcon from "../assets/icons/paper-plane-solid.svg";
 import ejectionIcon from "../assets/icons/eject-solid.svg";
 import attachmentIcon from "../assets/icons/paperclip-solid.svg";
 import abortIcon from "../assets/icons/stop.svg";
-import reasoningIcon from "../assets/icons/wand-sparkles-solid.svg";
 import {
     ForwardedRef,
     KeyboardEvent,
@@ -193,10 +192,10 @@ export const InputArea = forwardRef(
         useImperativeHandle(ref, () => textAreaRef.current!);
 
         return (
-            <div className="sticky bottom-0 flex flex-col p-4 bg-white space-y-2 max-h-48 max-w-full">
-                <div className="input-area-border relative w-full max-w-[1000px] mx-auto flex flex-col border-2 border-gray-300 rounded-lg p-2 space-y-2 min-h-20 max-h-48 bg-gray-100">
+            <div className="sticky bottom-0 z-20 px-4 pb-4 pt-6 bg-gradient-to-t from-stone-100 via-stone-100/92 to-transparent">
+                <div className="input-area-border relative mx-auto flex w-full max-w-[940px] flex-col space-y-3 rounded-[1.75rem] border border-stone-200/90 bg-white/95 px-4 py-3 shadow-[0_16px_40px_rgba(0,0,0,0.08)] backdrop-blur min-h-20 max-h-48">
                     {!!attachmentName.length && (
-                        <div className="text-gray-500 text-xs truncate">
+                        <div className="truncate text-xs text-stone-500">
                             <img className="inline-block size-3 mr-0.5" src={attachmentIcon} alt="" />
                             {attachmentName}
                         </div>
@@ -207,23 +206,23 @@ export const InputArea = forwardRef(
                         autoFocus={true}
                         ref={textAreaRef}
                         placeholder={busy ? "..." : inputPlaceholder}
-                        className="p-0 border-none text-sm lg:text-base resize-none w-full outline-none max-h-32 overflow-y-auto bg-gray-100"
+                        className="max-h-32 w-full resize-none border-none bg-transparent px-0 py-1 text-sm leading-7 outline-none overflow-y-auto lg:text-base"
                         onInput={({ currentTarget }) => setTextAreaHeight(currentTarget, minHeight, maxHeight)}
                         onKeyDown={handleKeyDown}
                     />
 
                     {/* 按钮区域 - 适配小屏幕 */}
-                    <div className="flex justify-between items-center gap-2 min-h-[30px] mt-1">
+                    <div className="mt-1 flex min-h-[34px] items-center justify-between gap-3 border-t border-stone-100 pt-1">
                         <div className="flex items-center">
                             {showReasoningToggle && (
                                 <button
                                     type="button"
-                                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
+                                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
                                         reasoningAvailable
                                             ? reasoningEnabled
-                                                ? "border-amber-500 bg-amber-500 text-white shadow-sm hover:bg-amber-400"
-                                                : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-                                            : "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400"
+                                                ? "border-sky-300 bg-sky-100 text-sky-700 shadow-sm hover:bg-sky-200"
+                                                : "border-stone-300 bg-stone-50 text-stone-700 hover:bg-stone-100"
+                                            : "cursor-not-allowed border-stone-200 bg-stone-100 text-stone-400"
                                     }`}
                                     disabled={!reasoningAvailable}
                                     onClick={() => onReasoningChange?.(!(reasoningEnabled ?? false))}
@@ -233,25 +232,11 @@ export const InputArea = forwardRef(
                                             reasoningAvailable
                                                 ? reasoningEnabled
                                                     ? "bg-white"
-                                                    : "bg-slate-400"
-                                                : "bg-gray-300"
+                                                    : "bg-stone-400"
+                                                : "bg-stone-300"
                                         }`}
                                     />
-                                    <img src={reasoningIcon} className="size-3.5" alt="" />
                                     <span>{t("components.InputArea.reasoning_toggle.label")}</span>
-                                    <span
-                                        className={`rounded-full px-1.5 py-0.5 text-[10px] leading-none ${
-                                            reasoningAvailable
-                                                ? reasoningEnabled
-                                                    ? "bg-white/20 text-white"
-                                                    : "bg-slate-200 text-slate-700"
-                                                : "bg-gray-200 text-gray-500"
-                                        }`}
-                                    >
-                                        {reasoningEnabled
-                                            ? t("components.InputArea.reasoning_toggle.enabled")
-                                            : t("components.InputArea.reasoning_toggle.disabled")}
-                                    </span>
                                 </button>
                             )}
                         </div>
@@ -277,7 +262,7 @@ export const InputArea = forwardRef(
                                         }
                                     }} />
                                 <div className="relative group inline-flex">
-                                    <button className="w-8 h-8 bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center justify-center p-1.5"
+                                    <button className="flex h-9 w-9 items-center justify-center rounded-2xl bg-stone-100 p-1.5 transition-colors hover:bg-stone-200"
                                         onClick={({ currentTarget }) => {
                                             if (!!attachmentName.length) {
                                                 setAttachmentName("");
@@ -294,7 +279,7 @@ export const InputArea = forwardRef(
                             </div>
                         )}
                         {/* 发送按钮 */}
-                        <button className="w-8 h-8 bg-sky-100 hover:bg-sky-200 rounded-lg flex items-center justify-center p-1.5 disabled:cursor-not-allowed"
+                        <button className="flex h-9 w-9 items-center justify-center rounded-2xl bg-sky-100 p-1.5 transition-colors hover:bg-sky-200 disabled:cursor-not-allowed"
                             onClick={() => {
                                 if (busy) {
                                     onAbort();

@@ -30,6 +30,7 @@ register_gpt({
                 "model_name": GLM47_MODEL["model_name"],
                 "supports_reasoning": GLM47_MODEL["supports_reasoning"],
                 "supports_native_image_input": GLM47_MODEL["supports_native_image_input"],
+                "compat": GLM47_MODEL["compat"],
             },
             {
                 "id": QWEN35_MODEL["model_name"],
@@ -38,6 +39,7 @@ register_gpt({
                 "model_name": QWEN35_MODEL["model_name"],
                 "supports_reasoning": QWEN35_MODEL["supports_reasoning"],
                 "supports_native_image_input": QWEN35_MODEL["supports_native_image_input"],
+                "compat": QWEN35_MODEL["compat"],
             },
             {
                 "id": GLM5_MODEL["model_name"],
@@ -46,6 +48,7 @@ register_gpt({
                 "model_name": GLM5_MODEL["model_name"],
                 "supports_reasoning": GLM5_MODEL["supports_reasoning"],
                 "supports_native_image_input": GLM5_MODEL["supports_native_image_input"],
+                "compat": GLM5_MODEL["compat"],
             },
         ]
     },

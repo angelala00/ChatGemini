@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { RefObject, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { useTranslation } from "react-i18next";
@@ -19,7 +19,8 @@ import { onUpdate as updateSessions } from "../store/sessions";
 import { onUpdate as updateMappings } from "../store/mappings";
 import { chatWithAI } from "../helpers/chatWithAI";
 import { globalConfig } from "../config/global";
-import { useChatAutoScroll } from "../hooks/useChatAutoScroll";
+import { useChatReadingScroll } from "../hooks/useChatReadingScroll";
+import { ArrowDownIcon } from "@heroicons/react/24/solid";
 
 
 const GptAssistantChat = (props: RouterComponentProps) => {
@@ -36,19 +37,22 @@ const GptAssistantChat = (props: RouterComponentProps) => {
     );
     const ai = useSelector((state: ReduxStoreProps) => state.ai.ai);
     const { id } = useParams<{ id: keyof typeof sessions }>();
+    const mainSectionRef = props.refs?.mainSectionRef as
+        | RefObject<HTMLDivElement>
+        | undefined;
     const [chat, setChat] = useState<any[]>([]);
     const [pythonRuntime, setPythonRuntime] = useState<PyodideInterface | null>(null);
     const [editState, setEditState] = useState<{ index: number; state: SessionEditState }>({
         index: 0,
         state: SessionEditState.Cancel,
     });
+    const { showJumpToLatest, jumpToLatest } = useChatReadingScroll({
+        containerRef: mainSectionRef,
+        sessionKey: id ?? "",
+        updateKey: `${chat.length}:${chat[chat.length - 1]?.parts.length ?? 0}:${ai.busy}`,
+    });
 
     const handlePythonRuntimeCreated = (pyodide: PyodideInterface) => setPythonRuntime(pyodide);
-
-    const scrollContainerRef = props.refs?.mainSectionRef ?? { current: null };
-    const { scrollToBottom, resetAutoScroll } = useChatAutoScroll(
-        scrollContainerRef,
-    );
 
     const handleRefresh = async (index: number, customSessions?: any) => {
         const finalSessions = customSessions ?? sessions;
@@ -185,24 +189,8 @@ const GptAssistantChat = (props: RouterComponentProps) => {
         }
     }, [id, invalidPlaceholder, sessions]);
 
-    useEffect(() => {
-        resetAutoScroll();
-        const timer = window.setTimeout(() => scrollToBottom(true), 0);
-        return () => window.clearTimeout(timer);
-    }, [id, resetAutoScroll, scrollToBottom]);
-
-    useEffect(() => {
-        const timer = window.setTimeout(() => scrollToBottom(false), 0);
-        return () => window.clearTimeout(timer);
-    }, [
-        chat.length,
-        chat[chat.length - 1]?.timestamp,
-        chat[chat.length - 1]?.parts,
-        scrollToBottom,
-    ]);
-
     return (
-        <Container className="max-w-[1100px] w-full py-6 mb-auto mx-auto px-4 md:px-10">
+        <Container className="relative mx-auto w-full max-w-[940px] px-4 py-8 md:px-8">
             <ImageView>
                 {chat.map(({ role, parts, attachment }, index) => {
                     const { mimeType, data } = attachment ?? { mimeType: "", data: "" };
@@ -246,37 +234,49 @@ const GptAssistantChat = (props: RouterComponentProps) => {
                         nextParts += typingEffect;
                     }
                     return (
-                        <div
+                        <Session
                             key={index}
-                            className={role === SessionRole.Model ? "rounded-3xl bg-stone-50/80" : "rounded-3xl bg-white"}
+                            index={index}
+                            prompt={nextParts}
+                            editState={editState}
+                            role={role as SessionRole}
+                            onRefresh={handleRefresh}
+                            onDelete={handleDelete}
+                            onEdit={handleEdit}
+                            onExport={handleExport}
+                            postscript={attachmentPostscriptHtml}
                         >
-                            <Session
-                                index={index}
-                                prompt={nextParts}
-                                editState={editState}
-                                role={role as SessionRole}
-                                onRefresh={handleRefresh}
-                                onDelete={handleDelete}
-                                onEdit={handleEdit}
-                                onExport={handleExport}
-                                postscript={attachmentPostscriptHtml}
-                            >
-                                <Markdown
-                                    className="prose-stone"
-                                    typingEffect={typingEffect}
-                                    pythonRuntime={pythonRuntime}
-                                    onPythonRuntimeCreated={handlePythonRuntimeCreated}
-                                    pythonRepoUrl={`${
-                                        routerConfig.mode === "hash"
-                                            ? window.location.pathname
-                                            : routerConfig.basename
-                                    }pyodide`}
-                                >{`${nextParts}${attachmentPostscriptHtml}`}</Markdown>
-                            </Session>
-                        </div>
+                            <Markdown
+                                className={
+                                    role === SessionRole.Model
+                                        ? "prose-stone"
+                                        : "prose-stone prose-headings:text-stone-900 prose-strong:text-stone-900 prose-p:text-stone-900"
+                                }
+                                typingEffect={typingEffect}
+                                pythonRuntime={pythonRuntime}
+                                onPythonRuntimeCreated={handlePythonRuntimeCreated}
+                                pythonRepoUrl={`${
+                                    routerConfig.mode === "hash"
+                                        ? window.location.pathname
+                                        : routerConfig.basename
+                                }pyodide`}
+                            >{`${nextParts}${attachmentPostscriptHtml}`}</Markdown>
+                        </Session>
                     );
                 })}
+                <div className="h-20" />
             </ImageView>
+            {showJumpToLatest && (
+                <div className="sticky bottom-5 z-10 flex justify-end">
+                    <button
+                        className="inline-flex items-center justify-center gap-2 rounded-full border border-stone-300/80 bg-white/95 px-3.5 py-2 text-sm font-medium leading-none text-stone-700 shadow-[0_10px_24px_rgba(0,0,0,0.08)] backdrop-blur hover:bg-stone-50"
+                        onClick={() => jumpToLatest()}
+                    >
+                        <ArrowDownIcon className="size-3.5 text-stone-500" />
+                        <span>{t("views.Chat.jump_to_latest", "回到最新")}</span>
+                    </button>
+                </div>
+            )}
         </Container>
     );
 };

@@ -69,14 +69,22 @@ export const Session = (props: SessionProps) => {
         }
     };
 
+    const isModel = role === SessionRole.Model;
+
     return (
-        <div className="p-5 mb-3 mr-3 space-y-3 rounded-lg hover:bg-gray-100 transition-all">
-            <div className="flex items-center">
+        <div
+            className={`mb-6 space-y-3 ${
+                isModel ? "" : "flex flex-col items-end"
+            }`}
+        >
+            <div
+                className={`flex items-center ${
+                    isModel ? "" : "w-full justify-end"
+                }`}
+            >
                 <div
-                    className={`size-6 rounded-full flex justify-center items-center ${
-                        role === SessionRole.Model
-                            ? "bg-purple-600"
-                            : "bg-lime-700"
+                    className={`flex size-6 items-center justify-center rounded-full ${
+                        isModel ? "bg-stone-800" : "bg-lime-700"
                     }`}
                 >
                     <img
@@ -94,13 +102,19 @@ export const Session = (props: SessionProps) => {
                         alt=""
                     />
                 </div>
-                <span className="ml-2 font-semibold text-gray-800/100">
-                    {role === SessionRole.Model
+                <span className="ml-2 text-sm font-semibold text-stone-800">
+                    {isModel
                         ? t("components.Session.role_model")
                         : t("components.Session.role_user")}
                 </span>
             </div>
-            <div className="px-7">
+            <div
+                className={`${
+                    isModel
+                        ? "w-full rounded-[1.75rem] border border-stone-200/80 bg-white px-7 py-6 shadow-[0_12px_32px_rgba(0,0,0,0.04)]"
+                        : "inline-flex w-fit max-w-[38rem] rounded-[1.35rem] border border-stone-300/70 bg-stone-200/90 px-5 py-4 text-stone-900 shadow-[0_6px_18px_rgba(28,25,23,0.06)]"
+                }`}
+            >
                 {editState.state === SessionEditState.Edit &&
                 index === editState.index ? (
                     <div className="flex flex-col space-y-2 lg:text-base text-sm">
@@ -142,9 +156,11 @@ export const Session = (props: SessionProps) => {
                     <>{children}</>
                 )}
             </div>
-            <div className="flex ml-6 gap-1">
+            <div
+                className={`flex gap-1 ${isModel ? "ml-1" : "mr-1 justify-end self-end"}`}
+            >
                 <button
-                    className="size-6 rounded-lg hover:bg-gray-200 flex justify-center items-center"
+                    className="flex size-7 items-center justify-center rounded-xl text-stone-500 transition-colors hover:bg-stone-200/70"
                     onClick={handleCopy}
                 >
                     <img src={clipboardIcon} className="size-4" alt="" />
@@ -152,7 +168,7 @@ export const Session = (props: SessionProps) => {
                 {role === SessionRole.User &&
                     editState.state !== SessionEditState.Edit && (
                         <button
-                            className="size-6 rounded-lg hover:bg-gray-200 flex justify-center items-center"
+                            className="flex size-7 items-center justify-center rounded-xl text-stone-500 transition-colors hover:bg-stone-200/70"
                             onClick={() =>
                                 onEdit(index, SessionEditState.Edit, "")
                             }
@@ -162,7 +178,7 @@ export const Session = (props: SessionProps) => {
                     )}
                 {role === SessionRole.Model && (
                     <button
-                        className="size-6 rounded-lg hover:bg-gray-200 flex justify-center items-center"
+                        className="flex size-7 items-center justify-center rounded-xl text-stone-500 transition-colors hover:bg-stone-200/70"
                         onClick={() => onRefresh(index)}
                     >
                         <img src={refreshIcon} className="size-4" alt="" />
@@ -170,7 +186,7 @@ export const Session = (props: SessionProps) => {
                 )}
                 {role === SessionRole.Model && index !== 1 && (
                     <button
-                        className="size-6 rounded-lg hover:bg-gray-200 flex justify-center items-center"
+                        className="flex size-7 items-center justify-center rounded-xl text-stone-500 transition-colors hover:bg-stone-200/70"
                         onClick={() => onDelete(index)}
                     >
                         <img src={deleteIcon} className="size-4" alt="" />
@@ -179,7 +195,7 @@ export const Session = (props: SessionProps) => {
                 {/* 导出按钮 */}
                 {role === SessionRole.Model && (
                     <button
-                        className="size-6 rounded-lg hover:bg-gray-200 flex justify-center items-center"
+                        className="flex size-7 items-center justify-center rounded-xl text-stone-500 transition-colors hover:bg-stone-200/70"
                         onClick={() => onExport(index)}
                     >
                         <ExportIcon className="size-4 text-gray-500" />

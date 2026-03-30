@@ -21,7 +21,6 @@ import { getBase64Img } from "./helpers/getBase64Img";
 import { handleRequest } from "./helpers/handleRequest";
 import { sendUserAlert } from "./helpers/sendUserAlert";
 import { sendUserConfirm } from "./helpers/sendUserConfirm";
-import { PageScroller } from "./components/PageScroller";
 import { LoginByOAuth } from "./components/LoginByOAuth";
 import siteLogo from "./assets/logo.svg";
 import i18n, { i18nConfig } from "./config/i18n";
@@ -635,7 +634,7 @@ const App = () => {
                         onRenameSession={handleRenameSession}
                     />
                     <Container
-                        className={`min-w-full flex flex-col h-screen ${
+                        className={`min-w-full flex flex-col h-screen bg-stone-100/80 ${
                             !sidebarExpand ? "col-span-2" : ""
                         }`}
                     >
@@ -658,7 +657,7 @@ const App = () => {
                         )}
                         <div
                             ref={mainSectionRef}
-                            className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden ${
+                            className={`relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden ${
                                 isGptsPage ? "h-screen" : ""
                             }`}
                         >
@@ -694,16 +693,6 @@ const App = () => {
                                     onAbort={handleAbort}
                                     onReasoningChange={setSelectedReasoningEnabled}
                                 />
-                                {!ai.busy && (
-                                    <PageScroller
-                                        thresholds={{
-                                            top: 200,
-                                            bottom: 200,
-                                            debounce: 50,
-                                        }}
-                                        monitorRef={mainSectionRef}
-                                    />
-                                )}
                             </>
                         )}
                     </Container>

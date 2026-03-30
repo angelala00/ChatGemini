@@ -1,7 +1,7 @@
 import { useParams } from "react-router-dom";
 import { Markdown } from "../components/Markdown";
 import { Session, SessionEditState, SessionRole } from "../components/Session";
-import { useEffect, useState } from "react";
+import { RefObject, useEffect, useState } from "react";
 import { SessionHistory, Sessions } from "../store/sessions";
 import { useDispatch, useSelector } from "react-redux";
 import { ReduxStoreProps } from "../config/store";
@@ -20,7 +20,8 @@ import { RouterComponentProps, routerConfig } from "../config/router";
 import type { PyodideInterface } from "../types/pyodide";
 import { useTranslation } from "react-i18next";
 import { exportMdAsDocx } from "../helpers/exportMdAsDocx";
-import { useChatAutoScroll } from "../hooks/useChatAutoScroll";
+import { useChatReadingScroll } from "../hooks/useChatReadingScroll";
+import { ArrowDownIcon } from "@heroicons/react/24/solid";
 
 const Chat = (props: RouterComponentProps) => {
     const { t } = useTranslation();
@@ -48,6 +49,9 @@ const Chat = (props: RouterComponentProps) => {
     const ai = useSelector((state: ReduxStoreProps) => state.ai.ai);
 
     const { id } = useParams<{ id: keyof typeof sessions }>();
+    const mainSectionRef = props.refs?.mainSectionRef as
+        | RefObject<HTMLDivElement>
+        | undefined;
 
     const [chat, setChat] = useState<SessionHistory[]>([]);
     const [editState, setEditState] = useState<{
@@ -57,14 +61,14 @@ const Chat = (props: RouterComponentProps) => {
     const [pythonRuntime, setPythonRuntime] = useState<PyodideInterface | null>(
         null
     );
+    const { showJumpToLatest, jumpToLatest } = useChatReadingScroll({
+        containerRef: mainSectionRef,
+        sessionKey: id ?? "",
+        updateKey: `${chat.length}:${chat[chat.length - 1]?.parts.length ?? 0}:${ai.busy}`,
+    });
 
     const handlePythonRuntimeCreated = (pyodide: PyodideInterface) =>
         setPythonRuntime(pyodide);
-
-    const scrollContainerRef = props.refs?.mainSectionRef ?? { current: null };
-    const { scrollToBottom, resetAutoScroll } = useChatAutoScroll(
-        scrollContainerRef,
-    );
 
     const handleRefresh = async (index: number, customSessions?: Sessions) => {
         const finalSessions = customSessions ?? sessions;
@@ -232,24 +236,8 @@ const Chat = (props: RouterComponentProps) => {
         }
     }, [t, siteTitle, id, sessions]);
 
-    useEffect(() => {
-        resetAutoScroll();
-        const timer = window.setTimeout(() => scrollToBottom(true), 0);
-        return () => window.clearTimeout(timer);
-    }, [id, resetAutoScroll, scrollToBottom]);
-
-    useEffect(() => {
-        const timer = window.setTimeout(() => scrollToBottom(false), 0);
-        return () => window.clearTimeout(timer);
-    }, [
-        chat.length,
-        chat[chat.length - 1]?.timestamp,
-        chat[chat.length - 1]?.parts,
-        scrollToBottom,
-    ]);
-
     return (
-        <Container className="max-w-[1200px] w-full py-5 pl-3 mb-auto mx-auto px-4 md:px-16 lg:px32">
+        <Container className="relative mx-auto w-full max-w-[940px] px-4 py-8 md:px-8">
             <ImageView>
                 {chat.map(({ role, parts, attachment }, index) => {
                     const { mimeType, data } = attachment ?? {
@@ -311,7 +299,12 @@ const Chat = (props: RouterComponentProps) => {
                             onExport={handleExport}
                             postscript={attachmentPostscriptHtml}
                         >
-                            <Markdown
+                                <Markdown
+                                    className={
+                                        role === SessionRole.Model
+                                            ? "prose-stone"
+                                        : "prose-stone prose-headings:text-stone-900 prose-strong:text-stone-900 prose-p:text-stone-900"
+                                    }
                                 typingEffect={typingEffect}
                                 pythonRuntime={pythonRuntime}
                                 onPythonRuntimeCreated={
@@ -326,7 +319,19 @@ const Chat = (props: RouterComponentProps) => {
                         </Session>
                     );
                 })}
+                <div className="h-20" />
             </ImageView>
+            {showJumpToLatest && (
+                <div className="sticky bottom-5 z-10 flex justify-end">
+                    <button
+                        className="inline-flex items-center justify-center gap-2 rounded-full border border-stone-300/80 bg-white/95 px-3.5 py-2 text-sm font-medium leading-none text-stone-700 shadow-[0_10px_24px_rgba(0,0,0,0.08)] backdrop-blur hover:bg-stone-50"
+                        onClick={() => jumpToLatest()}
+                    >
+                        <ArrowDownIcon className="size-3.5 text-stone-500" />
+                        <span>{t("views.Chat.jump_to_latest", "回到最新")}</span>
+                    </button>
+                </div>
+            )}
         </Container>
     );
 };

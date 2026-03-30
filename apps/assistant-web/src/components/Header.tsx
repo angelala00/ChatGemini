@@ -38,9 +38,9 @@ export const Header = (props: HeaderProps) => {
         onModelChange,
     } = props;
     return (
-        <header className="z-10 sticky top-0 flex px-2 py-3 items-center justify-between border-b bg-white">
+        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-stone-200/80 bg-stone-100/92 px-3 py-3 backdrop-blur supports-[backdrop-filter]:bg-stone-100/80">
             <button
-                className="hover:bg-gray-200 rounded-lg p-2"
+                className="rounded-xl p-2 text-stone-700 transition-colors hover:bg-stone-200/80"
                 onClick={onToggleSidebar}
             >
                 <img src={menuIcon} className="size-4" alt="" />
@@ -57,21 +57,21 @@ export const Header = (props: HeaderProps) => {
                 />
             </div>
             {/* <h1 className="font-semibold text-lg">GPT助手</h1> */}
-            <div className="flex">
+            <div className="flex items-center gap-1">
                 <Link
-                    className="hover:bg-gray-200 rounded-lg p-2"
+                    className="rounded-xl p-2 text-stone-700 transition-colors hover:bg-stone-200/80"
                     to={newChatUrl}
                 >
                     <img src={newChatIcon} className="size-4" alt="" />
                 </Link>
                 <button
-                    className="hover:bg-gray-200 rounded-lg p-2"
+                    className="rounded-xl p-2 text-stone-700 transition-colors hover:bg-stone-200/80"
                     onClick={onPurgeSessions}
                 >
                     <img src={purgeIcon} className="size-4" alt="" />
                 </button>
                 {logoutIcon && (
-                    <div>
+                    <div className="ml-2 rounded-full border border-stone-200 bg-white px-3 py-1.5 text-sm font-medium text-stone-700 shadow-sm">
                         <span>{userName}</span>
                         {/* <button
                             className="hover:bg-gray-200 rounded-lg p-2"
