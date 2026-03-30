@@ -1,6 +1,5 @@
 import asyncio
 import base64
-import imghdr
 import time
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Optional
@@ -13,6 +12,7 @@ from app.routes.file_routes import (
     load_file_mapping,
     split_file_ids_by_type,
 )
+from app.utils.image_utils import detect_image_mime_type
 
 
 IMAGE_PREPROCESS_TIMEOUT_SECONDS = 30
@@ -33,11 +33,9 @@ async def _noop_emit_event(_event_name: str, **_payload) -> None:
 def _encode_image_content(path: str) -> ImageContent:
     with open(path, "rb") as file_obj:
         raw = file_obj.read()
-    image_kind = imghdr.what(path)
-    mime_type = f"image/{image_kind}" if image_kind else "image/jpeg"
     return ImageContent(
         data=base64.b64encode(raw).decode("ascii"),
-        mime_type=mime_type,
+        mime_type=detect_image_mime_type(path),
     )
 
 
@@ -69,15 +67,16 @@ def _render_attachment_manifest_for_model(
 ) -> str:
     if not file_ids:
         return ""
-    available_tools = ["attachment_list", "attachment_extract_text"]
+    available_tools = ["document_list", "document_read_text"]
     if model_supports_native_images:
-        available_tools.append("attachment_load_images")
+        available_tools.append("document_load_images")
     file_mapping = load_file_mapping()
     lines = [
         "",
         "[附件清单]",
         "本轮请求附带了附件。如果你需要读取附件内容，请优先调用附件工具，而不是臆测文件内容。",
-        f"可用附件工具：{'、'.join(available_tools)}。",
+        f"可用文档工具：{'、'.join(available_tools)}。",
+        "兼容别名：resource_list、resource_read_text、resource_load_images，以及 attachment_*（如适用）。",
     ]
     for file_id in [item.strip() for item in file_ids.split(",") if item.strip()]:
         item = file_mapping.get(file_id)
@@ -104,16 +103,18 @@ def build_attachment_tool_guidance(
         "Attachment handling policy:",
         "- This request includes uploaded attachments.",
         "- Do not invent attachment contents.",
-        "- If you need file contents, call attachment_list or attachment_extract_text first.",
+        "- If you need file contents, call document_list or document_read_text first.",
+        "- Compatible aliases resource_list/resource_read_text and attachment_list/attachment_extract_text are also supported.",
     ]
     if selection.image_file_ids:
         if model_supports_native_images:
-            lines.append("- Native image input is available for this model. You may use attachment_load_images when explicit image loading is useful.")
+            lines.append("- Native image input is available for this model. You may use document_load_images when explicit image loading is useful.")
+            lines.append("- Compatible aliases resource_load_images and attachment_load_images are also supported.")
         else:
             lines.append("- This model does not have native image input for uploaded files.")
-            lines.append("- For image questions, prefer attachment_extract_text and do not claim to directly see the uploaded image.")
+            lines.append("- For image questions, prefer document_read_text and do not claim to directly see the uploaded image.")
     if selection.document_file_ids:
-        lines.append("- For documents, prefer attachment_extract_text before answering detailed content questions.")
+        lines.append("- For documents, prefer document_read_text before answering detailed content questions.")
     return "\n".join(lines)
 
 

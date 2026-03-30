@@ -12,8 +12,9 @@ python-multipart
 aiofiles
 openpyxl
 python-docx
-PyPDF2
+pypdf
 itsdangerous
 tzdata
 pandas
 PyJWT
+pytest

@@ -1,13 +1,22 @@
 import os
-import imghdr
 import time
 
 from app.logger import gpt_logger
+from app.utils.image_utils import is_image_file
 from app.utils.model_tool import convert_image_message, MODEL_NAME_VL
 from app.utils import text_extractor
 
 
-async def extract_text_from_file(file_path: str, file_type: str):
+async def extract_text_from_file(
+    file_path: str,
+    file_type: str,
+    *,
+    page: int | None = None,
+    page_from: int | None = None,
+    page_to: int | None = None,
+    sheet_name: str | None = None,
+    sheet_index: int | None = None,
+):
     if not os.path.exists(file_path):
         raise FileNotFoundError("FilePath not found")
 
@@ -25,7 +34,7 @@ async def extract_text_from_file(file_path: str, file_type: str):
     # else:
     #     raise Exception(f"UnSupport file type:{file_type}")
 
-    if imghdr.what(file_path) is not None:
+    if is_image_file(file_path):
         from app.chat_service import _ask_once_stream
 
         gpt_logger.info(
@@ -62,7 +71,15 @@ async def extract_text_from_file(file_path: str, file_type: str):
             file_path,
             file_type,
         )
-        text = text_extractor.extract_text(file_path, file_type)
+        text = text_extractor.extract_text(
+            file_path,
+            file_type,
+            page=page,
+            page_from=page_from,
+            page_to=page_to,
+            sheet_name=sheet_name,
+            sheet_index=sheet_index,
+        )
         gpt_logger.info(
             "document_text_extract_complete path=%s file_type=%s elapsed_ms=%.1f text_len=%s",
             file_path,

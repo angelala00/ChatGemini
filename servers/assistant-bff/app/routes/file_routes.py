@@ -1,7 +1,6 @@
 import time
 import os
 import uuid
-import imghdr
 from apscheduler.schedulers.background import BackgroundScheduler
 from ..utils import extract_text
 from fastapi import APIRouter, Request, Depends, File, UploadFile, HTTPException, status, Form
@@ -17,6 +16,7 @@ from app.utils.model_tool import (
     MODEL_NAME_THINKING,
     MODEL_NAME_VL,
 )
+from app.utils.image_utils import is_image_file
 from app.db import get_db
 
 router = APIRouter(prefix="/api", tags=["auth"])
@@ -124,6 +124,48 @@ def load_gid_file_mapping(gid):
 
 def load_file_mapping():
     return load_gid_file_mapping("gptassistant")
+
+
+def _normalize_file_extension(value: str | None) -> str:
+    extension = (value or "").strip().lower()
+    if extension and not extension.startswith("."):
+        extension = f".{extension}"
+    return extension
+
+
+def classify_file_kind(file_path: str, file_extension: str | None = None) -> str:
+    normalized_extension = _normalize_file_extension(file_extension)
+    if os.path.exists(file_path) and is_image_file(file_path):
+        return "image"
+    if normalized_extension in {".txt", ".pdf", ".doc", ".docx", ".xlsx"}:
+        return "document"
+    return "unknown"
+
+
+def describe_file_mapping_entry(file_id: str, entry: dict | None) -> dict:
+    if not entry:
+        return {"file_id": file_id, "found": False}
+
+    file_path = entry.get("path")
+    file_extension = _normalize_file_extension(entry.get("fileExtension"))
+    exists = bool(file_path and os.path.exists(file_path))
+    kind = classify_file_kind(file_path, file_extension) if file_path else "unknown"
+    size_bytes = os.path.getsize(file_path) if exists else None
+    size_kb = round(size_bytes / 1024, 1) if isinstance(size_bytes, int) else None
+    mime_type, _ = mimetypes.guess_type(entry.get("filename") or file_path or "")
+    return {
+        "file_id": file_id,
+        "found": True,
+        "filename": entry.get("filename"),
+        "file_extension": file_extension,
+        "path": file_path,
+        "upload_time": entry.get("uploadTime"),
+        "mime_type": mime_type or "application/octet-stream",
+        "kind": kind,
+        "exists": exists,
+        "size_bytes": size_bytes,
+        "size_kb": size_kb,
+    }
 
 
 def insert_file_mapping(file_id, filename, file_extension, path, gid="gptassistant"):
@@ -346,7 +388,7 @@ def split_file_ids_by_type(file_ids: str):
             print(f"file_path:{file_path} is not found")
             continue
 
-        if imghdr.what(file_path) is not None:
+        if is_image_file(file_path):
             image_file_ids.append(current_file_id)
         else:
             document_file_ids.append(current_file_id)
@@ -356,10 +398,20 @@ def split_file_ids_by_type(file_ids: str):
     return image_ids, document_ids
 
 
-async def extract_text_from_file_ids(file_ids: str):
+async def extract_text_from_file_ids(
+    file_ids: str,
+    max_chars: int | None = None,
+    *,
+    page: int | None = None,
+    page_from: int | None = None,
+    page_to: int | None = None,
+    sheet_name: str | None = None,
+    sheet_index: int | None = None,
+):
     file_mapping = load_file_mapping()
     content = "\n[上传文件内容]:\n"
     gpt_logger.info("extract_text_from_file_ids_start file_ids=%s", file_ids)
+    truncated = False
     for file_id in file_ids.split(","):
         if file_id not in file_mapping:
             print(f"file_id:{file_id} is not found")
@@ -381,7 +433,15 @@ async def extract_text_from_file_ids(file_ids: str):
             file_path,
             extension,
         )
-        result = await extract_text.extract_text_from_file(file_path, extension)
+        result = await extract_text.extract_text_from_file(
+            file_path,
+            extension,
+            page=page,
+            page_from=page_from,
+            page_to=page_to,
+            sheet_name=sheet_name,
+            sheet_index=sheet_index,
+        )
         gpt_logger.info(
             "extract_text_from_file_ids_item_complete file_id=%s filename=%s elapsed_ms=%.1f text_len=%s",
             file_id,
@@ -390,7 +450,16 @@ async def extract_text_from_file_ids(file_ids: str):
             len(result or ""),
         )
         content += "\n[" + file_name + "]:\n" + result + "\n"
-    gpt_logger.info("extract_text_from_file_ids_complete file_ids=%s total_text_len=%s", file_ids, len(content))
+        if max_chars is not None and max_chars > 0 and len(content) > max_chars:
+            content = content[:max_chars].rstrip() + "\n\n[已截断]"
+            truncated = True
+            break
+    gpt_logger.info(
+        "extract_text_from_file_ids_complete file_ids=%s total_text_len=%s truncated=%s",
+        file_ids,
+        len(content),
+        truncated,
+    )
     return content
 
 

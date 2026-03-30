@@ -4,7 +4,12 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from app.llm_kernel import ImageContent, TextContent, ToolDefinition
-from app.routes.file_routes import extract_text_from_file_ids, get_file_paths, load_file_mapping
+from app.routes.file_routes import (
+    describe_file_mapping_entry,
+    extract_text_from_file_ids,
+    get_file_paths,
+    load_file_mapping,
+)
 
 from .service import _encode_image_content, resolve_attachment_selection
 
@@ -15,10 +20,22 @@ class AttachmentToolExecutionResult:
     details: dict[str, Any] = field(default_factory=dict)
 
 
-ATTACHMENT_TOOL_DEFINITIONS: list[ToolDefinition] = [
+RESOURCE_LIST_TOOL_NAME = "resource_list"
+RESOURCE_READ_TEXT_TOOL_NAME = "resource_read_text"
+RESOURCE_LOAD_IMAGES_TOOL_NAME = "resource_load_images"
+
+DOCUMENT_LIST_TOOL_NAME = "document_list"
+DOCUMENT_READ_TEXT_TOOL_NAME = "document_read_text"
+DOCUMENT_LOAD_IMAGES_TOOL_NAME = "document_load_images"
+
+ATTACHMENT_LIST_TOOL_NAME = "attachment_list"
+ATTACHMENT_EXTRACT_TEXT_TOOL_NAME = "attachment_extract_text"
+ATTACHMENT_LOAD_IMAGES_TOOL_NAME = "attachment_load_images"
+
+RESOURCE_TOOL_DEFINITIONS: list[ToolDefinition] = [
     ToolDefinition(
-        name="attachment_list",
-        description="List uploaded attachments for the current request/session and return their metadata.",
+        name=RESOURCE_LIST_TOOL_NAME,
+        description="List uploaded resources for the current request/session and return their metadata.",
         parameters={
             "type": "object",
             "properties": {},
@@ -26,8 +43,8 @@ ATTACHMENT_TOOL_DEFINITIONS: list[ToolDefinition] = [
         },
     ),
     ToolDefinition(
-        name="attachment_extract_text",
-        description="Extract text from uploaded document attachments or image attachments via fallback extraction.",
+        name=RESOURCE_READ_TEXT_TOOL_NAME,
+        description="Read text from uploaded resources in the current request/session, including documents and image OCR fallback.",
         parameters={
             "type": "object",
             "properties": {
@@ -42,13 +59,42 @@ ATTACHMENT_TOOL_DEFINITIONS: list[ToolDefinition] = [
                     "enum": ["auto", "documents", "images", "all"],
                     "description": "Which attachment subset to extract text from.",
                 },
+                "max_chars": {
+                    "type": "integer",
+                    "description": "Optional maximum number of characters to return across the extracted text output.",
+                    "minimum": 200,
+                },
+                "page": {
+                    "type": "integer",
+                    "description": "Optional 1-based page number to read from PDF documents.",
+                    "minimum": 1,
+                },
+                "page_from": {
+                    "type": "integer",
+                    "description": "Optional 1-based inclusive start page for PDF reads.",
+                    "minimum": 1,
+                },
+                "page_to": {
+                    "type": "integer",
+                    "description": "Optional 1-based inclusive end page for PDF reads.",
+                    "minimum": 1,
+                },
+                "sheet_name": {
+                    "type": "string",
+                    "description": "Optional exact sheet name to read from spreadsheet documents.",
+                },
+                "sheet_index": {
+                    "type": "integer",
+                    "description": "Optional 0-based sheet index to read from spreadsheet documents.",
+                    "minimum": 0,
+                },
             },
             "additionalProperties": False,
         },
     ),
     ToolDefinition(
-        name="attachment_load_images",
-        description="Load uploaded image attachments as native image content blocks for image-capable models.",
+        name=RESOURCE_LOAD_IMAGES_TOOL_NAME,
+        description="Load uploaded image resources as native image content blocks for image-capable models.",
         parameters={
             "type": "object",
             "properties": {
@@ -64,11 +110,60 @@ ATTACHMENT_TOOL_DEFINITIONS: list[ToolDefinition] = [
     ),
 ]
 
+DOCUMENT_TOOL_DEFINITIONS: list[ToolDefinition] = [
+    ToolDefinition(
+        name=DOCUMENT_LIST_TOOL_NAME,
+        description="List uploaded documents and images for the current request/session and return their metadata.",
+        parameters=RESOURCE_TOOL_DEFINITIONS[0].parameters,
+    ),
+    ToolDefinition(
+        name=DOCUMENT_READ_TEXT_TOOL_NAME,
+        description="Read text from uploaded documents and image OCR for the current request/session.",
+        parameters=RESOURCE_TOOL_DEFINITIONS[1].parameters,
+    ),
+    ToolDefinition(
+        name=DOCUMENT_LOAD_IMAGES_TOOL_NAME,
+        description="Load uploaded image documents as native image content blocks for image-capable models.",
+        parameters=RESOURCE_TOOL_DEFINITIONS[2].parameters,
+    ),
+]
+
+LEGACY_ATTACHMENT_TOOL_DEFINITIONS: list[ToolDefinition] = [
+    ToolDefinition(
+        name=ATTACHMENT_LIST_TOOL_NAME,
+        description="Legacy alias of resource_list for uploaded attachments in the current request/session.",
+        parameters=RESOURCE_TOOL_DEFINITIONS[0].parameters,
+    ),
+    ToolDefinition(
+        name=ATTACHMENT_EXTRACT_TEXT_TOOL_NAME,
+        description="Legacy alias of resource_read_text for uploaded attachments in the current request/session.",
+        parameters=RESOURCE_TOOL_DEFINITIONS[1].parameters,
+    ),
+    ToolDefinition(
+        name=ATTACHMENT_LOAD_IMAGES_TOOL_NAME,
+        description="Legacy alias of resource_load_images for uploaded image attachments in the current request/session.",
+        parameters=RESOURCE_TOOL_DEFINITIONS[2].parameters,
+    ),
+]
+
 
 def get_attachment_tool_definitions(*, model_supports_native_images: bool) -> list[ToolDefinition]:
-    tools = list(ATTACHMENT_TOOL_DEFINITIONS)
+    tools = (
+        list(DOCUMENT_TOOL_DEFINITIONS)
+        + list(RESOURCE_TOOL_DEFINITIONS)
+        + list(LEGACY_ATTACHMENT_TOOL_DEFINITIONS)
+    )
     if not model_supports_native_images:
-        tools = [tool for tool in tools if tool.name != "attachment_load_images"]
+        tools = [
+            tool
+            for tool in tools
+            if tool.name
+            not in {
+                DOCUMENT_LOAD_IMAGES_TOOL_NAME,
+                RESOURCE_LOAD_IMAGES_TOOL_NAME,
+                ATTACHMENT_LOAD_IMAGES_TOOL_NAME,
+            }
+        ]
     return tools
 
 
@@ -84,19 +179,7 @@ async def _execute_attachment_list(file_ids: list[str]) -> AttachmentToolExecuti
     file_mapping = load_file_mapping()
     items: list[dict[str, Any]] = []
     for file_id in file_ids:
-        current = file_mapping.get(file_id)
-        if not current:
-            items.append({"file_id": file_id, "found": False})
-            continue
-        items.append(
-            {
-                "file_id": file_id,
-                "found": True,
-                "filename": current.get("filename"),
-                "file_extension": current.get("fileExtension"),
-                "path": current.get("path"),
-            }
-        )
+        items.append(describe_file_mapping_entry(file_id, file_mapping.get(file_id)))
     return AttachmentToolExecutionResult(
         content=[TextContent(text=_render_json_text({"file_ids": joined_file_ids, "items": items}))],
         details={"items": items},
@@ -107,6 +190,12 @@ async def _execute_attachment_extract_text(
     file_ids: list[str],
     *,
     mode: str = "auto",
+    max_chars: int | None = None,
+    page: int | None = None,
+    page_from: int | None = None,
+    page_to: int | None = None,
+    sheet_name: str | None = None,
+    sheet_index: int | None = None,
 ) -> AttachmentToolExecutionResult:
     joined_file_ids = _join_file_ids(file_ids)
     if not joined_file_ids:
@@ -141,7 +230,22 @@ async def _execute_attachment_extract_text(
             },
         )
 
-    extracted_text = await extract_text_from_file_ids(selected_file_ids)
+    if page is not None and (page_from is not None or page_to is not None):
+        raise ValueError("Use either page or page_from/page_to, not both")
+    if sheet_name is not None and sheet_index is not None:
+        raise ValueError("Use either sheet_name or sheet_index, not both")
+    if page_from is not None and page_to is not None and page_from > page_to:
+        raise ValueError("page_from must be less than or equal to page_to")
+
+    extracted_text = await extract_text_from_file_ids(
+        selected_file_ids,
+        max_chars=max_chars,
+        page=page,
+        page_from=page_from,
+        page_to=page_to,
+        sheet_name=sheet_name,
+        sheet_index=sheet_index,
+    )
     return AttachmentToolExecutionResult(
         content=[TextContent(text=extracted_text)],
         details={
@@ -149,6 +253,13 @@ async def _execute_attachment_extract_text(
             "mode": mode,
             "image_file_ids": selection.image_file_ids,
             "document_file_ids": selection.document_file_ids,
+            "max_chars": max_chars,
+            "page": page,
+            "page_from": page_from,
+            "page_to": page_to,
+            "sheet_name": sheet_name,
+            "sheet_index": sheet_index,
+            "truncated": extracted_text.endswith("[已截断]"),
         },
     )
 
@@ -190,12 +301,30 @@ async def execute_attachment_tool(
     else:
         raise ValueError("attachment tool file_ids must be a list of strings when provided")
 
-    if name == "attachment_list":
+    if name in {DOCUMENT_LIST_TOOL_NAME, RESOURCE_LIST_TOOL_NAME, ATTACHMENT_LIST_TOOL_NAME}:
         return await _execute_attachment_list(file_ids)
-    if name == "attachment_extract_text":
+    if name in {
+        DOCUMENT_READ_TEXT_TOOL_NAME,
+        RESOURCE_READ_TEXT_TOOL_NAME,
+        ATTACHMENT_EXTRACT_TEXT_TOOL_NAME,
+    }:
         mode = arguments.get("mode", "auto")
-        return await _execute_attachment_extract_text(file_ids, mode=mode)
-    if name == "attachment_load_images":
+        max_chars = arguments.get("max_chars")
+        return await _execute_attachment_extract_text(
+            file_ids,
+            mode=mode,
+            max_chars=max_chars,
+            page=arguments.get("page"),
+            page_from=arguments.get("page_from"),
+            page_to=arguments.get("page_to"),
+            sheet_name=arguments.get("sheet_name"),
+            sheet_index=arguments.get("sheet_index"),
+        )
+    if name in {
+        DOCUMENT_LOAD_IMAGES_TOOL_NAME,
+        RESOURCE_LOAD_IMAGES_TOOL_NAME,
+        ATTACHMENT_LOAD_IMAGES_TOOL_NAME,
+    }:
         return await _execute_attachment_load_images(file_ids)
     raise ValueError(f'Unknown attachment tool "{name}"')
 

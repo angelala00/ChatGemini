@@ -2,10 +2,12 @@ import os
 import base64
 from pathlib import Path
 from typing import Union, List
-import imghdr
-import mimetypes
 
 from dotenv import load_dotenv
+from app.utils.image_utils import (
+    detect_image_mime_type,
+    detect_image_type_from_bytes,
+)
 
 
 _current_file = Path(__file__).resolve()
@@ -51,27 +53,11 @@ def get_image_base64(file_path: str):
         return encoded_str
 
 
-def _detect_image_mime_type(file_path: str):
-    image_type = imghdr.what(file_path)
-    if image_type == "jpeg":
-        return "image/jpeg"
-    if image_type == "png":
-        return "image/png"
-    if image_type == "gif":
-        return "image/gif"
-    if image_type == "webp":
-        return "image/webp"
-    guessed_type, _ = mimetypes.guess_type(file_path)
-    if guessed_type and guessed_type.startswith("image/"):
-        return guessed_type
-    return "image/jpeg"
-
-
 def get_image_data_url(file_path: str):
     img_base64_str = get_image_base64(file_path)
     if not img_base64_str:
         return None
-    mime_type = _detect_image_mime_type(file_path)
+    mime_type = detect_image_mime_type(file_path)
     return f"data:{mime_type};base64,{img_base64_str}"
 
 
@@ -84,6 +70,6 @@ def is_image_only(file_paths: str):
             continue
         with open(file_path, "rb") as f:
             header = f.read(32)
-        if imghdr.what(None, header) is None:
+        if detect_image_type_from_bytes(header) is None:
             return False
     return True
