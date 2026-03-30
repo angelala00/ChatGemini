@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { useTranslation } from "react-i18next";
@@ -19,6 +19,7 @@ import { onUpdate as updateSessions } from "../store/sessions";
 import { onUpdate as updateMappings } from "../store/mappings";
 import { chatWithAI } from "../helpers/chatWithAI";
 import { globalConfig } from "../config/global";
+import { useChatAutoScroll } from "../hooks/useChatAutoScroll";
 
 
 const GptAssistantChat = (props: RouterComponentProps) => {
@@ -26,7 +27,6 @@ const GptAssistantChat = (props: RouterComponentProps) => {
     const viewAttachment = t("views.Chat.view_attachment");
     const refreshPlaceholder = t("views.Chat.refresh_placeholder");
     const invalidPlaceholder = t("views.Chat.invalid_placeholder");
-    const mainSectionRef = props.refs?.mainSectionRef.current ?? null;
     const onAbortUpdate = props.onAbortUpdate;
     const dispatch = useDispatch();
     const sessions = useSelector((state: ReduxStoreProps) => state.sessions.sessions);
@@ -45,14 +45,9 @@ const GptAssistantChat = (props: RouterComponentProps) => {
 
     const handlePythonRuntimeCreated = (pyodide: PyodideInterface) => setPythonRuntime(pyodide);
 
-    const scrollToBottom = useCallback(
-        (force: boolean = false) =>
-            (ai.busy || force) &&
-            mainSectionRef?.scrollTo({
-                top: mainSectionRef.scrollHeight,
-                behavior: "auto",
-            }),
-        [ai.busy, mainSectionRef],
+    const scrollContainerRef = props.refs?.mainSectionRef ?? { current: null };
+    const { scrollToBottom, resetAutoScroll } = useChatAutoScroll(
+        scrollContainerRef,
     );
 
     const handleRefresh = async (index: number, customSessions?: any) => {
@@ -188,8 +183,23 @@ const GptAssistantChat = (props: RouterComponentProps) => {
         } else {
             setChat([{ role: "model", parts: invalidPlaceholder, timestamp: 0 }]);
         }
-        setTimeout(() => scrollToBottom(true), 300);
-    }, [id, invalidPlaceholder, scrollToBottom, sessions]);
+    }, [id, invalidPlaceholder, sessions]);
+
+    useEffect(() => {
+        resetAutoScroll();
+        const timer = window.setTimeout(() => scrollToBottom(true), 0);
+        return () => window.clearTimeout(timer);
+    }, [id, resetAutoScroll, scrollToBottom]);
+
+    useEffect(() => {
+        const timer = window.setTimeout(() => scrollToBottom(false), 0);
+        return () => window.clearTimeout(timer);
+    }, [
+        chat.length,
+        chat[chat.length - 1]?.timestamp,
+        chat[chat.length - 1]?.parts,
+        scrollToBottom,
+    ]);
 
     return (
         <Container className="max-w-[1100px] w-full py-6 mb-auto mx-auto px-4 md:px-10">

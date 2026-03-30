@@ -1,13 +1,13 @@
 import { useParams } from "react-router-dom";
 import { Markdown } from "../components/Markdown";
 import { Session, SessionEditState, SessionRole } from "../components/Session";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { SessionHistory, Sessions } from "../store/sessions";
 import { useDispatch, useSelector } from "react-redux";
 import { ReduxStoreProps } from "../config/store";
 import { onUpdate as updateAI } from "../store/ai";
 import { onUpdate as updateSessions } from "../store/sessions";
-import mappings, { onUpdate as updateMappings } from "../store/mappings";
+import { onUpdate as updateMappings } from "../store/mappings";
 import { chatWithAI } from "../helpers/chatWithAI";
 import { globalConfig } from "../config/global";
 import { Container } from "../components/Container";
@@ -19,8 +19,8 @@ import { sendUserAlert } from "../helpers/sendUserAlert";
 import { RouterComponentProps, routerConfig } from "../config/router";
 import type { PyodideInterface } from "../types/pyodide";
 import { useTranslation } from "react-i18next";
-import { stat } from "node:fs/promises";
 import { exportMdAsDocx } from "../helpers/exportMdAsDocx";
+import { useChatAutoScroll } from "../hooks/useChatAutoScroll";
 
 const Chat = (props: RouterComponentProps) => {
     const { t } = useTranslation();
@@ -28,7 +28,6 @@ const Chat = (props: RouterComponentProps) => {
     const refreshPlaceholder = t("views.Chat.refresh_placeholder");
     const invalidPlaceholder = t("views.Chat.invalid_placeholder");
 
-    const mainSectionRef = props.refs?.mainSectionRef.current ?? null;
     const onAbortUpdate = props.onAbortUpdate;
     const { site: siteTitle } = globalConfig.title;
     const { mode, basename } = routerConfig;
@@ -62,107 +61,9 @@ const Chat = (props: RouterComponentProps) => {
     const handlePythonRuntimeCreated = (pyodide: PyodideInterface) =>
         setPythonRuntime(pyodide);
 
-    const [autoScroll, setAutoScroll] = useState(true)
-    
-
-    useEffect(() => {
-        if (mainSectionRef) {
-            const bottomThreshold = 4;
-            let userInteracting = false;
-            let userHasLeftBottom = false;
-            let interactionTimeout: ReturnType<typeof setTimeout> | undefined;
-            let settleTimeout: ReturnType<typeof setTimeout> | undefined;
-
-            const computeIsAtBottom = () =>
-                mainSectionRef.scrollHeight -
-                    mainSectionRef.scrollTop -
-                    mainSectionRef.clientHeight <=
-                bottomThreshold;
-
-            const scheduleInteractionSettle = () => {
-                if (interactionTimeout) {
-                    clearTimeout(interactionTimeout);
-                }
-                interactionTimeout = setTimeout(() => {
-                    userInteracting = false;
-                    if (!userHasLeftBottom && computeIsAtBottom()) {
-                        setAutoScroll(true);
-                    }
-                }, 300);
-            };
-
-            const handleUserInteraction = () => {
-                userInteracting = true;
-                userHasLeftBottom = false;
-                setAutoScroll(false);
-                scheduleInteractionSettle();
-            };
-
-            const handleScroll = () => {
-                if (settleTimeout) {
-                    clearTimeout(settleTimeout);
-                }
-                settleTimeout = setTimeout(() => {
-                    const isAtBottom = computeIsAtBottom();
-                    if (userInteracting) {
-                        if (isAtBottom) {
-                            if (userHasLeftBottom) {
-                                userInteracting = false;
-                                userHasLeftBottom = false;
-                                setAutoScroll(true);
-                            } else {
-                                scheduleInteractionSettle();
-                            }
-                        } else {
-                            userHasLeftBottom = true;
-                            scheduleInteractionSettle();
-                        }
-                        return;
-                    }
-                    setAutoScroll(isAtBottom);
-                }, 50);
-            };
-
-            mainSectionRef.addEventListener("wheel", handleUserInteraction, {
-                passive: true,
-            });
-            mainSectionRef.addEventListener("touchstart", handleUserInteraction, {
-                passive: true,
-            });
-            mainSectionRef.addEventListener("pointerdown", handleUserInteraction);
-            mainSectionRef.addEventListener("scroll", handleScroll, {
-                passive: true,
-            });
-            return () => {
-                if (interactionTimeout) {
-                    clearTimeout(interactionTimeout);
-                }
-                if (settleTimeout) {
-                    clearTimeout(settleTimeout);
-                }
-                mainSectionRef.removeEventListener("wheel", handleUserInteraction);
-                mainSectionRef.removeEventListener(
-                    "touchstart",
-                    handleUserInteraction,
-                );
-                mainSectionRef.removeEventListener(
-                    "pointerdown",
-                    handleUserInteraction,
-                );
-                mainSectionRef.removeEventListener("scroll", handleScroll);
-            };
-        }
-    }, [mainSectionRef]);
-
-
-    const scrollToBottom = useCallback(
-        (force: boolean = false) =>
-            (ai.busy || force) && autoScroll &&
-            mainSectionRef?.scrollTo({
-                top: mainSectionRef.scrollHeight,
-                behavior: "auto",
-            }),
-        [ai, mainSectionRef, autoScroll]
+    const scrollContainerRef = props.refs?.mainSectionRef ?? { current: null };
+    const { scrollToBottom, resetAutoScroll } = useChatAutoScroll(
+        scrollContainerRef,
     );
 
     const handleRefresh = async (index: number, customSessions?: Sessions) => {
@@ -329,9 +230,23 @@ const Chat = (props: RouterComponentProps) => {
                 { role: "model", parts: invalidPlaceholder, timestamp: 0 },
             ]);
         }
-        // scrollToBottom(true)
-        setTimeout(() => scrollToBottom(true), 300);
-    }, [t, siteTitle, id, sessions, mainSectionRef, scrollToBottom]);
+    }, [t, siteTitle, id, sessions]);
+
+    useEffect(() => {
+        resetAutoScroll();
+        const timer = window.setTimeout(() => scrollToBottom(true), 0);
+        return () => window.clearTimeout(timer);
+    }, [id, resetAutoScroll, scrollToBottom]);
+
+    useEffect(() => {
+        const timer = window.setTimeout(() => scrollToBottom(false), 0);
+        return () => window.clearTimeout(timer);
+    }, [
+        chat.length,
+        chat[chat.length - 1]?.timestamp,
+        chat[chat.length - 1]?.parts,
+        scrollToBottom,
+    ]);
 
     return (
         <Container className="max-w-[1200px] w-full py-5 pl-3 mb-auto mx-auto px-4 md:px-16 lg:px32">
