@@ -10,7 +10,7 @@ import { Session, SessionEditState, SessionRole } from "../components/Session";
 import { Markdown } from "../components/Markdown";
 import { Container } from "../components/Container";
 import { ImageView } from "../components/ImageView";
-import { getBase64BlobUrl } from "../helpers/getBase64BlobUrl";
+import { getAttachmentViewItems } from "../helpers/getAttachmentViewItems";
 import { sendUserAlert } from "../helpers/sendUserAlert";
 import { sendUserConfirm } from "../helpers/sendUserConfirm";
 import { exportMdAsDocx } from "../helpers/exportMdAsDocx";
@@ -37,7 +37,6 @@ const GptAssistantChat = (props: RouterComponentProps) => {
     const ai = useSelector((state: ReduxStoreProps) => state.ai.ai);
     const { id } = useParams<{ id: keyof typeof sessions }>();
     const [chat, setChat] = useState<any[]>([]);
-    const [attachmentsURL, setAttachmentsURL] = useState<Record<number, string>>({});
     const [pythonRuntime, setPythonRuntime] = useState<PyodideInterface | null>(null);
     const [editState, setEditState] = useState<{ index: number; state: SessionEditState }>({
         index: 0,
@@ -195,32 +194,41 @@ const GptAssistantChat = (props: RouterComponentProps) => {
     return (
         <Container className="max-w-[1100px] w-full py-6 mb-auto mx-auto px-4 md:px-10">
             <ImageView>
-                {chat.map(({ role, parts, attachment, timestamp }, index) => {
+                {chat.map(({ role, parts, attachment }, index) => {
                     const { mimeType, data } = attachment ?? { mimeType: "", data: "" };
-                    let base64BlobURL = "";
-                    if (!!data.length && timestamp in attachmentsURL) {
-                        base64BlobURL = attachmentsURL[timestamp];
-                    } else if (!!data.length) {
-                        base64BlobURL = getBase64BlobUrl(`data:${mimeType};base64,${data}`);
-                        setAttachmentsURL((prev) => ({
-                            ...prev,
-                            [timestamp]: base64BlobURL,
-                        }));
-                    }
-
-                    const attachmentPostscriptHtml = `\n\n---\n\n<div class="inline-block text-center overflow-hidden">
-                        <a data-image-view="gallery" href="${base64BlobURL}">
-                            <img src="${base64BlobURL}" style="
-                                max-width: 10rem;
-                                margin-top: 0;
-                                margin-bottom: 0.2rem;
-                                border-radius: 0.75rem;
-                            " alt="" />
-                        </a>
-                        <span class="text-xs text-gray-400">
-                            ${viewAttachment}
-                        </span>
-                    </div>`;
+                    const attachmentItems = getAttachmentViewItems(data);
+                    const isSingleImageAttachment =
+                        attachmentItems.length === 1 && mimeType.startsWith("image/");
+                    const attachmentPostscriptHtml = attachmentItems.length
+                        ? `\n\n---\n\n<div class="inline-block overflow-hidden">
+                        ${
+                            isSingleImageAttachment
+                                ? `<div class="text-center">
+                            <a data-image-view="gallery" href="${attachmentItems[0].href}">
+                                <img src="${attachmentItems[0].href}" style="
+                                    max-width: 10rem;
+                                    margin-top: 0;
+                                    margin-bottom: 0.2rem;
+                                    border-radius: 0.75rem;
+                                " alt="" />
+                            </a>
+                            <a class="block text-xs text-gray-400 hover:text-gray-600 no-underline" href="${attachmentItems[0].href}" target="_blank" rel="noreferrer">
+                                ${viewAttachment}
+                            </a>
+                        </div>`
+                                : `<div class="text-left">
+                            ${attachmentItems
+                                .map(
+                                    ({ href }, attachmentIndex) =>
+                                        `<a class="block text-sm text-blue-600 hover:text-blue-800 no-underline" href="${href}" target="_blank" rel="noreferrer">
+                                    ${attachmentItems.length === 1 ? viewAttachment : `${viewAttachment} ${attachmentIndex + 1}`}
+                                </a>`,
+                                )
+                                .join("")}
+                        </div>`
+                        }
+                    </div>`
+                        : "";
 
                     const typingEffect = `<div class="inline px-1 bg-stone-900 animate-pulse animate-duration-700"></div>`;
                     let nextParts = parts;
@@ -241,7 +249,7 @@ const GptAssistantChat = (props: RouterComponentProps) => {
                                 onDelete={handleDelete}
                                 onEdit={handleEdit}
                                 onExport={handleExport}
-                                postscript={!!data.length ? attachmentPostscriptHtml : ""}
+                                postscript={attachmentPostscriptHtml}
                             >
                                 <Markdown
                                     className="prose-stone"
@@ -253,7 +261,7 @@ const GptAssistantChat = (props: RouterComponentProps) => {
                                             ? window.location.pathname
                                             : routerConfig.basename
                                     }pyodide`}
-                                >{`${nextParts}${!!data.length ? attachmentPostscriptHtml : ""}`}</Markdown>
+                                >{`${nextParts}${attachmentPostscriptHtml}`}</Markdown>
                             </Session>
                         </div>
                     );

@@ -6,8 +6,13 @@ from unittest.mock import patch
 from app.attachments.service import (
     AttachmentSelection,
     build_attachment_tool_guidance,
+    build_user_message_from_attachments,
 )
 from app.attachments.tools import execute_attachment_tool, get_attachment_tool_definitions
+from app.gptassistant_planner import (
+    DEFAULT_DOCUMENT_PRELOAD_MAX_CHARS,
+    DEFAULT_IMAGE_PRELOAD_MAX_CHARS,
+)
 
 
 class AttachmentToolTests(unittest.TestCase):
@@ -224,6 +229,75 @@ class AttachmentToolTests(unittest.TestCase):
                     available_file_ids=["file-1"],
                 )
             )
+
+    def _run_async(self, coroutine):
+        import asyncio
+
+        return asyncio.run(coroutine)
+
+
+class AttachmentPreprocessTests(unittest.TestCase):
+    @patch("app.attachments.service.extract_text_from_file_ids")
+    @patch("app.attachments.service.resolve_attachment_selection")
+    def test_preload_text_limits_document_chars(
+        self,
+        resolve_attachment_selection_mock,
+        extract_text_from_file_ids_mock,
+    ):
+        resolve_attachment_selection_mock.return_value = AttachmentSelection(
+            image_file_ids=None,
+            document_file_ids="file-1",
+            image_paths=[],
+            document_paths=["/tmp/demo.pdf"],
+        )
+        extract_text_from_file_ids_mock.return_value = "\n[上传文件内容]:\nDemo"
+
+        self._run_async(
+            build_user_message_from_attachments(
+                query="附件内容是啥",
+                file_ids="file-1",
+                model_id="glm-4.7",
+                model_supports_native_images=False,
+                document_strategy="preload_text",
+                non_native_image_strategy="tool_only",
+            )
+        )
+
+        extract_text_from_file_ids_mock.assert_called_once_with(
+            "file-1",
+            max_chars=DEFAULT_DOCUMENT_PRELOAD_MAX_CHARS,
+        )
+
+    @patch("app.attachments.service.extract_text_from_file_ids")
+    @patch("app.attachments.service.resolve_attachment_selection")
+    def test_preprocess_text_limits_image_chars(
+        self,
+        resolve_attachment_selection_mock,
+        extract_text_from_file_ids_mock,
+    ):
+        resolve_attachment_selection_mock.return_value = AttachmentSelection(
+            image_file_ids="file-1",
+            document_file_ids=None,
+            image_paths=["/tmp/demo.png"],
+            document_paths=[],
+        )
+        extract_text_from_file_ids_mock.return_value = "\n[上传文件内容]:\nOCR"
+
+        self._run_async(
+            build_user_message_from_attachments(
+                query="图片内容是啥",
+                file_ids="file-1",
+                model_id="glm-4.7",
+                model_supports_native_images=False,
+                document_strategy="tool_only",
+                non_native_image_strategy="preprocess_text",
+            )
+        )
+
+        extract_text_from_file_ids_mock.assert_called_once_with(
+            "file-1",
+            max_chars=DEFAULT_IMAGE_PRELOAD_MAX_CHARS,
+        )
 
     def _run_async(self, coroutine):
         import asyncio

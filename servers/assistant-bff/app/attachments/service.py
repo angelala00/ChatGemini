@@ -17,7 +17,6 @@ from app.utils.image_utils import detect_image_mime_type
 
 IMAGE_PREPROCESS_TIMEOUT_SECONDS = 30
 
-
 @dataclass(frozen=True)
 class AttachmentSelection:
     image_file_ids: Optional[str]
@@ -56,6 +55,7 @@ def _render_attachment_manifest(file_ids: Optional[str], selection: AttachmentSe
         file_ids=file_ids,
         selection=selection,
         model_supports_native_images=True,
+        include_tooling=True,
     )
 
 
@@ -64,20 +64,29 @@ def _render_attachment_manifest_for_model(
     file_ids: Optional[str],
     selection: AttachmentSelection,
     model_supports_native_images: bool,
+    include_tooling: bool = True,
 ) -> str:
     if not file_ids:
         return ""
-    available_tools = ["document_list", "document_read_text"]
-    if model_supports_native_images:
-        available_tools.append("document_load_images")
     file_mapping = load_file_mapping()
     lines = [
         "",
         "[附件清单]",
-        "本轮请求附带了附件。如果你需要读取附件内容，请优先调用附件工具，而不是臆测文件内容。",
-        f"可用文档工具：{'、'.join(available_tools)}。",
-        "兼容别名：resource_list、resource_read_text、resource_load_images，以及 attachment_*（如适用）。",
+        "本轮请求附带了附件。",
     ]
+    if include_tooling:
+        available_tools = ["document_list", "document_read_text"]
+        if model_supports_native_images:
+            available_tools.append("document_load_images")
+        lines.extend(
+            [
+                "如果你需要读取附件内容，请优先调用附件工具，而不是臆测文件内容。",
+                f"可用文档工具：{'、'.join(available_tools)}。",
+                "兼容别名：resource_list、resource_read_text、resource_load_images，以及 attachment_*（如适用）。",
+            ]
+        )
+    else:
+        lines.append("请先根据附件清单和用户问题判断是否真的需要读取正文内容。")
     for file_id in [item.strip() for item in file_ids.split(",") if item.strip()]:
         item = file_mapping.get(file_id)
         if not item:
@@ -87,6 +96,66 @@ def _render_attachment_manifest_for_model(
             f"- name: {item.get('filename')} | type: {file_kind} | file_id: {file_id}"
         )
     return "\n".join(lines) + "\n"
+
+
+def _split_file_ids(file_ids: Optional[str]) -> list[str]:
+    if not file_ids:
+        return []
+    return [item.strip() for item in file_ids.split(",") if item.strip()]
+
+
+def _strip_upload_content_header(text: str) -> str:
+    prefix = "\n[上传文件内容]:\n"
+    if text.startswith(prefix):
+        return text[len(prefix):]
+    return text
+
+
+async def _extract_text_with_balanced_budget(
+    file_ids: Optional[str],
+    *,
+    total_max_chars: int,
+) -> str:
+    normalized_file_ids = _split_file_ids(file_ids)
+    if not normalized_file_ids:
+        return ""
+
+    rendered_chunks: list[str] = []
+    remaining_budget = max(total_max_chars, 0)
+    truncated = False
+
+    for index, current_file_id in enumerate(normalized_file_ids):
+        remaining_files = len(normalized_file_ids) - index
+        if remaining_budget <= 0:
+            truncated = True
+            break
+
+        per_file_budget = max(2000, remaining_budget // max(remaining_files, 1))
+        extracted = await extract_text_from_file_ids(
+            current_file_id,
+            max_chars=per_file_budget,
+        )
+        normalized = _strip_upload_content_header(extracted).strip()
+        if not normalized:
+            continue
+
+        candidate = normalized if not rendered_chunks else f"\n{normalized}"
+        if len(candidate) > remaining_budget:
+            candidate = candidate[:remaining_budget].rstrip()
+            truncated = True
+        rendered_chunks.append(candidate)
+        remaining_budget -= len(candidate)
+
+        if normalized.endswith("[已截断]"):
+            truncated = True
+
+    if not rendered_chunks:
+        return ""
+
+    combined = "\n[上传文件内容]:\n" + "".join(rendered_chunks).rstrip()
+    if truncated and not combined.endswith("[已截断]"):
+        combined = combined.rstrip() + "\n\n[已截断]"
+    return combined
 
 
 def build_attachment_tool_guidance(
@@ -128,6 +197,9 @@ async def build_user_message_from_attachments(
     image_preprocess_timeout_seconds: int = IMAGE_PREPROCESS_TIMEOUT_SECONDS,
     document_strategy: str = "tool_only",
     non_native_image_strategy: str = "preprocess_text",
+    attach_native_images: bool = True,
+    document_preload_max_chars: int = 80000,
+    image_preload_max_chars: int = 20000,
 ) -> UserMessage:
     emit = emit_event or _noop_emit_event
     user_text = query
@@ -153,7 +225,10 @@ async def build_user_message_from_attachments(
                 stage="document_text_extraction",
                 message="正在提取附件文本内容",
             )
-            user_text += await extract_text_from_file_ids(selection.document_file_ids)
+            user_text += await _extract_text_with_balanced_budget(
+                selection.document_file_ids,
+                total_max_chars=document_preload_max_chars,
+            )
             gpt_logger.info(
                 "attachment_document_extract_complete model=%s file_ids=%s elapsed_ms=%.1f",
                 model_id,
@@ -169,6 +244,7 @@ async def build_user_message_from_attachments(
                 file_ids=file_ids,
                 selection=selection,
                 model_supports_native_images=model_supports_native_images,
+                include_tooling=document_strategy == "tool_only",
             )
             gpt_logger.info(
                 "attachment_document_manifest_injected model=%s file_ids=%s",
@@ -182,11 +258,19 @@ async def build_user_message_from_attachments(
                 file_ids=file_ids,
                 selection=selection,
                 model_supports_native_images=model_supports_native_images,
+                include_tooling=True,
             )
             gpt_logger.info(
                 "attachment_image_manifest_injected model=%s file_ids=%s",
                 model_id,
                 selection.image_file_ids,
+            )
+        elif non_native_image_strategy == "manifest_only":
+            user_text += _render_attachment_manifest_for_model(
+                file_ids=file_ids,
+                selection=selection,
+                model_supports_native_images=model_supports_native_images,
+                include_tooling=False,
             )
         else:
             image_started_at = time.perf_counter()
@@ -197,7 +281,10 @@ async def build_user_message_from_attachments(
             )
             try:
                 extracted_image_text = await asyncio.wait_for(
-                    extract_text_from_file_ids(selection.image_file_ids),
+                    _extract_text_with_balanced_budget(
+                        selection.image_file_ids,
+                        total_max_chars=image_preload_max_chars,
+                    ),
                     timeout=image_preprocess_timeout_seconds,
                 )
             except TimeoutError as exc:
@@ -253,7 +340,7 @@ async def build_user_message_from_attachments(
                 stage="image_text_extraction",
             )
 
-    if selection.image_file_ids and model_supports_native_images:
+    if selection.image_file_ids and model_supports_native_images and attach_native_images:
         blocks: list[TextContent | ImageContent] = [TextContent(text=user_text)]
         for path in selection.image_paths:
             blocks.append(_encode_image_content(path))

@@ -1,4 +1,5 @@
 import os
+from io import BytesIO
 from typing import Any, Callable, Dict, Optional
 
 from docx import Document
@@ -58,7 +59,8 @@ def _process_xlsx(
     sheet_index: int | None = None,
     **_: Any,
 ) -> str:
-    workbook = load_workbook(file_path, data_only=True)
+    with open(file_path, "rb") as infile:
+        workbook = load_workbook(BytesIO(infile.read()), data_only=True)
     worksheets = workbook.worksheets
     if sheet_name:
         worksheets = [sheet for sheet in worksheets if sheet.title == sheet_name]
@@ -77,6 +79,7 @@ def _process_xlsx(
             if normalized:
                 rows.append(normalized)
         sheet_chunks.append("\n".join(rows).rstrip())
+    workbook.close()
     return "\n\n".join(chunk for chunk in sheet_chunks if chunk)
 
 

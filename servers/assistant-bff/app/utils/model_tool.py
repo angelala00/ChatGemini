@@ -22,7 +22,10 @@ for _env_file in _env_candidates:
         break
 
 
-MODEL_NAME_VL = os.getenv("MODEL_NAME_VL", "qwen3-vl-8b-instruct")
+# Keep the image fallback model aligned with the assistant's currently registered
+# multimodal model set. The older qwen3-vl default routes to a provider that may
+# require a different API key than the main chat-v2 stack.
+MODEL_NAME_VL = os.getenv("MODEL_NAME_VL", "qwen3.5-35b-a3b")
 MODEL_NAME_INSTRUCT = os.getenv("MODEL_NAME_INSTRUCT", "qwen3.5-35b-a3b")
 MODEL_NAME_THINKING = os.getenv("MODEL_NAME_THINKING", "deepseek-r1-distill-qwen-32b")
 MODEL_NAME_QWQ = os.getenv("MODEL_NAME_QWQ", "QwQ-32B")

@@ -12,6 +12,7 @@ from app.attachments import (
     get_attachment_tool_definitions,
 )
 from app.chat_base import client, match_history, save_match_history
+from app.gptassistant_planner import PlannerRuntimeCapabilities, build_execution_plan
 from app.llm_kernel import (
     AssistantMessage,
     Context,
@@ -75,11 +76,24 @@ def _model_compat(model_name: str) -> OpenAICompletionsCompat:
             supports_reasoning_effort=False,
             requires_assistant_after_tool_result=False,
         )
+    if lowered == "glm-4.7":
+        return OpenAICompletionsCompat(
+            supports_reasoning_effort=False,
+        )
     if "glm" in lowered:
         return OpenAICompletionsCompat(
             supports_reasoning_effort=False,
         )
     return OpenAICompletionsCompat()
+
+
+def _planner_runtime_capabilities(model_name: str) -> PlannerRuntimeCapabilities:
+    lowered = (model_name or "").lower()
+    if lowered == "glm-4.7":
+        return PlannerRuntimeCapabilities(
+            supports_tool_result_continuation=False,
+        )
+    return PlannerRuntimeCapabilities()
 
 
 def _kernel_model_from_config(model_config: dict[str, Any], reasoning_enabled: bool) -> Model:
@@ -102,6 +116,7 @@ async def _build_user_message_with_preprocess_events(
     query: str,
     file_ids: Optional[str],
     model: Model,
+    execution_plan,
     emit_event,
 ) -> UserMessage:
     return await build_user_message_from_attachments(
@@ -111,8 +126,11 @@ async def _build_user_message_with_preprocess_events(
         model_supports_native_images=model.supports_input("image"),
         emit_event=emit_event,
         image_preprocess_timeout_seconds=IMAGE_PREPROCESS_TIMEOUT_SECONDS,
-        document_strategy="tool_only",
-        non_native_image_strategy="tool_only",
+        document_strategy=execution_plan.document_strategy,
+        non_native_image_strategy=execution_plan.non_native_image_strategy,
+        attach_native_images=execution_plan.attach_native_images,
+        document_preload_max_chars=execution_plan.document_preload_max_chars,
+        image_preload_max_chars=execution_plan.image_preload_max_chars,
     )
 
 
@@ -337,13 +355,18 @@ async def chat_with_kernel_gptassistant(
         preprocess_events.append(_sse(event_name, yield_payload))
 
     model = _kernel_model_from_config(model_config, reasoning_enabled)
+    execution_plan = build_execution_plan(
+        query=query,
+        has_attachments=bool(file_ids),
+        runtime_capabilities=_planner_runtime_capabilities(model.id),
+    )
     if usage_tracker:
         usage_tracker.set_model(model.id)
 
     history = _load_history(conversation_id)
     preprocess_events: list[str] = []
     effective_system_prompt = system_prompt
-    if file_ids:
+    if file_ids and execution_plan.include_attachment_tool_guidance:
         attachment_guidance = build_attachment_tool_guidance(
             file_ids=file_ids,
             model_supports_native_images=model.supports_input("image"),
@@ -356,17 +379,12 @@ async def chat_with_kernel_gptassistant(
         messages=[],
         tools=(
             get_attachment_tool_definitions(model_supports_native_images=model.supports_input("image"))
-            if file_ids
+            if file_ids and execution_plan.expose_attachment_tools
             else []
         ),
     )
     options = OpenAICompatOptions(
         reasoning_effort="high" if model.reasoning else None,
-        provider_options={
-            "extra_body": {
-                "enable_thinking": bool(reasoning_enabled and model_config.get("supports_reasoning")),
-            },
-        },
     )
     final_message: Optional[AssistantMessage] = None
     emitted_error_event = False
@@ -387,6 +405,7 @@ async def chat_with_kernel_gptassistant(
             query,
             file_ids,
             model,
+            execution_plan,
             emit_preprocess_event,
         )
         context.messages = [*history, user_message]
