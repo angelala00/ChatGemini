@@ -45,6 +45,12 @@ export const globalConfig = {
         : "GPT助手",
     api: env["REACT_APP_GEMINI_API_URL"],
     sse: env["REACT_APP_GEMINI_API_SSE"] === "false" ? false : true,
+    gptassistantChatApiVersion:
+        env["REACT_APP_GPTASSISTANT_CHAT_API_VERSION"] === "v1"
+            ? "v1"
+            : "v2",
+    gptassistantShowThinking: env["REACT_APP_GPTASSISTANT_SHOW_THINKING"] !== "false",
+    gptassistantDebugEvents: env["REACT_APP_GPTASSISTANT_DEBUG_EVENTS"] === "true",
     difyappid: env["REACT_APP_NEXT_PUBLIC_APP_ID"],
     difyappurl: env["REACT_APP_NEXT_PUBLIC_API_URL"],
     aichat_backend: env["REACT_APP_NEXT_AICHAT_BACKEND_API_URL"],

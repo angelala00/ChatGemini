@@ -6,6 +6,7 @@ import { asyncSleep } from "./asyncSleep";
 import { getDecodeBase64 } from "./getDecodeBase64";
 import { handleStreamingRequest } from "./handleRequest";
 import { getFullPath } from "../helpers/getDomainAndPath";
+import { globalConfig } from "../config/global";
 
 
 const unicodeToChar = (text: string) => {
@@ -14,68 +15,157 @@ const unicodeToChar = (text: string) => {
     })
 }
 
+const isGptAssistant = (gid: string) => !gid || gid === "gptassistant";
+const useGptAssistantV2 = () => globalConfig.gptassistantChatApiVersion !== "v1";
+const showGptAssistantThinking = () => globalConfig.gptassistantShowThinking !== false;
+const showGptAssistantDebugEvents = () => globalConfig.gptassistantDebugEvents === true;
 
-const read = async (reader: any, 
-    decoder: any, 
-    buffer: string, 
-    bufferObj: any, 
-    isFirstMessage: boolean,
-    onChatMessage: (message: string, end: boolean, conversationId: string) => void
-    ) => {
-    let isdone = false;
-    await reader?.read().then((result: any) => {
-        if (result.done) {
-	    onChatMessage("", true, "");
-	    isdone = true;
+const handleLegacyEvent = (
+    event: any,
+    onChatMessage: (message: string, end: boolean, conversationId: string) => void,
+) => {
+    if (event.event === "message_end") {
+        onChatMessage("", true, event.conversation_id ?? "");
+        return;
+    }
+    if (event.event !== "message") {
+        return;
+    }
+    onChatMessage(unicodeToChar(event.answer ?? ""), false, event.conversation_id ?? "");
+};
+
+const handleKernelEvent = (
+    event: any,
+    onChatMessage: (message: string, end: boolean, conversationId: string) => void,
+) => {
+    const conversationId = event.conversation_id ?? "";
+    if (event.event === "thinking_start") {
+        if (!showGptAssistantThinking()) {
             return;
         }
-        buffer += decoder.decode(result.value, { stream: true })
-        const lines = buffer.split('\n')
-        try {
-            lines.forEach((message) => {
-                if (!message || !message.startsWith('data: ')){
-                    //onChatMessage("", true);
-                    return;
+        onChatMessage("<think>\n", false, conversationId);
+        return;
+    }
+    if (event.event === "thinking_delta") {
+        if (!showGptAssistantThinking()) {
+            return;
+        }
+        onChatMessage(event.delta ?? "", false, conversationId);
+        return;
+    }
+    if (event.event === "thinking_end") {
+        if (!showGptAssistantThinking()) {
+            return;
+        }
+        onChatMessage("\n</think>\n\n", false, conversationId);
+        return;
+    }
+    if (event.event === "preprocess_start") {
+        if (!showGptAssistantDebugEvents()) {
+            return;
+        }
+        onChatMessage(`\n<think>\n${event.message ?? "正在预处理附件内容"}\n`, false, conversationId);
+        return;
+    }
+    if (event.event === "preprocess_complete") {
+        if (!showGptAssistantDebugEvents()) {
+            return;
+        }
+        onChatMessage("\n</think>\n\n", false, conversationId);
+        return;
+    }
+    if (event.event === "preprocess_error") {
+        if (showGptAssistantDebugEvents()) {
+            onChatMessage(`\n${event.message ?? "附件预处理失败"}\n</think>\n\n`, false, conversationId);
+        }
+        return;
+    }
+    if (event.event === "toolcall_start") {
+        if (!showGptAssistantDebugEvents()) {
+            return;
+        }
+        onChatMessage(`\n<think>\n正在准备调用附件工具...\n`, false, conversationId);
+        return;
+    }
+    if (event.event === "toolcall_end") {
+        if (!showGptAssistantDebugEvents()) {
+            return;
+        }
+        const toolName = event.tool_call?.name ?? "unknown_tool";
+        const toolArgs = event.tool_call?.arguments
+            ? JSON.stringify(event.tool_call.arguments, null, 2)
+            : "{}";
+        onChatMessage(`调用工具：${toolName}\n参数：\n\`\`\`json\n${toolArgs}\n\`\`\`\n`, false, conversationId);
+        return;
+    }
+    if (event.event === "tool_result") {
+        if (!showGptAssistantDebugEvents()) {
+            return;
+        }
+        const toolName = event.tool_name ?? "unknown_tool";
+        const isError = !!event.is_error;
+        const statusLabel = isError ? "工具调用失败" : "工具调用完成";
+        const renderedDetails = event.details
+            ? JSON.stringify(event.details, null, 2)
+            : "{}";
+        onChatMessage(`${statusLabel}：${toolName}\n结果详情：\n\`\`\`json\n${renderedDetails}\n\`\`\`\n</think>\n\n`, false, conversationId);
+        return;
+    }
+    if (event.event === "text_delta") {
+        onChatMessage(event.delta ?? "", false, conversationId);
+        return;
+    }
+    if (event.event === "response_complete") {
+        onChatMessage("", true, conversationId);
+        return;
+    }
+    if (event.event === "error") {
+        onChatMessage(event.error_message ?? "请求失败", true, conversationId);
+    }
+};
+
+const read = async (
+    reader: any,
+    decoder: TextDecoder,
+    onChatMessage: (message: string, end: boolean, conversationId: string) => void,
+    useKernelProtocol: boolean,
+) => {
+    let buffer = "";
+    try {
+        while (true) {
+            const result = await reader?.read();
+            if (!result || result.done) {
+                onChatMessage("", true, "");
+                return;
+            }
+            buffer += decoder.decode(result.value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() ?? "";
+            for (const line of lines) {
+                if (!line.startsWith("data: ")) {
+                    continue;
                 }
+                let payload: any;
                 try {
-                    bufferObj = JSON.parse(message.substring(6)) // remove data: and parse as json
+                    payload = JSON.parse(line.substring(6));
+                } catch (_error) {
+                    continue;
                 }
-                catch (e) {
-                    // mute handle message cut off
-                    onChatMessage("", true, "")
-                    return
+                if (useKernelProtocol) {
+                    handleKernelEvent(payload, onChatMessage);
+                } else {
+                    handleLegacyEvent(payload, onChatMessage);
                 }
-		
-                if (bufferObj.event === 'message_end') {
-                    onChatMessage('', true, bufferObj.conversation_id);
-                    return;
-                }
-                if (bufferObj.event !== 'message'){
-                    onChatMessage("", true, "")
-                    return
-                }
-                let tmp = unicodeToChar(bufferObj.answer);
-                onChatMessage(tmp, false, bufferObj.conversation_id)
-                isFirstMessage = false
-            });
-            buffer = lines[lines.length - 1]
+            }
         }
-        catch (e) {
-            onChatMessage("", true, "")
-            return
+    } catch (err: any) {
+        if (err.name === "AbortError") {
+            console.log("user aborted");
+            return;
         }
-        
-        if (!isdone) {
-            read(reader, decoder, buffer, bufferObj, isFirstMessage, onChatMessage)
-        }
-    }).catch((err:any) => {
-        if(err.name === "AbortError"){
-            console.log("user aborted")
-        } else {
-            throw err
-        }
-    });
-}
+        throw err;
+    }
+};
 export const chatWithAI = (
     history: SessionHistory[],
     prompts: string,
@@ -122,18 +212,16 @@ export const chatWithAI = (
                 reasoning_enabled: reasoningEnabled,
             };
 
+            const useKernelProtocol = isGptAssistant(gid) && useGptAssistantV2();
             let streamCb = function(chatResponse: any) {
                 const reader = chatResponse.body?.getReader();
-                const decoder = new TextDecoder('utf-8');
-                let buffer = ''
-                let bufferObj: any
-                let isFirstMessage = true
-                read(reader, decoder, buffer, bufferObj, isFirstMessage, onChatMessage);
+                const decoder = new TextDecoder("utf-8");
+                read(reader, decoder, onChatMessage, useKernelProtocol);
             }
             // console.log("gid:"+gid)
-            let path = '/api/chat'
-            if (gid) {
-                path = '/api/' + gid + '/chat-messages'
+            let path = useGptAssistantV2() ? "/api/chat-v2" : "/api/chat"
+            if (gid && gid !== "gptassistant") {
+                path = "/api/" + gid + "/chat-messages"
             }
             let chatResponse;
             try {

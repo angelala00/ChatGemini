@@ -359,6 +359,7 @@ def split_file_ids_by_type(file_ids: str):
 async def extract_text_from_file_ids(file_ids: str):
     file_mapping = load_file_mapping()
     content = "\n[上传文件内容]:\n"
+    gpt_logger.info("extract_text_from_file_ids_start file_ids=%s", file_ids)
     for file_id in file_ids.split(","):
         if file_id not in file_mapping:
             print(f"file_id:{file_id} is not found")
@@ -371,10 +372,25 @@ async def extract_text_from_file_ids(file_ids: str):
             continue
             # raise HTTPException(status.HTTP_404_NOT_FOUND, "FilePath not found")
 
-        # print(f"file_path:{file_path}")
         extension = file_mapping[file_id]['fileExtension']
+        started_at = time.perf_counter()
+        gpt_logger.info(
+            "extract_text_from_file_ids_item_start file_id=%s filename=%s path=%s extension=%s",
+            file_id,
+            file_name,
+            file_path,
+            extension,
+        )
         result = await extract_text.extract_text_from_file(file_path, extension)
+        gpt_logger.info(
+            "extract_text_from_file_ids_item_complete file_id=%s filename=%s elapsed_ms=%.1f text_len=%s",
+            file_id,
+            file_name,
+            (time.perf_counter() - started_at) * 1000,
+            len(result or ""),
+        )
         content += "\n[" + file_name + "]:\n" + result + "\n"
+    gpt_logger.info("extract_text_from_file_ids_complete file_ids=%s total_text_len=%s", file_ids, len(content))
     return content
 
 

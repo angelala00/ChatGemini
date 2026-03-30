@@ -15,6 +15,7 @@ from app.chat_service import (
     chat_with_react_as_function_call,
     chat_with_gpt,
 )
+from app.chat_kernel_service import chat_with_kernel_gptassistant
 from app.utils.model_tool import MODEL_NAME_THINKING
 from app.metrics.events import create_usage_event
 
@@ -137,6 +138,52 @@ async def chat_with_gpt_assistant(request: QueryRequest, user: dict = Depends(ge
         _stream_with_metrics(generator, tracker),
         media_type="text/event-stream",
     )
+
+
+@router.post("/chat-v2")
+async def chat_with_gpt_assistant_v2(request: QueryRequest, user: dict = Depends(get_current_user)):
+    gpt_logger.info(f"path=chat_with_gpt_assistant_v2 user={user['email']} at={time.strftime('%Y-%m-%d %H:%M:%S')}")
+    if not request.conversation_id:
+        request.conversation_id = await generate_conversation_id()
+    cid = request.conversation_id
+    assistant_config = gpts["gptassistant"]
+    system_prompt = assistant_config["system_prompt"]
+    selected_model_config = _get_gptassistant_model_config(request.base_model or request.model)
+    if not selected_model_config:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "no available models")
+
+    reasoning_enabled = (
+        bool(request.reasoning_enabled)
+        if request.reasoning_enabled is not None
+        else bool(assistant_config.get("default_reasoning", True))
+    )
+    if not selected_model_config.get("supports_reasoning", False):
+        reasoning_enabled = False
+
+    model_name = selected_model_config.get("model_name") or selected_model_config.get("id")
+    upload_count = _count_file_ids(request.file_ids)
+    tracker = create_usage_event(
+        user_id=user.get("sub", "unknown"),
+        user_email=user.get("email"),
+        conversation_id=cid,
+        gid="gptassistant-v2",
+        requested_model=model_name,
+        upload_count=upload_count,
+    )
+    try:
+        generator = chat_with_kernel_gptassistant(
+            request.query,
+            cid,
+            system_prompt,
+            selected_model_config,
+            file_ids=request.file_ids,
+            reasoning_enabled=reasoning_enabled,
+            usage_tracker=tracker,
+        )
+    except Exception as exc:
+        tracker.finalize(status="error", latency_ms=0.0, error=str(exc))
+        raise
+    return StreamingResponse(generator, media_type="text/event-stream")
 
 
 @router.post("/{gid}/chat-messages")
