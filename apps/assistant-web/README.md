@@ -83,7 +83,7 @@ ChatGemini 是一个基于 Google Gemini 的网页客户端，对标 ChatGPT 3.5
    > 填写 `REACT_APP_GEMINI_API_KEY` 等配置项。
 3. 启动开发服务器
    ```bash
-   npm run start
+   npm run dev
    ```
    前端默认运行在 `http://localhost:3000`。
 
@@ -141,7 +141,7 @@ $ npm run build
  7. 启动服务（可选）
 > 若在本地运行，执行
 ```bash
-$ npm run start
+$ npm run dev
 ```
 
 ### Docker 部署

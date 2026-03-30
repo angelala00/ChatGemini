@@ -45,7 +45,7 @@
     },
     "scripts": {
         "dev": "vite",
-        "start": "vite",
+        "start": "pnpm run dev",
         "build": "vite build",
         "preview": "vite preview"
     },
