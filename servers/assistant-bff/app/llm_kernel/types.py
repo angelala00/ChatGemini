@@ -46,7 +46,7 @@ class OpenAICompletionsCompat:
     supports_reasoning_effort: bool = True
     supports_usage_in_streaming: bool = True
     reasoning_effort_map: dict[ThinkingLevel, str] = field(default_factory=dict)
-    thinking_format: Literal["openai", "openrouter", "zai", "qwen", "qwen-chat-template"] = "openai"
+    reasoning_parameter_format: Literal["openai", "openrouter", "zai", "qwen", "qwen-chat-template"] = "openai"
     max_tokens_field: Literal["max_tokens", "max_completion_tokens"] = "max_tokens"
     requires_tool_result_name: bool = True
     requires_assistant_after_tool_result: bool = True
@@ -85,7 +85,10 @@ class Model:
         self.input = normalized_input
 
         if isinstance(self.compat, dict):
-            self.compat = OpenAICompletionsCompat(**self.compat)
+            compat_dict = dict(self.compat)
+            if "thinking_format" in compat_dict and "reasoning_parameter_format" not in compat_dict:
+                compat_dict["reasoning_parameter_format"] = compat_dict.pop("thinking_format")
+            self.compat = OpenAICompletionsCompat(**compat_dict)
 
     def supports_input(self, input_type: ModelInput) -> bool:
         return input_type in self.input

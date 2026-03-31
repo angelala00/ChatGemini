@@ -519,7 +519,7 @@ def _compat_settings(model: Model) -> OpenAICompletionsCompat:
         supports_reasoning_effort=compat.supports_reasoning_effort,
         supports_usage_in_streaming=compat.supports_usage_in_streaming,
         reasoning_effort_map=dict(compat.reasoning_effort_map),
-        thinking_format=compat.thinking_format,
+        reasoning_parameter_format=compat.reasoning_parameter_format,
         max_tokens_field=compat.max_tokens_field,
         requires_tool_result_name=compat.requires_tool_result_name,
         requires_assistant_after_tool_result=compat.requires_assistant_after_tool_result,
@@ -537,7 +537,7 @@ def _apply_reasoning_payload(
     options: OpenAICompatOptions,
     compat: OpenAICompletionsCompat,
 ) -> None:
-    thinking_format = compat.thinking_format
+    reasoning_parameter_format = compat.reasoning_parameter_format
     mapped_effort = None
     if options.reasoning_effort is not None:
         mapped_effort = _map_reasoning_effort(
@@ -552,17 +552,17 @@ def _apply_reasoning_payload(
             payload["extra_body"] = current
         return current
 
-    if thinking_format in {"zai", "qwen"}:
+    if reasoning_parameter_format in {"zai", "qwen"}:
         extra_body()["enable_thinking"] = bool(options.reasoning_effort)
         return
 
-    if thinking_format == "qwen-chat-template":
+    if reasoning_parameter_format == "qwen-chat-template":
         extra_body()["chat_template_kwargs"] = {
             "enable_thinking": bool(options.reasoning_effort),
         }
         return
 
-    if thinking_format == "openrouter":
+    if reasoning_parameter_format == "openrouter":
         extra_body()["reasoning"] = {
             "effort": mapped_effort or "none",
         }

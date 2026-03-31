@@ -2,7 +2,7 @@ from typing import TypedDict
 
 
 class RegisteredModelCompat(TypedDict, total=False):
-    thinking_format: str
+    reasoning_parameter_format: str
     supports_reasoning_effort: bool
     requires_assistant_after_tool_result: bool
 
@@ -19,7 +19,7 @@ GLM47_MODEL: RegisteredModel = {
     "supports_reasoning": True,
     "supports_native_image_input": False,
     "compat": {
-        "thinking_format": "qwen-chat-template",
+        "reasoning_parameter_format": "qwen-chat-template",
         "supports_reasoning_effort": False,
         "requires_assistant_after_tool_result": False,
     },
@@ -30,7 +30,7 @@ QWEN35_MODEL: RegisteredModel = {
     "supports_reasoning": True,
     "supports_native_image_input": True,
     "compat": {
-        "thinking_format": "qwen-chat-template",
+        "reasoning_parameter_format": "qwen-chat-template",
         "supports_reasoning_effort": False,
         "requires_assistant_after_tool_result": False,
     },
@@ -41,7 +41,7 @@ GLM5_MODEL: RegisteredModel = {
     "supports_reasoning": True,
     "supports_native_image_input": False,
     "compat": {
-        "thinking_format": "qwen-chat-template",
+        "reasoning_parameter_format": "qwen-chat-template",
         "supports_reasoning_effort": False,
         "requires_assistant_after_tool_result": False,
     },

@@ -646,7 +646,7 @@ class LLMKernelTests(unittest.IsolatedAsyncioTestCase):
         model = build_model(
             reasoning=True,
             compat={
-                "thinking_format": "openrouter",
+                "reasoning_parameter_format": "openrouter",
                 "reasoning_effort_map": {"high": "adaptive"},
             },
         )
@@ -656,7 +656,7 @@ class LLMKernelTests(unittest.IsolatedAsyncioTestCase):
             options=OpenAICompatOptions(reasoning_effort="high"),
         )
 
-        self.assertEqual(payload["reasoning"], {"effort": "adaptive"})
+        self.assertEqual(payload["extra_body"]["reasoning"], {"effort": "adaptive"})
         self.assertNotIn("reasoning_effort", payload)
 
     def test_openai_compat_supports_qwen_chat_template_reasoning_format(self):
@@ -664,7 +664,7 @@ class LLMKernelTests(unittest.IsolatedAsyncioTestCase):
         model = build_model(
             reasoning=True,
             compat={
-                "thinking_format": "qwen-chat-template",
+                "reasoning_parameter_format": "qwen-chat-template",
             },
         )
         payload = provider._build_payload(
@@ -673,7 +673,10 @@ class LLMKernelTests(unittest.IsolatedAsyncioTestCase):
             options=OpenAICompatOptions(reasoning_effort="medium"),
         )
 
-        self.assertEqual(payload["chat_template_kwargs"], {"enable_thinking": True})
+        self.assertEqual(
+            payload["extra_body"]["chat_template_kwargs"],
+            {"enable_thinking": True},
+        )
         self.assertNotIn("reasoning_effort", payload)
 
     def test_openai_compat_can_disable_tool_name_bridge_and_signature_replay(self):
