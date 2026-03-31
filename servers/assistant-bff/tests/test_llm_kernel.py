@@ -233,6 +233,30 @@ class LLMKernelTests(unittest.IsolatedAsyncioTestCase):
             [{"city": "Hangzhou"}],
         )
 
+    async def test_stream_tool_call_prefers_complete_snapshot_over_invalid_append(self):
+        client = FakeClient(
+            [[
+                chunk(tool_calls=[tool_call(index=0, tool_id="call_1", name="lookup_weather", arguments="")]),
+                chunk(tool_calls=[tool_call(index=0, arguments='{"city":"Hangzhou"')]),
+                chunk(tool_calls=[tool_call(index=0, arguments='{"city":"Hangzhou"}')], finish_reason="tool_calls"),
+            ]]
+        )
+        register_provider(OpenAICompatProvider(client))
+
+        model = build_model(reasoning=True)
+        context = Context(
+            system_prompt="You are a helpful assistant.",
+            messages=[UserMessage(content="Check Hangzhou weather.", timestamp=1)],
+            tools=self.tools,
+        )
+
+        message = await complete(model, context)
+
+        self.assertEqual(message.stop_reason, "tool_use")
+        tool_block = next(block for block in message.content if isinstance(block, ToolCallContent))
+        self.assertEqual(tool_block.arguments, {"city": "Hangzhou"})
+        self.assertEqual(tool_block.partial_arguments_raw, '{"city":"Hangzhou"}')
+
     async def test_multi_round_tool_continuation_replays_tool_result(self):
         client = FakeClient(
             [
@@ -820,6 +844,40 @@ class LLMKernelTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertNotIn("strict", payload_with_tools["tools"][0]["function"])
         self.assertEqual(payload_with_history["tools"], [])
+
+    def test_openai_compat_sanitizes_partial_tool_arguments_in_history(self):
+        provider = OpenAICompatProvider(FakeClient([]))
+        model = build_model()
+        partial_block = ToolCallContent(
+            id="call_1",
+            name="lookup_weather",
+            arguments={"_partial": '{"city":"Hangzhou"{"city":"Hangzhou"}'},
+            partial_arguments_raw='{"city":"Hangzhou"{"city":"Hangzhou"}',
+        )
+
+        payload = provider._build_payload(
+            model,
+            Context(
+                messages=[
+                    AssistantMessage(
+                        content=[partial_block],
+                        api=model.api,
+                        provider=model.provider,
+                        model=model.id,
+                    ),
+                    ToolResultMessage(
+                        tool_call_id="call_1",
+                        tool_name="lookup_weather",
+                        content=[TextContent(text="bad input")],
+                        timestamp=2,
+                    ),
+                ],
+            ),
+            options=OpenAICompatOptions(),
+        )
+
+        assistant_message = payload["messages"][0]
+        self.assertEqual(assistant_message["tool_calls"][0]["function"]["arguments"], "{}")
 
     async def test_openai_finish_reason_content_filter_becomes_error(self):
         client = FakeClient(

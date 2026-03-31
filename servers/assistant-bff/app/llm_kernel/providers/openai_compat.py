@@ -228,16 +228,19 @@ class OpenAICompatProvider:
                         current_block.name = fn.name
                     if fn and getattr(fn, "arguments", None):
                         accumulated_before = current_block.partial_arguments_raw
-                        current_block.partial_arguments_raw += delta_args
-                        current_block.arguments = _parse_streaming_json_best_effort(
-                            current_block.partial_arguments_raw
+                        merge_result = _merge_streaming_tool_arguments(
+                            current_block.partial_arguments_raw,
+                            delta_args,
                         )
+                        current_block.partial_arguments_raw = merge_result["raw"]
+                        current_block.arguments = merge_result["arguments"]
                         gpt_logger.info(
-                            "tool_call_delta_applied model=%s response_id=%s tool_call_id=%s tool_name=%s delta_len=%s accumulated_before=%s accumulated_after=%s parsed_arguments=%s",
+                            "tool_call_delta_applied model=%s response_id=%s tool_call_id=%s tool_name=%s strategy=%s delta_len=%s accumulated_before=%s accumulated_after=%s parsed_arguments=%s",
                             model.id,
                             output.response_id,
                             getattr(tool_call, "id", None) or current_block.id,
                             getattr(fn, "name", None) or current_block.name,
+                            merge_result["strategy"],
                             len(delta_args),
                             _log_preview(accumulated_before),
                             _log_preview(current_block.partial_arguments_raw),
@@ -435,13 +438,14 @@ def _message_to_openai(message: Any, compat: OpenAICompletionsCompat) -> dict[st
                 if block.thinking_signature or (block.thinking and block.thinking.strip()):
                     thinking_parts.append(block.thinking)
             elif isinstance(block, ToolCallContent):
+                serialized_arguments = _tool_call_arguments_for_history(block)
                 tool_calls.append(
                     {
                         "id": block.id,
                         "type": "function",
                         "function": {
                             "name": block.name,
-                            "arguments": json.dumps(block.arguments, ensure_ascii=False),
+                            "arguments": json.dumps(serialized_arguments, ensure_ascii=False),
                         },
                     }
                 )
@@ -653,6 +657,85 @@ def _parse_streaming_json_best_effort(raw: str) -> dict[str, Any]:
         return parsed if isinstance(parsed, dict) else {"value": parsed}
     except Exception:
         return {"_partial": raw}
+
+
+def _parse_complete_json_object(raw: str) -> dict[str, Any] | None:
+    if not raw:
+        return None
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _merge_streaming_tool_arguments(current_raw: str, delta_raw: str) -> dict[str, Any]:
+    if not delta_raw:
+        return {
+            "raw": current_raw,
+            "arguments": _parse_streaming_json_best_effort(current_raw),
+            "strategy": "noop",
+        }
+
+    if not current_raw:
+        return {
+            "raw": delta_raw,
+            "arguments": _parse_streaming_json_best_effort(delta_raw),
+            "strategy": "init",
+        }
+
+    appended_raw = f"{current_raw}{delta_raw}"
+    appended_object = _parse_complete_json_object(appended_raw)
+    delta_object = _parse_complete_json_object(delta_raw)
+    current_object = _parse_complete_json_object(current_raw)
+
+    if appended_object is not None:
+        return {
+            "raw": appended_raw,
+            "arguments": appended_object,
+            "strategy": "append_complete",
+        }
+
+    if delta_object is not None:
+        strategy = "replace_complete"
+        if current_object is not None and delta_raw.startswith(current_raw):
+            strategy = "replace_snapshot"
+        return {
+            "raw": delta_raw,
+            "arguments": delta_object,
+            "strategy": strategy,
+        }
+
+    if delta_raw.startswith(current_raw):
+        return {
+            "raw": delta_raw,
+            "arguments": _parse_streaming_json_best_effort(delta_raw),
+            "strategy": "replace_prefix_growth",
+        }
+
+    return {
+        "raw": appended_raw,
+        "arguments": _parse_streaming_json_best_effort(appended_raw),
+        "strategy": "append_partial",
+    }
+
+
+def _tool_call_arguments_for_history(block: ToolCallContent) -> dict[str, Any]:
+    if not isinstance(block.arguments, dict) or "_partial" not in block.arguments:
+        return block.arguments
+
+    reparsed_arguments = _parse_complete_json_object(block.partial_arguments_raw)
+    if reparsed_arguments is not None:
+        return reparsed_arguments
+
+    gpt_logger.warning(
+        "tool_call_arguments_history_sanitized tool_call_id=%s tool_name=%s raw_preview=%s raw_repr=%s",
+        block.id,
+        block.name,
+        _truncate_for_log(block.partial_arguments_raw),
+        _truncate_for_log(repr(block.partial_arguments_raw)),
+    )
+    return {}
 
 
 def _truncate_for_log(value: str, limit: int = 1500) -> str:

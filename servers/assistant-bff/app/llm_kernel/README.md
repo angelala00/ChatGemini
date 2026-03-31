@@ -106,6 +106,20 @@ These are the areas where more kernel work would likely have weak returns right 
 If work continues purely inside the kernel, the remaining high-value distance is now short.
 The largest remaining gap is no longer the absence of a kernel foundation; it is the absence of a real upper-layer migration onto that foundation.
 
+## Local Divergence Checklist
+
+These items are intentional local differences from the current `pi-ai` codebase.
+If a future change aims to make `llm_kernel` match `pi-ai` more closely again, review these first.
+
+1. `reasoning_parameter_format`
+   `llm_kernel` uses the typed compatibility field name `reasoning_parameter_format`.
+   This is a deliberate local rename from the upstream `pi-ai` naming in order to make the compat contract read more explicitly in Python.
+
+2. OpenAI-compatible tool argument streaming fallback
+   `llm_kernel` has a local fix in [openai_compat.py](./providers/openai_compat.py) for mixed tool argument streams where a provider may emit partial JSON and then later emit a complete JSON snapshot.
+   This local logic prefers a complete snapshot over blindly appending every delta, and it also avoids replaying malformed `_partial` tool arguments back into history.
+   This behavior was added locally to handle a real gateway/model response pattern and is not a direct upstream `pi-ai` port.
+
 ## Non-Goals For V1
 
 The first version does not aim to provide:
