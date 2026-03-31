@@ -139,6 +139,8 @@
             "run_script": "运行脚本",
             "copy_result": "复制结果",
             "close_window": "关闭窗口",
+            "thinking_title_pending": "思考中",
+            "thinking_title_done": "已思考",
             "echarts_rendering": "渲染中",
             "echarts_render_failed": "渲染失败",
             "handleCopyCode": {

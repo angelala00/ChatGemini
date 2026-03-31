@@ -139,6 +139,8 @@
             "run_script": "Run",
             "copy_result": "Copy",
             "close_window": "Close",
+            "thinking_title_pending": "Thinking",
+            "thinking_title_done": "Thought",
             "echarts_rendering": "Rendering...",
             "echarts_render_failed": "Render failed",
             "handleCopyCode": {

@@ -31,6 +31,7 @@ import { getFullPath } from "./helpers/getDomainAndPath";
 import { ModelOption, UploadCategory } from "./types/models";
 
 const PREFERRED_MODEL_COOKIE_KEY = "preferred_model";
+const PREFERRED_REASONING_COOKIE_KEY = "preferred_reasoning_enabled";
 const COOKIE_MAX_AGE_MS = 365 * 24 * 60 * 60 * 1000;
 
 const readPreferredModel = () => {
@@ -50,6 +51,36 @@ const writePreferredModel = (modelId: string) => {
     const expires = new Date(Date.now() + COOKIE_MAX_AGE_MS).toUTCString();
     document.cookie = `${PREFERRED_MODEL_COOKIE_KEY}=${encodeURIComponent(
         modelId,
+    )}; path=/; expires=${expires}`;
+};
+
+const readPreferredReasoningEnabled = () => {
+    if (typeof document === "undefined") {
+        return null;
+    }
+    const match = document.cookie.match(
+        new RegExp(`(?:^|; )${PREFERRED_REASONING_COOKIE_KEY}=([^;]*)`),
+    );
+    if (!match) {
+        return null;
+    }
+    const value = decodeURIComponent(match[1]);
+    if (value === "true") {
+        return true;
+    }
+    if (value === "false") {
+        return false;
+    }
+    return null;
+};
+
+const writePreferredReasoningEnabled = (enabled: boolean) => {
+    if (typeof document === "undefined") {
+        return;
+    }
+    const expires = new Date(Date.now() + COOKIE_MAX_AGE_MS).toUTCString();
+    document.cookie = `${PREFERRED_REASONING_COOKIE_KEY}=${encodeURIComponent(
+        String(enabled),
     )}; path=/; expires=${expires}`;
 };
 
@@ -243,6 +274,28 @@ const App = () => {
             }
         },
         [setPendingManualModel],
+    );
+
+    const handleReasoningChange = useCallback(
+        (enabled: boolean) => {
+            setSelectedReasoningEnabled(enabled);
+            writePreferredReasoningEnabled(enabled);
+
+            if (!id || typeof sessionExtensions[id]?.reasoningEnabled !== "boolean") {
+                return;
+            }
+
+            dispatch(
+                updateSessionExtensions({
+                    ...sessionExtensions,
+                    [id]: {
+                        ...sessionExtensions[id],
+                        reasoningEnabled: enabled,
+                    },
+                }),
+            );
+        },
+        [dispatch, id, sessionExtensions],
     );
 
     const resolveModelId = useCallback(() => {
@@ -568,6 +621,12 @@ const App = () => {
             return;
         }
 
+        const preferredReasoningEnabled = readPreferredReasoningEnabled();
+        if (typeof preferredReasoningEnabled === "boolean") {
+            setSelectedReasoningEnabled(preferredReasoningEnabled);
+            return;
+        }
+
         setSelectedReasoningEnabled(serverDefaultReasoning);
     }, [id, serverDefaultReasoning, sessionExtensions]);
 
@@ -691,7 +750,7 @@ const App = () => {
                                     onSubmit={handleSubmit}
                                     onUpload={handleUpload}
                                     onAbort={handleAbort}
-                                    onReasoningChange={setSelectedReasoningEnabled}
+                                    onReasoningChange={handleReasoningChange}
                                 />
                             </>
                         )}

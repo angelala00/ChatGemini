@@ -133,6 +133,7 @@ export const Markdown = (props: MarkdownProps) => {
     );
 
     const [isThinkingExpanded, setIsThinkingExpanded] = useState(false);
+    const [thinkingDots, setThinkingDots] = useState(".");
     
     // 解析 Markdown 中的超链接
     // 如果为"/api/"开头，是在调用后端的 API 服务，则获取完整路径
@@ -197,9 +198,27 @@ export const Markdown = (props: MarkdownProps) => {
         lastSummary = "已思考"
     }
 
+    const thinkingTitle = isThinking
+        ? `${t("components.Markdown.thinking_title_pending")}${thinkingDots}`
+        : t("components.Markdown.thinking_title_done");
+
     useEffect(() => {
         setPythonResult({ result: "", startPos: null, endPos: null });
     }, [t, children]);
+
+    useEffect(() => {
+        if (!isThinking) {
+            setThinkingDots(".");
+            return;
+        }
+        const dotsFrames = [".", "..", "..."];
+        let frameIndex = 0;
+        const timer = window.setInterval(() => {
+            frameIndex = (frameIndex + 1) % dotsFrames.length;
+            setThinkingDots(dotsFrames[frameIndex]);
+        }, 450);
+        return () => window.clearInterval(timer);
+    }, [isThinking]);
 
     return (
         <div className={`relative ${className ?? ""}`}>
@@ -210,14 +229,14 @@ export const Markdown = (props: MarkdownProps) => {
                         className="flex items-center justify-between cursor-pointer"
                         onClick={() => setIsThinkingExpanded(!isThinkingExpanded)}
                     >
-                        <span className="text-sm font-semibold text-stone-700">{t("components.Markdown.thinking_title", isThinking ? lastSummary : "已思考")}</span>
+                        <span className="text-sm font-semibold text-stone-700">{thinkingTitle}</span>
                         {isThinkingExpanded ? (
                             <ChevronUpIcon className="h-5 w-5 text-stone-500" />
                         ) : (
                             <ChevronDownIcon className="h-5 w-5 text-stone-500" />
                         )}
                     </div>
-                    {!isThinkingExpanded && lastSummary == "思考中" &&(
+                    {!isThinkingExpanded && isThinking && !!lastContent && (
                         <span className="text-sm text-stone-600">{lastContent}</span>
                     )}
                     {isThinkingExpanded && (
