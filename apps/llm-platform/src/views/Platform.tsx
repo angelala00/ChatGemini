@@ -54,6 +54,10 @@ interface UserVisibilityResponse {
         backends: string[];
         is_new?: boolean;
         sunset_soon?: boolean;
+        supports_image_input?: boolean;
+        supports_reasoning?: boolean;
+        supports_tool_calling?: boolean;
+        thinking_format?: string | null;
     }>;
 }
 
@@ -99,6 +103,24 @@ const StatusBadge = ({
         </span>
     );
 };
+
+const CapabilityBadge = ({
+    children,
+    supported,
+}: {
+    children: string;
+    supported: boolean;
+}) => (
+    <span
+        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${
+            supported
+                ? "border-blue-200 bg-blue-50 text-blue-700"
+                : "border-slate-200 bg-slate-100 text-slate-500"
+        }`}
+    >
+        {children} · {supported ? "支持" : "不支持"}
+    </span>
+);
 
 const API_DOC_GROUP_ORDER = ["模型", "对话", "检索", "音频", "Claude", "其他"] as const;
 
@@ -1204,6 +1226,33 @@ const Platform = (props: RouterComponentProps) => {
                                                         key={model.name}
                                                         className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
                                                     >
+                                                        {(() => {
+                                                            const capabilityEntries = [
+                                                                {
+                                                                    label: "图片输入",
+                                                                    value: model.supports_image_input,
+                                                                },
+                                                                {
+                                                                    label: "思考开关",
+                                                                    value: model.supports_reasoning,
+                                                                },
+                                                                {
+                                                                    label: "工具调用",
+                                                                    value: model.supports_tool_calling,
+                                                                },
+                                                            ].filter(
+                                                                (
+                                                                    item,
+                                                                ): item is {
+                                                                    label: string;
+                                                                    value: boolean;
+                                                                } =>
+                                                                    typeof item.value === "boolean",
+                                                            );
+                                                            const thinkingFormatLabel =
+                                                                model.thinking_format?.trim() || "";
+                                                            return (
+                                                                <>
                                                         <div className="text-sm font-semibold text-slate-800">
                                                             {model.name}
                                                         </div>
@@ -1221,6 +1270,28 @@ const Platform = (props: RouterComponentProps) => {
                                                                 )}
                                                             </div>
                                                         )}
+                                                        {capabilityEntries.length > 0 && (
+                                                            <div className="mt-3 flex flex-wrap gap-2">
+                                                                {capabilityEntries.map((item) => (
+                                                                    <CapabilityBadge
+                                                                        key={`${model.name}-${item.label}`}
+                                                                        supported={item.value}
+                                                                    >
+                                                                        {item.label}
+                                                                    </CapabilityBadge>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                        {thinkingFormatLabel && (
+                                                            <div className="mt-3">
+                                                                <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                                                                    思考格式 · {thinkingFormatLabel}
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                                </>
+                                                            );
+                                                        })()}
                                                     </div>
                                                 ))}
                                             </div>
