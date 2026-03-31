@@ -378,8 +378,10 @@ export const Sidebar = (props: SidebarProps) => {
                 </div>
             )}
             </div>
-            <div className="sticky bottom-0 bg-slate-900 py-1 flex justify-center items-center text-xs text-gray-100 border-gray-400 border-t">
-                技术支持@{globalConfig.supportContact}
+            <div className="sticky bottom-0 border-t border-slate-700/80 bg-slate-900/98 px-4 py-3 text-center text-xs">
+                <span className="text-slate-400">技术支持</span>
+                <span className="mx-1.5 text-slate-500">@</span>
+                <span className="font-medium text-slate-100">{globalConfig.supportContact}</span>
             </div>
         </nav>
     );

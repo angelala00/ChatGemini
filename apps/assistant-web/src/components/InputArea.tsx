@@ -192,7 +192,7 @@ export const InputArea = forwardRef(
         useImperativeHandle(ref, () => textAreaRef.current!);
 
         return (
-            <div className="sticky bottom-0 z-20 px-4 pb-4 pt-6 bg-gradient-to-t from-stone-100 via-stone-100/92 to-transparent">
+            <div className="sticky bottom-0 z-20 px-4 pb-4 pt-1 bg-gradient-to-t from-stone-100 via-stone-100/92 to-transparent">
                 <div className="input-area-border relative mx-auto flex w-full max-w-[940px] flex-col space-y-3 rounded-[1.75rem] border border-stone-200/90 bg-white/95 px-4 py-3 shadow-[0_16px_40px_rgba(0,0,0,0.08)] backdrop-blur min-h-20 max-h-48">
                     {!!attachmentName.length && (
                         <div className="truncate text-xs text-stone-500">
@@ -231,7 +231,7 @@ export const InputArea = forwardRef(
                                         className={`inline-block size-2 rounded-full ${
                                             reasoningAvailable
                                                 ? reasoningEnabled
-                                                    ? "bg-white"
+                                                    ? "bg-sky-500"
                                                     : "bg-stone-400"
                                                 : "bg-stone-300"
                                         }`}

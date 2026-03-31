@@ -12,7 +12,11 @@ import { chatWithAI } from "../helpers/chatWithAI";
 import { globalConfig } from "../config/global";
 import { Container } from "../components/Container";
 import { GenerativeContentBlob } from "@google/generative-ai";
-import { getAttachmentViewItems } from "../helpers/getAttachmentViewItems";
+import {
+    AttachmentViewItem,
+    getAttachmentViewItems,
+    resolveAttachmentViewItems,
+} from "../helpers/getAttachmentViewItems";
 import { ImageView } from "../components/ImageView";
 import { sendUserConfirm } from "../helpers/sendUserConfirm";
 import { sendUserAlert } from "../helpers/sendUserAlert";
@@ -22,10 +26,10 @@ import { useTranslation } from "react-i18next";
 import { exportMdAsDocx } from "../helpers/exportMdAsDocx";
 import { useChatReadingScroll } from "../hooks/useChatReadingScroll";
 import { ArrowDownIcon } from "@heroicons/react/24/solid";
+import { buildAttachmentPostscriptHtml } from "../helpers/buildAttachmentPostscriptHtml";
 
 const Chat = (props: RouterComponentProps) => {
     const { t } = useTranslation();
-    const viewAttachment = t("views.Chat.view_attachment");
     const refreshPlaceholder = t("views.Chat.refresh_placeholder");
     const invalidPlaceholder = t("views.Chat.invalid_placeholder");
 
@@ -54,6 +58,9 @@ const Chat = (props: RouterComponentProps) => {
         | undefined;
 
     const [chat, setChat] = useState<SessionHistory[]>([]);
+    const [attachmentItemsByData, setAttachmentItemsByData] = useState<
+        Record<string, AttachmentViewItem[]>
+    >({});
     const [editState, setEditState] = useState<{
         index: number;
         state: SessionEditState;
@@ -236,6 +243,44 @@ const Chat = (props: RouterComponentProps) => {
         }
     }, [t, siteTitle, id, sessions]);
 
+    useEffect(() => {
+        let cancelled = false;
+        const attachmentDataValues = Array.from(
+            new Set(
+                chat
+                    .map((item) => item.attachment?.data)
+                    .filter((value): value is string => typeof value === "string" && !!value.length),
+            ),
+        );
+
+        const missingValues = attachmentDataValues.filter((value) => !(value in attachmentItemsByData));
+        if (!missingValues.length) {
+            return;
+        }
+
+        Promise.all(
+            missingValues.map(async (value) => ({
+                key: value,
+                items: await resolveAttachmentViewItems(value),
+            })),
+        ).then((resolvedItems) => {
+            if (cancelled) {
+                return;
+            }
+            setAttachmentItemsByData((previous) => {
+                const next = { ...previous };
+                resolvedItems.forEach(({ key, items }) => {
+                    next[key] = items;
+                });
+                return next;
+            });
+        });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [attachmentItemsByData, chat]);
+
     return (
         <Container className="relative mx-auto w-full max-w-[940px] px-4 py-8 md:px-8">
             <ImageView>
@@ -244,39 +289,12 @@ const Chat = (props: RouterComponentProps) => {
                         mimeType: "",
                         data: "",
                     };
-                    const attachmentItems = getAttachmentViewItems(data);
-                    const isSingleImageAttachment =
-                        attachmentItems.length === 1 && mimeType.startsWith("image/");
-                    const attachmentPostscriptHtml = attachmentItems.length
-                        ? `\n\n---\n\n<div class="inline-block overflow-hidden">
-                        ${
-                            isSingleImageAttachment
-                                ? `<div class="text-center">
-                            <a data-image-view="gallery" href="${attachmentItems[0].href}">
-                                <img src="${attachmentItems[0].href}" style="
-                                    max-width: 10rem;
-                                    margin-top: 0;
-                                    margin-bottom: 0.2rem;
-                                    border-radius: 0.25rem;
-                                " alt="" />
-                            </a>
-                            <a class="block text-xs text-gray-400 hover:text-gray-600 no-underline" href="${attachmentItems[0].href}" target="_blank" rel="noreferrer">
-                                ${viewAttachment}
-                            </a>
-                        </div>`
-                                : `<div class="text-left">
-                            ${attachmentItems
-                                .map(
-                                    ({ href }, attachmentIndex) =>
-                                        `<a class="block text-sm text-blue-600 hover:text-blue-800 no-underline" href="${href}" target="_blank" rel="noreferrer">
-                                    ${attachmentItems.length === 1 ? viewAttachment : `${viewAttachment} ${attachmentIndex + 1}`}
-                                </a>`,
-                                )
-                                .join("")}
-                        </div>`
-                        }
-                    </div>`
-                        : "";
+                    const attachmentItems =
+                        attachmentItemsByData[data] ?? getAttachmentViewItems(data);
+                    const attachmentPostscriptHtml = buildAttachmentPostscriptHtml(
+                        attachmentItems,
+                        mimeType,
+                    );
 
                     const typingEffect = `<div class="inline px-1 bg-gray-900 animate-pulse animate-duration-700"></div>`;
                     if (
@@ -319,7 +337,7 @@ const Chat = (props: RouterComponentProps) => {
                         </Session>
                     );
                 })}
-                <div className="h-20" />
+                <div className="h-2.5" />
             </ImageView>
             {showJumpToLatest && (
                 <div className="sticky bottom-5 z-10 flex justify-end">
