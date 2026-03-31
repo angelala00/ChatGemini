@@ -27,7 +27,7 @@ GLM47_MODEL: RegisteredModel = {
 
 QWEN35_MODEL: RegisteredModel = {
     "model_name": "qwen3.5-35b-a3b",
-    "supports_reasoning": True,
+    "supports_reasoning": False,
     "supports_native_image_input": True,
     "compat": {
         "reasoning_parameter_format": "qwen-chat-template",
