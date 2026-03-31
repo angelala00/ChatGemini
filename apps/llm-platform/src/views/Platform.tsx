@@ -1016,7 +1016,7 @@ const Platform = (props: RouterComponentProps) => {
                                     查看你的模型调用量、请求数和排行表现。
                                 </p>
                                 <div className="mt-3 flex flex-wrap items-center gap-2">
-                                    {["7d", "30d", "90d"].map((range) => (
+                                    {["7d", "14d"].map((range) => (
                                         <button
                                             key={range}
                                             type="button"
@@ -1028,8 +1028,7 @@ const Platform = (props: RouterComponentProps) => {
                                             }`}
                                         >
                                             {range === "7d" && "最近 7 天"}
-                                            {range === "30d" && "最近 30 天"}
-                                            {range === "90d" && "最近 90 天"}
+                                            {range === "14d" && "最近 14 天"}
                                         </button>
                                     ))}
                                 </div>
