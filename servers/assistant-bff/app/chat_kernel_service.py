@@ -13,6 +13,7 @@ from app.attachments import (
 )
 from app.chat_base import client, match_history, save_match_history
 from app.gptassistant_planner import PlannerRuntimeCapabilities, build_execution_plan
+from app.logger import gpt_logger
 from app.llm_kernel import (
     AssistantMessage,
     Context,
@@ -39,6 +40,16 @@ from app.metrics.events import UsageEventTracker
 KERNEL_HISTORY_PREFIX = "llm_kernel:gptassistant:"
 IMAGE_PREPROCESS_TIMEOUT_SECONDS = 30
 MAX_TOOL_CONTINUATION_TURNS = 4
+
+
+def _log_preview(value: Any, *, limit: int = 1200) -> str:
+    try:
+        text = json.dumps(value, ensure_ascii=False, default=str)
+    except Exception:
+        text = repr(value)
+    if len(text) > limit:
+        return f"{text[:limit]}...(truncated)"
+    return text
 
 
 def _sse(name: str, payload: Dict[str, Any]) -> str:
@@ -276,16 +287,48 @@ async def _execute_attachment_tool_calls(
     tools: list[Any],
     message: AssistantMessage,
     file_ids: Optional[str],
+    conversation_id: str,
+    response_id: str,
+    turn_index: int,
 ) -> list[ToolResultMessage]:
     available_file_ids = _available_file_ids(file_ids)
     results: list[ToolResultMessage] = []
     for block in _tool_call_blocks(message):
+        gpt_logger.info(
+            "tool_continuation tool_call_start conversation_id=%s response_id=%s turn=%s tool_call_id=%s tool_name=%s raw_arguments=%s available_file_ids=%s",
+            conversation_id,
+            response_id,
+            turn_index,
+            block.id,
+            block.name,
+            _log_preview(block.arguments),
+            _log_preview(available_file_ids),
+        )
         try:
             validated_arguments = validate_tool_call(tools, block)
+            gpt_logger.info(
+                "tool_continuation tool_call_validated conversation_id=%s response_id=%s turn=%s tool_call_id=%s tool_name=%s validated_arguments=%s",
+                conversation_id,
+                response_id,
+                turn_index,
+                block.id,
+                block.name,
+                _log_preview(validated_arguments),
+            )
             execution = await execute_attachment_tool(
                 block.name,
                 validated_arguments,
                 available_file_ids=available_file_ids,
+            )
+            gpt_logger.info(
+                "tool_continuation tool_call_succeeded conversation_id=%s response_id=%s turn=%s tool_call_id=%s tool_name=%s details=%s content_block_types=%s",
+                conversation_id,
+                response_id,
+                turn_index,
+                block.id,
+                block.name,
+                _log_preview(execution.details),
+                _log_preview([type(item).__name__ for item in execution.content]),
             )
             results.append(
                 ToolResultMessage(
@@ -298,6 +341,17 @@ async def _execute_attachment_tool_calls(
                 )
             )
         except Exception as exc:
+            gpt_logger.warning(
+                "tool_continuation tool_call_failed conversation_id=%s response_id=%s turn=%s tool_call_id=%s tool_name=%s error_type=%s error=%s raw_arguments=%s",
+                conversation_id,
+                response_id,
+                turn_index,
+                block.id,
+                block.name,
+                type(exc).__name__,
+                str(exc),
+                _log_preview(block.arguments),
+            )
             results.append(
                 ToolResultMessage(
                     tool_call_id=block.id,
@@ -405,6 +459,16 @@ async def chat_with_kernel_gptassistant(
             reasoning_enabled=requested_reasoning_enabled,
         ),
     )
+    gpt_logger.info(
+        "tool_continuation response_start conversation_id=%s response_id=%s model=%s reasoning_enabled=%s file_ids=%s execution_plan=%s tools=%s",
+        conversation_id,
+        response_id,
+        model.id,
+        requested_reasoning_enabled,
+        _log_preview(_available_file_ids(file_ids)),
+        _log_preview(asdict(execution_plan)),
+        _log_preview([tool.name for tool in context.tools]),
+    )
 
     try:
         user_message = await _build_user_message_with_preprocess_events(
@@ -424,6 +488,15 @@ async def chat_with_kernel_gptassistant(
         context.messages = list(current_messages)
 
         for turn in range(MAX_TOOL_CONTINUATION_TURNS):
+            turn_index = turn + 1
+            gpt_logger.info(
+                "tool_continuation turn_start conversation_id=%s response_id=%s turn=%s max_turns=%s message_count=%s",
+                conversation_id,
+                response_id,
+                turn_index,
+                MAX_TOOL_CONTINUATION_TURNS,
+                len(context.messages),
+            )
             kernel_stream = stream(model, context, options)
 
             async for event in kernel_stream:
@@ -459,6 +532,15 @@ async def chat_with_kernel_gptassistant(
                 )
 
             final_message = await kernel_stream.result()
+            gpt_logger.info(
+                "tool_continuation turn_result conversation_id=%s response_id=%s turn=%s stop_reason=%s tool_call_count=%s usage=%s",
+                conversation_id,
+                response_id,
+                turn_index,
+                final_message.stop_reason,
+                len(_tool_call_blocks(final_message)),
+                _log_preview(asdict(final_message.usage)),
+            )
             if final_message.stop_reason in {"error", "aborted"}:
                 raise RuntimeError(
                     final_message.error_message or f"request ended with {final_message.stop_reason}"
@@ -475,8 +557,21 @@ async def chat_with_kernel_gptassistant(
                 tools=context.tools,
                 message=final_message,
                 file_ids=file_ids,
+                conversation_id=conversation_id,
+                response_id=response_id,
+                turn_index=turn_index,
             )
             for tool_result in tool_results:
+                gpt_logger.info(
+                    "tool_continuation tool_result_appended conversation_id=%s response_id=%s turn=%s tool_call_id=%s tool_name=%s is_error=%s details=%s",
+                    conversation_id,
+                    response_id,
+                    turn_index,
+                    tool_result.tool_call_id,
+                    tool_result.tool_name,
+                    tool_result.is_error,
+                    _log_preview(tool_result.details),
+                )
                 yield _sse(
                     "tool_result",
                     _event_payload(
@@ -493,10 +588,24 @@ async def chat_with_kernel_gptassistant(
             current_messages.extend(tool_results)
             context.messages = list(current_messages)
         else:
+            gpt_logger.error(
+                "tool_continuation exceeded_max_turns conversation_id=%s response_id=%s model=%s max_turns=%s file_ids=%s",
+                conversation_id,
+                response_id,
+                model.id,
+                MAX_TOOL_CONTINUATION_TURNS,
+                _log_preview(_available_file_ids(file_ids)),
+            )
             raise RuntimeError("tool continuation exceeded maximum turns")
 
         _save_history(conversation_id, current_messages)
         finalize_tracker("success", message=final_message)
+        gpt_logger.info(
+            "tool_continuation response_complete conversation_id=%s response_id=%s stop_reason=%s",
+            conversation_id,
+            response_id,
+            final_message.stop_reason,
+        )
         yield _sse(
             "response_complete",
             _event_payload(
@@ -508,6 +617,13 @@ async def chat_with_kernel_gptassistant(
             ),
         )
     except Exception as exc:
+        gpt_logger.exception(
+            "tool_continuation response_failed conversation_id=%s response_id=%s model=%s error=%s",
+            conversation_id,
+            response_id,
+            model.id,
+            str(exc),
+        )
         for item in preprocess_events:
             yield item
         preprocess_events.clear()

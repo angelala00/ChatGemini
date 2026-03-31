@@ -30,7 +30,7 @@ require_cmd() {
 run_backend() {
   local name="$1"
   local dir="$2"
-  local args=()
+  local args=(--install)
 
   echo "==> ${name}: stopping"
   if [[ -x "${ROOT_DIR}/${dir}/stop.sh" ]]; then
@@ -43,9 +43,6 @@ run_backend() {
   if [[ -x "${ROOT_DIR}/${dir}/start.sh" ]]; then
     if [[ -n "${ENV_NAME}" ]]; then
       args+=("${ENV_NAME}")
-    fi
-    if [[ "${INSTALL_DEPS}" -eq 1 ]]; then
-      args+=("--install")
     fi
     if (( ${#args[@]} )); then
       (cd "${ROOT_DIR}/${dir}" && ./start.sh "${args[@]}")
