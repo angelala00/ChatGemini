@@ -304,6 +304,17 @@ async def _execute_attachment_tool_calls(
             _log_preview(block.arguments),
             _log_preview(available_file_ids),
         )
+        if isinstance(block.arguments, dict) and "_partial" in block.arguments:
+            gpt_logger.warning(
+                "tool_continuation tool_call_partial_arguments conversation_id=%s response_id=%s turn=%s tool_call_id=%s tool_name=%s partial_arguments_raw=%s partial_arguments_repr=%s",
+                conversation_id,
+                response_id,
+                turn_index,
+                block.id,
+                block.name,
+                _log_preview(block.partial_arguments_raw),
+                _log_preview(repr(block.partial_arguments_raw)),
+            )
         try:
             validated_arguments = validate_tool_call(tools, block)
             gpt_logger.info(

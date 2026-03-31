@@ -5,6 +5,7 @@ import json
 import time
 from typing import Any, Optional
 
+from app.logger import gpt_logger
 from ..event_stream import AssistantMessageEventStream, create_assistant_message_event_stream
 from ..models import calculate_cost
 from ..transform_messages import transform_messages
@@ -220,6 +221,19 @@ class OpenAICompatProvider:
                         current_block.arguments = _parse_streaming_json_best_effort(
                             current_block.partial_arguments_raw
                         )
+                        if (
+                            isinstance(current_block.arguments, dict)
+                            and "_partial" in current_block.arguments
+                        ):
+                            gpt_logger.warning(
+                                "tool_call_arguments_partial model=%s tool_call_id=%s tool_name=%s raw_length=%s raw_preview=%s raw_repr=%s",
+                                model.id,
+                                getattr(tool_call, "id", None) or current_block.id,
+                                getattr(fn, "name", None) or current_block.name,
+                                len(current_block.partial_arguments_raw),
+                                _truncate_for_log(current_block.partial_arguments_raw),
+                                _truncate_for_log(repr(current_block.partial_arguments_raw)),
+                            )
                     stream.push(
                         ToolCallDeltaEvent(
                             content_index=content_index(),
@@ -601,6 +615,12 @@ def _parse_streaming_json_best_effort(raw: str) -> dict[str, Any]:
         return parsed if isinstance(parsed, dict) else {"value": parsed}
     except Exception:
         return {"_partial": raw}
+
+
+def _truncate_for_log(value: str, limit: int = 1500) -> str:
+    if len(value) > limit:
+        return f"{value[:limit]}...(truncated)"
+    return value
 
 
 def _is_abort_error(exc: Exception) -> bool:
