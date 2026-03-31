@@ -92,6 +92,7 @@ class OpenAICompatProvider:
             model=model.id,
             timestamp=int(time.time() * 1000),
         )
+        request_snapshot: dict[str, Any] = {}
 
         try:
             payload = self._build_payload(model, context, options)
@@ -101,6 +102,7 @@ class OpenAICompatProvider:
                     next_payload = await next_payload
                 if next_payload is not None:
                     payload = next_payload
+            request_snapshot = _payload_snapshot(payload)
 
             openai_stream = await self._client.chat.completions.create(
                 **payload,
@@ -196,6 +198,17 @@ class OpenAICompatProvider:
 
                 tool_calls = getattr(delta, "tool_calls", None) or []
                 for tool_call in tool_calls:
+                    fn = getattr(tool_call, "function", None)
+                    delta_args = ""
+                    if fn and getattr(fn, "arguments", None):
+                        delta_args = fn.arguments
+                    gpt_logger.info(
+                        "tool_call_delta_raw model=%s response_id=%s finish_reason=%s tool_call=%s",
+                        model.id,
+                        output.response_id,
+                        getattr(choice, "finish_reason", None),
+                        _log_preview(_tool_call_delta_snapshot(tool_call)),
+                    )
                     if (
                         not isinstance(current_block, ToolCallContent)
                         or (
@@ -211,28 +224,39 @@ class OpenAICompatProvider:
 
                     if getattr(tool_call, "id", None):
                         current_block.id = tool_call.id
-                    fn = getattr(tool_call, "function", None)
                     if fn and getattr(fn, "name", None):
                         current_block.name = fn.name
-                    delta_args = ""
                     if fn and getattr(fn, "arguments", None):
-                        delta_args = fn.arguments
+                        accumulated_before = current_block.partial_arguments_raw
                         current_block.partial_arguments_raw += delta_args
                         current_block.arguments = _parse_streaming_json_best_effort(
                             current_block.partial_arguments_raw
+                        )
+                        gpt_logger.info(
+                            "tool_call_delta_applied model=%s response_id=%s tool_call_id=%s tool_name=%s delta_len=%s accumulated_before=%s accumulated_after=%s parsed_arguments=%s",
+                            model.id,
+                            output.response_id,
+                            getattr(tool_call, "id", None) or current_block.id,
+                            getattr(fn, "name", None) or current_block.name,
+                            len(delta_args),
+                            _log_preview(accumulated_before),
+                            _log_preview(current_block.partial_arguments_raw),
+                            _log_preview(current_block.arguments),
                         )
                         if (
                             isinstance(current_block.arguments, dict)
                             and "_partial" in current_block.arguments
                         ):
                             gpt_logger.warning(
-                                "tool_call_arguments_partial model=%s tool_call_id=%s tool_name=%s raw_length=%s raw_preview=%s raw_repr=%s",
+                                "tool_call_arguments_partial model=%s response_id=%s tool_call_id=%s tool_name=%s raw_length=%s raw_preview=%s raw_repr=%s request_input=%s",
                                 model.id,
+                                output.response_id,
                                 getattr(tool_call, "id", None) or current_block.id,
                                 getattr(fn, "name", None) or current_block.name,
                                 len(current_block.partial_arguments_raw),
                                 _truncate_for_log(current_block.partial_arguments_raw),
                                 _truncate_for_log(repr(current_block.partial_arguments_raw)),
+                                _log_preview(request_snapshot),
                             )
                     stream.push(
                         ToolCallDeltaEvent(
@@ -274,6 +298,13 @@ class OpenAICompatProvider:
         except asyncio.CancelledError as exc:
             output.stop_reason = "aborted"
             output.error_message = str(exc)
+            gpt_logger.warning(
+                "openai_compat_stream_cancelled model=%s response_id=%s error=%s request_input=%s",
+                model.id,
+                output.response_id,
+                str(exc),
+                _log_preview(request_snapshot),
+            )
             stream.push(
                 ErrorEvent(
                     reason="aborted",
@@ -284,6 +315,13 @@ class OpenAICompatProvider:
         except Exception as exc:
             output.stop_reason = "aborted" if _is_abort_error(exc) else "error"
             output.error_message = str(exc)
+            gpt_logger.exception(
+                "openai_compat_stream_failed model=%s response_id=%s error=%s request_input=%s",
+                model.id,
+                output.response_id,
+                str(exc),
+                _log_preview(request_snapshot),
+            )
             stream.push(
                 ErrorEvent(
                     reason="aborted" if output.stop_reason == "aborted" else "error",
@@ -621,6 +659,40 @@ def _truncate_for_log(value: str, limit: int = 1500) -> str:
     if len(value) > limit:
         return f"{value[:limit]}...(truncated)"
     return value
+
+
+def _log_preview(value: Any, limit: int = 2000) -> str:
+    try:
+        text = json.dumps(value, ensure_ascii=False, default=str)
+    except Exception:
+        text = repr(value)
+    if len(text) > limit:
+        return f"{text[:limit]}...(truncated)"
+    return text
+
+
+def _tool_call_delta_snapshot(tool_call: Any) -> dict[str, Any]:
+    fn = getattr(tool_call, "function", None)
+    return {
+        "index": getattr(tool_call, "index", None),
+        "id": getattr(tool_call, "id", None),
+        "type": getattr(tool_call, "type", None),
+        "function": {
+            "name": getattr(fn, "name", None) if fn else None,
+            "arguments": getattr(fn, "arguments", None) if fn else None,
+        },
+    }
+
+
+def _payload_snapshot(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "model": payload.get("model"),
+        "messages": payload.get("messages"),
+        "tools": payload.get("tools"),
+        "tool_choice": payload.get("tool_choice"),
+        "extra_body": payload.get("extra_body"),
+        "stream_options": payload.get("stream_options"),
+    }
 
 
 def _is_abort_error(exc: Exception) -> bool:
