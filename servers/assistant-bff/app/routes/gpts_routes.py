@@ -6,6 +6,7 @@ from fastapi import APIRouter, Request, Depends, HTTPException, status
 from app.auth.auth_routes import get_current_user
 from app.logger import gpt_logger
 from app.gpts.config_gpts import gpts, fetch_gpts, refresh_gpts, BUILTIN_GIDS
+from app.gpts.model_metadata import resolve_gptassistant_model_configs
 from app.db import get_db
 from app.base_config import model_config
 
@@ -202,6 +203,8 @@ async def get_gpts_detail(gid: str, user: dict = Depends(get_current_user)):
     gpts_detail = {k: v for k, v in gpt_item.items() if k not in exclude_fields}
     if isinstance(gpts_detail.get("models"), list):
         visible_models = sanitize_models_for_detail(gpts_detail["models"], user["email"], user["sub"])
+        if gid == "gptassistant":
+            visible_models = await resolve_gptassistant_model_configs(visible_models)
         gpts_detail["models"] = visible_models
         if isinstance(gpts_detail.get("default_model"), str):
             default_model = gpts_detail["default_model"]

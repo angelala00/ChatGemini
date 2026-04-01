@@ -94,26 +94,24 @@ def _ensure_openai_compat_provider() -> None:
 
 
 def _model_compat(model_config: dict[str, Any]) -> OpenAICompletionsCompat:
-    configured_compat = model_config.get("compat")
-    if isinstance(configured_compat, dict):
-        return OpenAICompletionsCompat(**configured_compat)
-
     model_name = model_config.get("model_name") or model_config.get("id") or ""
     lowered = (model_name or "").lower()
-    if "qwen" in lowered:
-        return OpenAICompletionsCompat(
+    if "qwen" in lowered or "glm" in lowered:
+        base_compat = OpenAICompletionsCompat(
             supports_reasoning_effort=False,
             requires_assistant_after_tool_result=False,
+            reasoning_parameter_format="qwen-chat-template",
         )
-    if lowered == "glm-4.7":
-        return OpenAICompletionsCompat(
-            supports_reasoning_effort=False,
-        )
-    if "glm" in lowered:
-        return OpenAICompletionsCompat(
-            supports_reasoning_effort=False,
-        )
-    return OpenAICompletionsCompat()
+    else:
+        base_compat = OpenAICompletionsCompat()
+
+    configured_compat = model_config.get("compat")
+    if not isinstance(configured_compat, dict):
+        return base_compat
+
+    merged_compat = asdict(base_compat)
+    merged_compat.update(configured_compat)
+    return OpenAICompletionsCompat(**merged_compat)
 
 
 def _planner_runtime_capabilities(model_name: str) -> PlannerRuntimeCapabilities:

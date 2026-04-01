@@ -8,6 +8,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from app.auth.auth_routes import get_current_user
 from .gpts_routes import filter_models_for_user, gpts
+from app.gpts.model_metadata import resolve_gptassistant_model_configs
 from .file_routes import extract_text_from_file_ids
 from app.logger import gpt_logger
 from app.chat_service import (
@@ -65,7 +66,7 @@ class QueryRequest(BaseModel):
     reasoning_enabled: Optional[bool] = None
 
 
-def _get_gptassistant_model_config(
+async def _get_gptassistant_model_config(
     requested_model: Optional[str],
     *,
     user_email: str,
@@ -73,13 +74,19 @@ def _get_gptassistant_model_config(
 ):
     assistant_config = gpts.get("gptassistant", {})
     all_models = assistant_config.get("models", [])
-    models = filter_models_for_user(all_models, user_email, user_id)
+    visible_models = filter_models_for_user(all_models, user_email, user_id)
+    visible_model_ids = {
+        item.get("id")
+        for item in visible_models
+        if isinstance(item, dict)
+    }
+    models = await resolve_gptassistant_model_configs(visible_models)
     default_model = assistant_config.get("default_model", "")
     selected_model = requested_model or default_model
 
-    if requested_model:
+    if requested_model and requested_model not in visible_model_ids:
         for item in all_models:
-            if item.get("id") == requested_model and item not in models:
+            if item.get("id") == requested_model:
                 raise HTTPException(status.HTTP_403_FORBIDDEN, "No Authorized")
 
     for item in models:
@@ -102,7 +109,7 @@ async def chat_with_gpt_assistant(request: QueryRequest, user: dict = Depends(ge
     assistant_config = gpts["gptassistant"]
     system_prompt = assistant_config["system_prompt"]
     user_prompt = request.query
-    selected_model_config = _get_gptassistant_model_config(
+    selected_model_config = await _get_gptassistant_model_config(
         request.base_model or request.model,
         user_email=user["email"],
         user_id=user.get("sub"),
@@ -163,7 +170,7 @@ async def chat_with_gpt_assistant_v2(request: QueryRequest, user: dict = Depends
     cid = request.conversation_id
     assistant_config = gpts["gptassistant"]
     system_prompt = assistant_config["system_prompt"]
-    selected_model_config = _get_gptassistant_model_config(
+    selected_model_config = await _get_gptassistant_model_config(
         request.base_model or request.model,
         user_email=user["email"],
         user_id=user.get("sub"),
