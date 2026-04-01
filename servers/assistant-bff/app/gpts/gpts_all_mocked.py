@@ -18,6 +18,7 @@ register_gpt({
         "system_prompt": "You are a helpful assistant.",
         "file_upload_enabled": True,
         "upload_file_types": ["document", "image"],
+        "max_active_files": 2000,
         "default_model": DEFAULT_GPTASSISTANT_MODEL,
         "default_reasoning": True,
         "auth": {"type": "all"},
