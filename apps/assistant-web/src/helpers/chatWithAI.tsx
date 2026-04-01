@@ -108,6 +108,20 @@ const renderFriendlyToolResultMessage = (event: any) => {
     return `工具调用完成：${toolName || "unknown_tool"}。`;
 };
 
+const renderFriendlyPreprocessMessage = (event: any) => {
+    const message = typeof event.message === "string" ? event.message.trim() : "";
+    if (message.length) {
+        return message;
+    }
+    if (event.event === "preprocess_error") {
+        return "附件预处理失败。";
+    }
+    if (event.event === "preprocess_complete") {
+        return "附件预处理完成。";
+    }
+    return "正在预处理附件内容。";
+};
+
 const handleKernelEvent = (
     event: any,
     onChatMessage: (message: string, end: boolean, conversationId: string) => void,
@@ -137,6 +151,15 @@ const handleKernelEvent = (
     }
     if (event.event === "preprocess_start") {
         if (!showGptAssistantDebugEvents()) {
+            if (!state.toolStepOpen) {
+                state.toolStepOpen = true;
+                onChatMessage("\n<think>\n", false, conversationId);
+            }
+            onChatMessage(
+                `<step><summary>附件处理中</summary>${renderFriendlyPreprocessMessage(event)}</step>\n`,
+                false,
+                conversationId,
+            );
             return;
         }
         onChatMessage(`\n<think>\n${event.message ?? "正在预处理附件内容"}\n`, false, conversationId);
@@ -144,15 +167,36 @@ const handleKernelEvent = (
     }
     if (event.event === "preprocess_complete") {
         if (!showGptAssistantDebugEvents()) {
+            if (!state.toolStepOpen) {
+                state.toolStepOpen = true;
+                onChatMessage("\n<think>\n", false, conversationId);
+            }
+            onChatMessage(
+                `<step><summary>附件处理结果</summary>${renderFriendlyPreprocessMessage(event)}</step>\n</think>\n\n`,
+                false,
+                conversationId,
+            );
+            state.toolStepOpen = false;
             return;
         }
         onChatMessage("\n</think>\n\n", false, conversationId);
         return;
     }
     if (event.event === "preprocess_error") {
-        if (showGptAssistantDebugEvents()) {
-            onChatMessage(`\n${event.message ?? "附件预处理失败"}\n</think>\n\n`, false, conversationId);
+        if (!showGptAssistantDebugEvents()) {
+            if (!state.toolStepOpen) {
+                state.toolStepOpen = true;
+                onChatMessage("\n<think>\n", false, conversationId);
+            }
+            onChatMessage(
+                `<step><summary>附件处理结果</summary>${renderFriendlyPreprocessMessage(event)}</step>\n</think>\n\n`,
+                false,
+                conversationId,
+            );
+            state.toolStepOpen = false;
+            return;
         }
+        onChatMessage(`\n${event.message ?? "附件预处理失败"}\n</think>\n\n`, false, conversationId);
         return;
     }
     if (event.event === "toolcall_start") {
