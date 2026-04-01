@@ -12,6 +12,7 @@ from app.attachments import (
     get_attachment_tool_definitions,
 )
 from app.chat_base import client, match_history, save_match_history
+from app.gptassistant_error_mapping import map_chat_v2_error
 from app.gptassistant_planner import PlannerRuntimeCapabilities, build_execution_plan
 from app.logger import gpt_logger
 from app.llm_kernel import (
@@ -40,6 +41,18 @@ from app.metrics.events import UsageEventTracker
 KERNEL_HISTORY_PREFIX = "llm_kernel:gptassistant:"
 IMAGE_PREPROCESS_TIMEOUT_SECONDS = 30
 MAX_TOOL_CONTINUATION_TURNS = 4
+DEFAULT_CHAT_V2_MAX_INPUT_CHARS = 120000
+DEFAULT_CHAT_V2_RECENT_TURNS = 8
+
+
+class ChatContextTooLongError(RuntimeError):
+    """Raised when assembled chat-v2 context exceeds the allowed budget."""
+
+
+@dataclass(frozen=True)
+class TrimmedHistoryResult:
+    messages: list[Any]
+    summary: str | None = None
 
 
 def _log_preview(value: Any, *, limit: int = 1200) -> str:
@@ -282,6 +295,224 @@ def _available_file_ids(file_ids: Optional[str]) -> list[str]:
     return [item.strip() for item in file_ids.split(",") if item.strip()]
 
 
+def _resolve_context_char_budget(model_config: dict[str, Any]) -> int:
+    # Keep char-budget resolution centralized so this can be upgraded to a
+    # token-budget resolver later without changing the call sites.
+    for key in ("context_char_budget", "max_input_chars", "input_char_budget"):
+        value = model_config.get(key)
+        if isinstance(value, int) and value > 0:
+            return value
+    return DEFAULT_CHAT_V2_MAX_INPUT_CHARS
+
+
+def _resolve_recent_history_turns(model_config: dict[str, Any]) -> int:
+    for key in ("recent_history_turns", "history_turn_limit", "max_recent_turns"):
+        value = model_config.get(key)
+        if isinstance(value, int) and value > 0:
+            return value
+    return DEFAULT_CHAT_V2_RECENT_TURNS
+
+
+def _count_message_text_chars(message: Any) -> int:
+    if isinstance(message, UserMessage):
+        content = message.content
+        if isinstance(content, str):
+            return len(content)
+        total = 0
+        for block in content:
+            if isinstance(block, TextContent):
+                total += len(block.text or "")
+        return total
+
+    if isinstance(message, AssistantMessage):
+        total = 0
+        for block in message.content:
+            if isinstance(block, TextContent):
+                total += len(block.text or "")
+            elif isinstance(block, ThinkingContent):
+                total += len(block.thinking or "")
+            elif isinstance(block, ToolCallContent):
+                total += len(block.name or "")
+                total += len(json.dumps(block.arguments, ensure_ascii=False, default=str))
+        return total
+
+    if isinstance(message, ToolResultMessage):
+        total = len(message.tool_name or "")
+        if message.details is not None:
+            total += len(json.dumps(message.details, ensure_ascii=False, default=str))
+        for block in message.content:
+            if isinstance(block, TextContent):
+                total += len(block.text or "")
+        return total
+
+    return 0
+
+
+def _truncate_preview(text: str, limit: int = 240) -> str:
+    normalized = " ".join((text or "").split())
+    if len(normalized) <= limit:
+        return normalized
+    return normalized[:limit].rstrip() + "..."
+
+
+def _summarize_message(message: Any) -> str | None:
+    if isinstance(message, UserMessage):
+        content = message.content
+        if isinstance(content, str):
+            text = _truncate_preview(content)
+            return f"User: {text}" if text else None
+        blocks: list[str] = []
+        image_count = 0
+        for block in content:
+            if isinstance(block, TextContent):
+                text = _truncate_preview(block.text)
+                if text:
+                    blocks.append(text)
+            elif isinstance(block, ImageContent):
+                image_count += 1
+        joined = " ".join(blocks).strip()
+        if image_count and joined:
+            return f"User: {joined} [images={image_count}]"
+        if image_count:
+            return f"User: [images={image_count}]"
+        return f"User: {joined}" if joined else None
+
+    if isinstance(message, AssistantMessage):
+        text_parts: list[str] = []
+        tool_names: list[str] = []
+        for block in message.content:
+            if isinstance(block, TextContent):
+                text = _truncate_preview(block.text)
+                if text:
+                    text_parts.append(text)
+            elif isinstance(block, ToolCallContent):
+                if block.name:
+                    tool_names.append(block.name)
+        text_summary = " ".join(text_parts).strip()
+        if tool_names and text_summary:
+            return f"Assistant: {text_summary} [tool_calls={', '.join(tool_names[:3])}]"
+        if tool_names:
+            return f"Assistant: [tool_calls={', '.join(tool_names[:3])}]"
+        return f"Assistant: {text_summary}" if text_summary else None
+
+    if isinstance(message, ToolResultMessage):
+        status = "error" if message.is_error else "ok"
+        text_parts: list[str] = []
+        for block in message.content:
+            if isinstance(block, TextContent):
+                text = _truncate_preview(block.text, limit=160)
+                if text:
+                    text_parts.append(text)
+        text_summary = " ".join(text_parts).strip()
+        if text_summary:
+            return f"Tool {message.tool_name} ({status}): {text_summary}"
+        return f"Tool {message.tool_name} ({status})"
+
+    return None
+
+
+def _build_history_summary(messages: list[Any]) -> str | None:
+    summary_lines: list[str] = []
+    for message in messages:
+        rendered = _summarize_message(message)
+        if rendered:
+            summary_lines.append(f"- {rendered}")
+    if not summary_lines:
+        return None
+    return (
+        "Earlier conversation summary:\n"
+        "The following points summarize older turns that were compacted before this request:\n"
+        + "\n".join(summary_lines[-12:])
+    )
+
+
+def _trim_history_to_recent_turns(
+    *,
+    history: list[Any],
+    max_recent_turns: int,
+    conversation_id: str,
+    model_id: str,
+) -> TrimmedHistoryResult:
+    if max_recent_turns <= 0 or not history:
+        return TrimmedHistoryResult(messages=[], summary=None)
+
+    user_turns_seen = 0
+    start_index = 0
+    found_cut = False
+
+    for index in range(len(history) - 1, -1, -1):
+        if isinstance(history[index], UserMessage):
+            user_turns_seen += 1
+            if user_turns_seen > max_recent_turns:
+                start_index = index + 1
+                found_cut = True
+                break
+
+    if not found_cut:
+        return TrimmedHistoryResult(messages=history, summary=None)
+
+    trimmed_history = history[start_index:]
+    dropped_messages = history[:start_index]
+    summary = _build_history_summary(dropped_messages)
+    dropped_chars = sum(_count_message_text_chars(message) for message in dropped_messages)
+    kept_chars = sum(_count_message_text_chars(message) for message in trimmed_history)
+    gpt_logger.info(
+        "chat_v2_history_trimmed conversation_id=%s model=%s max_recent_turns=%s dropped_messages=%s kept_messages=%s dropped_chars=%s kept_chars=%s summary_chars=%s",
+        conversation_id,
+        model_id,
+        max_recent_turns,
+        len(dropped_messages),
+        len(trimmed_history),
+        dropped_chars,
+        kept_chars,
+        len(summary or ""),
+    )
+    return TrimmedHistoryResult(messages=trimmed_history, summary=summary)
+
+
+def _raise_if_context_too_long(
+    *,
+    model_id: str,
+    model_config: dict[str, Any],
+    system_prompt: str,
+    history: list[Any],
+    user_message: UserMessage,
+) -> None:
+    budget = _resolve_context_char_budget(model_config)
+    system_chars = len(system_prompt or "")
+    history_chars = sum(_count_message_text_chars(message) for message in history)
+    user_chars = _count_message_text_chars(user_message)
+    total_chars = system_chars + history_chars + user_chars
+
+    if total_chars <= budget:
+        return
+
+    overflow = total_chars - budget
+    dominant_source = "history"
+    dominant_value = history_chars
+    if user_chars >= dominant_value:
+        dominant_source = "user_message"
+        dominant_value = user_chars
+    if system_chars >= dominant_value:
+        dominant_source = "system_prompt"
+        dominant_value = system_chars
+
+    gpt_logger.warning(
+        "chat_v2_context_budget_exceeded model=%s budget=%s total_chars=%s overflow=%s system_chars=%s history_chars=%s user_chars=%s dominant_source=%s",
+        model_id,
+        budget,
+        total_chars,
+        overflow,
+        system_chars,
+        history_chars,
+        user_chars,
+        dominant_source,
+    )
+    raise ChatContextTooLongError(
+        f"context budget exceeded: total_chars={total_chars} budget={budget} dominant_source={dominant_source}"
+    )
+
+
 async def _execute_attachment_tool_calls(
     *,
     tools: list[Any],
@@ -434,9 +665,17 @@ async def chat_with_kernel_gptassistant(
     if usage_tracker:
         usage_tracker.set_model(model.id)
 
-    history = _load_history(conversation_id)
+    trimmed_history = _trim_history_to_recent_turns(
+        history=_load_history(conversation_id),
+        max_recent_turns=_resolve_recent_history_turns(model_config),
+        conversation_id=conversation_id,
+        model_id=model.id,
+    )
+    history = trimmed_history.messages
     preprocess_events: list[str] = []
     effective_system_prompt = system_prompt
+    if trimmed_history.summary:
+        effective_system_prompt = f"{effective_system_prompt}\n\n{trimmed_history.summary}"
     if file_ids and execution_plan.include_attachment_tool_guidance:
         attachment_guidance = build_attachment_tool_guidance(
             file_ids=file_ids,
@@ -489,6 +728,13 @@ async def chat_with_kernel_gptassistant(
             execution_plan,
             emit_preprocess_event,
         )
+        _raise_if_context_too_long(
+            model_id=model.id,
+            model_config=model_config,
+            system_prompt=effective_system_prompt,
+            history=history,
+            user_message=user_message,
+        )
         context.messages = [*history, user_message]
 
         for item in preprocess_events:
@@ -528,8 +774,10 @@ async def chat_with_kernel_gptassistant(
                 elif isinstance(event, DoneEvent):
                     payload["stop_reason"] = event.reason
                 elif isinstance(event, ErrorEvent):
+                    mapped_error = map_chat_v2_error(event.error.error_message)
                     payload["reason"] = event.reason
-                    payload["error_message"] = event.error.error_message
+                    payload["error_code"] = mapped_error.code
+                    payload["error_message"] = mapped_error.user_message
                     emitted_error_event = True
 
                 yield _sse(
@@ -640,12 +888,14 @@ async def chat_with_kernel_gptassistant(
         preprocess_events.clear()
         finalize_tracker("error", error=str(exc), message=final_message)
         if not emitted_error_event:
+            mapped_error = map_chat_v2_error(str(exc))
             yield _sse(
                 "error",
                 _event_payload(
                     response_id,
                     next_sequence(),
                     conversation_id,
-                    error_message=str(exc),
+                    error_code=mapped_error.code,
+                    error_message=mapped_error.user_message,
                 ),
             )

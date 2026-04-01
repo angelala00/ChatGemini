@@ -20,6 +20,24 @@ const useGptAssistantV2 = () => globalConfig.gptassistantChatApiVersion !== "v1"
 const showGptAssistantThinking = () => globalConfig.gptassistantShowThinking !== false;
 const showGptAssistantDebugEvents = () => globalConfig.gptassistantDebugEvents === true;
 
+const CHAT_V2_ERROR_MESSAGES: Record<string, string> = {
+    CONTEXT_TOO_LONG: "当前输入内容过长，请减少文件内容、缩短问题，或开启新会话后重试。",
+    FILE_CONTENT_TOO_LONG: "附件文本内容过长，请减少文件内容、拆分提问，或更换更精简的文件后重试。",
+    TOO_MANY_FILES: "本次上传的文件总内容过长，请减少文件数量或拆分提问后重试。",
+    FILE_PARSE_FAILED: "附件内容处理失败，请检查文件是否损坏，或更换文件后重试。",
+    MODEL_REQUEST_FAILED: "本次请求处理失败，请稍后重试。",
+};
+
+const getChatV2ErrorMessage = (event: any) => {
+    if (typeof event.error_message === "string" && event.error_message.trim()) {
+        return event.error_message;
+    }
+    if (typeof event.error_code === "string" && CHAT_V2_ERROR_MESSAGES[event.error_code]) {
+        return CHAT_V2_ERROR_MESSAGES[event.error_code];
+    }
+    return "请求失败";
+};
+
 const handleLegacyEvent = (
     event: any,
     onChatMessage: (message: string, end: boolean, conversationId: string) => void,
@@ -120,7 +138,7 @@ const handleKernelEvent = (
         return;
     }
     if (event.event === "error") {
-        onChatMessage(event.error_message ?? "请求失败", true, conversationId);
+        onChatMessage(getChatV2ErrorMessage(event), true, conversationId);
     }
 };
 

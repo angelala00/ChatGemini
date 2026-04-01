@@ -25,6 +25,16 @@ class AttachmentSelection:
     document_paths: list[str]
 
 
+@dataclass(frozen=True)
+class ExtractedTextBudgetResult:
+    text: str
+    truncated: bool
+
+
+class AttachmentContentTooLongError(RuntimeError):
+    """Raised when attachment preload text exceeds the allowed budget."""
+
+
 async def _noop_emit_event(_event_name: str, **_payload) -> None:
     return None
 
@@ -115,10 +125,10 @@ async def _extract_text_with_balanced_budget(
     file_ids: Optional[str],
     *,
     total_max_chars: int,
-) -> str:
+) -> ExtractedTextBudgetResult:
     normalized_file_ids = _split_file_ids(file_ids)
     if not normalized_file_ids:
-        return ""
+        return ExtractedTextBudgetResult(text="", truncated=False)
 
     rendered_chunks: list[str] = []
     remaining_budget = max(total_max_chars, 0)
@@ -148,14 +158,27 @@ async def _extract_text_with_balanced_budget(
 
         if normalized.endswith("[已截断]"):
             truncated = True
+            gpt_logger.info(
+                "attachment_text_budget_item_truncated file_id=%s per_file_budget=%s remaining_budget=%s",
+                current_file_id,
+                per_file_budget,
+                remaining_budget,
+            )
 
     if not rendered_chunks:
-        return ""
+        return ExtractedTextBudgetResult(text="", truncated=truncated)
 
     combined = "\n[上传文件内容]:\n" + "".join(rendered_chunks).rstrip()
     if truncated and not combined.endswith("[已截断]"):
         combined = combined.rstrip() + "\n\n[已截断]"
-    return combined
+    if truncated:
+        gpt_logger.warning(
+            "attachment_text_budget_truncated file_count=%s total_max_chars=%s final_chars=%s",
+            len(normalized_file_ids),
+            total_max_chars,
+            len(combined),
+        )
+    return ExtractedTextBudgetResult(text=combined, truncated=truncated)
 
 
 def build_attachment_tool_guidance(
@@ -225,10 +248,27 @@ async def build_user_message_from_attachments(
                 stage="document_text_extraction",
                 message="正在提取附件文本内容",
             )
-            user_text += await _extract_text_with_balanced_budget(
+            extracted_document_text = await _extract_text_with_balanced_budget(
                 selection.document_file_ids,
                 total_max_chars=document_preload_max_chars,
             )
+            if extracted_document_text.truncated:
+                multiple_documents = len(_split_file_ids(selection.document_file_ids)) > 1
+                await emit(
+                    "preprocess_error",
+                    stage="document_text_extraction",
+                    message=(
+                        "本次上传的文件总内容过长，请减少文件数量或拆分提问后重试。"
+                        if multiple_documents
+                        else "附件文本内容过长，请减少文件内容或拆分提问后重试。"
+                    ),
+                )
+                raise AttachmentContentTooLongError(
+                    "too many files exceed preload budget"
+                    if multiple_documents
+                    else "document content exceeds preload budget"
+                )
+            user_text += extracted_document_text.text
             gpt_logger.info(
                 "attachment_document_extract_complete model=%s file_ids=%s elapsed_ms=%.1f",
                 model_id,
@@ -314,7 +354,23 @@ async def build_user_message_from_attachments(
                     message=f"图片内容解析失败：{str(exc)}",
                 )
                 raise RuntimeError(f"image preprocessing failed: {str(exc)}") from exc
-            if not extracted_image_text.strip():
+            if extracted_image_text.truncated:
+                multiple_images = len(_split_file_ids(selection.image_file_ids)) > 1
+                await emit(
+                    "preprocess_error",
+                    stage="image_text_extraction",
+                    message=(
+                        "本次上传的图片总内容过长，请减少图片数量或缩小问题范围后重试。"
+                        if multiple_images
+                        else "图片解析结果过长，请缩小问题范围后重试。"
+                    ),
+                )
+                raise AttachmentContentTooLongError(
+                    "too many files exceed preload budget"
+                    if multiple_images
+                    else "image content exceeds preload budget"
+                )
+            if not extracted_image_text.text.strip():
                 gpt_logger.error(
                     "attachment_image_extract_empty model=%s file_ids=%s elapsed_ms=%.1f",
                     model_id,
@@ -327,13 +383,13 @@ async def build_user_message_from_attachments(
                     message="图片内容解析结果为空",
                 )
                 raise RuntimeError("image preprocessing returned empty text")
-            user_text += extracted_image_text
+            user_text += extracted_image_text.text
             gpt_logger.info(
                 "attachment_image_extract_complete model=%s file_ids=%s elapsed_ms=%.1f text_len=%s",
                 model_id,
                 selection.image_file_ids,
                 (time.perf_counter() - image_started_at) * 1000,
-                len(extracted_image_text),
+                len(extracted_image_text.text),
             )
             await emit(
                 "preprocess_complete",

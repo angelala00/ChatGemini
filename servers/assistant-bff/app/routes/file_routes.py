@@ -16,7 +16,7 @@ from app.utils.model_tool import (
     MODEL_NAME_THINKING,
     MODEL_NAME_VL,
 )
-from app.utils.image_utils import is_image_file
+from app.utils.image_utils import detect_image_dimensions_from_bytes, is_image_file
 from app.db import get_db
 
 router = APIRouter(prefix="/api", tags=["auth"])
@@ -36,6 +36,12 @@ MODEL_UPLOAD_RULES = {
     MODEL_NAME_VL: {"documents": False, "images": True},
 }
 FILE_LIFETIME_DAYS = 7  # 可配置的过期时间，单位为天
+DEFAULT_UPLOAD_MAX_BYTES = 10 * 1024 * 1024
+DEFAULT_IMAGE_MAX_BYTES = 8 * 1024 * 1024
+DEFAULT_MAX_ACTIVE_FILES = 20
+DEFAULT_IMAGE_MAX_WIDTH = 4096
+DEFAULT_IMAGE_MAX_HEIGHT = 4096
+DEFAULT_IMAGE_MAX_PIXELS = 12_000_000
 
 
 def _get_gptassistant_model_ids():
@@ -54,6 +60,23 @@ def _get_gptassistant_upload_rule():
     return {
         "documents": "document" in upload_types,
         "images": "image" in upload_types,
+    }
+
+
+def _get_gptassistant_upload_limits():
+    assistant_config = gpts.get("gptassistant", {})
+
+    def positive_int(key: str, default: int) -> int:
+        value = assistant_config.get(key)
+        return value if isinstance(value, int) and value > 0 else default
+
+    return {
+        "upload_max_bytes": positive_int("upload_max_bytes", DEFAULT_UPLOAD_MAX_BYTES),
+        "image_max_bytes": positive_int("image_max_bytes", DEFAULT_IMAGE_MAX_BYTES),
+        "max_active_files": positive_int("max_active_files", DEFAULT_MAX_ACTIVE_FILES),
+        "image_max_width": positive_int("image_max_width", DEFAULT_IMAGE_MAX_WIDTH),
+        "image_max_height": positive_int("image_max_height", DEFAULT_IMAGE_MAX_HEIGHT),
+        "image_max_pixels": positive_int("image_max_pixels", DEFAULT_IMAGE_MAX_PIXELS),
     }
 
 
@@ -77,6 +100,53 @@ def allowed_file(filename, model_id: str):
     extension = filename.rsplit(".", 1)[1].lower()
     allowed_extensions, model_rule = _get_allowed_extensions_by_model(model_id)
     return extension in allowed_extensions, model_rule
+
+
+def _validate_upload_limits(filename: str, file_content: bytes, model_rule: dict) -> None:
+    limits = _get_gptassistant_upload_limits()
+    current_file_count = len(load_file_mapping())
+    if current_file_count >= limits["max_active_files"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Too many uploaded files. Limit: {limits['max_active_files']}",
+        )
+
+    file_size = len(file_content)
+    extension = os.path.splitext(filename)[1].lower()
+    is_image = extension.lstrip(".") in IMAGE_EXTENSIONS and model_rule.get("images")
+    max_bytes = limits["image_max_bytes"] if is_image else limits["upload_max_bytes"]
+    if file_size > max_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File too large: {file_size} bytes (limit: {max_bytes} bytes)",
+        )
+
+    if not is_image:
+        return
+
+    dimensions = detect_image_dimensions_from_bytes(file_content)
+    if not dimensions:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Unable to read image dimensions",
+        )
+    width, height = dimensions
+    if width > limits["image_max_width"] or height > limits["image_max_height"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Image dimensions too large: {width}x{height} "
+                f"(limit: {limits['image_max_width']}x{limits['image_max_height']})"
+            ),
+        )
+    if width * height > limits["image_max_pixels"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Image pixel count too large: {width * height} "
+                f"(limit: {limits['image_max_pixels']})"
+            ),
+        )
 
 
 def init_db():
@@ -225,10 +295,11 @@ async def upload_file(
         file_id = str(uuid.uuid4())
         file_extension = os.path.splitext(file.filename)[1]
         file_path = os.path.join(UPLOAD_FOLDER, file_id)
+        file_content = await file.read()
+        _validate_upload_limits(file.filename, file_content, model_rule)
 
         # 保存文件
         with open(file_path, "wb") as buffer:
-            file_content = await file.read()
             buffer.write(file_content)
 
         # 存储文件ID、文件路径和原始文件名的映射
