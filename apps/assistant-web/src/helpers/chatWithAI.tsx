@@ -52,9 +52,66 @@ const handleLegacyEvent = (
     onChatMessage(unicodeToChar(event.answer ?? ""), false, event.conversation_id ?? "");
 };
 
+const FRIENDLY_ATTACHMENT_LIST_TOOLS = new Set([
+    "document_list",
+    "resource_list",
+    "attachment_list",
+]);
+
+const FRIENDLY_ATTACHMENT_TEXT_TOOLS = new Set([
+    "document_read_text",
+    "resource_read_text",
+    "attachment_extract_text",
+]);
+
+const FRIENDLY_ATTACHMENT_IMAGE_TOOLS = new Set([
+    "document_load_images",
+    "resource_load_images",
+    "attachment_load_images",
+]);
+
+const renderFriendlyToolCallMessage = (toolCall: any) => {
+    const toolName = toolCall?.name ?? "";
+    if (FRIENDLY_ATTACHMENT_LIST_TOOLS.has(toolName)) {
+        return "正在检查当前会话中的附件列表。";
+    }
+    if (FRIENDLY_ATTACHMENT_TEXT_TOOLS.has(toolName)) {
+        const mode = toolCall?.arguments?.mode;
+        if (mode === "images") {
+            return "正在提取图片中的文字内容。";
+        }
+        if (mode === "documents") {
+            return "正在读取附件文档内容。";
+        }
+        return "正在提取附件中的可用文本内容。";
+    }
+    if (FRIENDLY_ATTACHMENT_IMAGE_TOOLS.has(toolName)) {
+        return "正在加载图片附件，准备继续分析。";
+    }
+    return `正在调用工具 ${toolName || "unknown_tool"}。`;
+};
+
+const renderFriendlyToolResultMessage = (event: any) => {
+    const toolName = event.tool_name ?? "";
+    if (event.is_error) {
+        return `工具调用失败：${toolName || "unknown_tool"}。`;
+    }
+    if (FRIENDLY_ATTACHMENT_LIST_TOOLS.has(toolName)) {
+        return "已获取附件列表，正在继续分析。";
+    }
+    if (FRIENDLY_ATTACHMENT_TEXT_TOOLS.has(toolName)) {
+        return "已完成附件文本提取。";
+    }
+    if (FRIENDLY_ATTACHMENT_IMAGE_TOOLS.has(toolName)) {
+        return "已完成图片附件加载。";
+    }
+    return `工具调用完成：${toolName || "unknown_tool"}。`;
+};
+
 const handleKernelEvent = (
     event: any,
     onChatMessage: (message: string, end: boolean, conversationId: string) => void,
+    state: { toolStepOpen: boolean },
 ) => {
     const conversationId = event.conversation_id ?? "";
     if (event.event === "thinking_start") {
@@ -107,6 +164,15 @@ const handleKernelEvent = (
     }
     if (event.event === "toolcall_end") {
         if (!showGptAssistantDebugEvents()) {
+            if (!state.toolStepOpen) {
+                state.toolStepOpen = true;
+                onChatMessage("\n<think>\n", false, conversationId);
+            }
+            onChatMessage(
+                `<step><summary>工具调用中</summary>${renderFriendlyToolCallMessage(event.tool_call)}</step>\n`,
+                false,
+                conversationId,
+            );
             return;
         }
         const toolName = event.tool_call?.name ?? "unknown_tool";
@@ -118,6 +184,16 @@ const handleKernelEvent = (
     }
     if (event.event === "tool_result") {
         if (!showGptAssistantDebugEvents()) {
+            if (!state.toolStepOpen) {
+                state.toolStepOpen = true;
+                onChatMessage("\n<think>\n", false, conversationId);
+            }
+            onChatMessage(
+                `<step><summary>工具调用结果</summary>${renderFriendlyToolResultMessage(event)}</step>\n</think>\n\n`,
+                false,
+                conversationId,
+            );
+            state.toolStepOpen = false;
             return;
         }
         const toolName = event.tool_name ?? "unknown_tool";
@@ -130,14 +206,26 @@ const handleKernelEvent = (
         return;
     }
     if (event.event === "text_delta") {
+        if (state.toolStepOpen) {
+            onChatMessage("</think>\n\n", false, conversationId);
+            state.toolStepOpen = false;
+        }
         onChatMessage(event.delta ?? "", false, conversationId);
         return;
     }
     if (event.event === "response_complete") {
+        if (state.toolStepOpen) {
+            onChatMessage("</think>\n\n", false, conversationId);
+            state.toolStepOpen = false;
+        }
         onChatMessage("", true, conversationId);
         return;
     }
     if (event.event === "error") {
+        if (state.toolStepOpen) {
+            onChatMessage("</think>\n\n", false, conversationId);
+            state.toolStepOpen = false;
+        }
         onChatMessage(getChatV2ErrorMessage(event), true, conversationId);
     }
 };
@@ -149,10 +237,15 @@ const read = async (
     useKernelProtocol: boolean,
 ) => {
     let buffer = "";
+    const kernelState = { toolStepOpen: false };
     try {
         while (true) {
             const result = await reader?.read();
             if (!result || result.done) {
+                if (useKernelProtocol && kernelState.toolStepOpen) {
+                    onChatMessage("</think>\n\n", false, "");
+                    kernelState.toolStepOpen = false;
+                }
                 onChatMessage("", true, "");
                 return;
             }
@@ -170,7 +263,7 @@ const read = async (
                     continue;
                 }
                 if (useKernelProtocol) {
-                    handleKernelEvent(payload, onChatMessage);
+                    handleKernelEvent(payload, onChatMessage, kernelState);
                 } else {
                     handleLegacyEvent(payload, onChatMessage);
                 }
