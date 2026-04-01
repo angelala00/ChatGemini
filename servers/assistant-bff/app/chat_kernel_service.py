@@ -2,7 +2,7 @@ import asyncio
 import json
 import time
 import uuid
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from app.attachments import (
@@ -475,41 +475,51 @@ def _raise_if_context_too_long(
     model_id: str,
     model_config: dict[str, Any],
     system_prompt: str,
-    history: list[Any],
-    user_message: UserMessage,
+    messages: list[Any],
+    stage: str,
 ) -> None:
     budget = _resolve_context_char_budget(model_config)
     system_chars = len(system_prompt or "")
-    history_chars = sum(_count_message_text_chars(message) for message in history)
-    user_chars = _count_message_text_chars(user_message)
-    total_chars = system_chars + history_chars + user_chars
+    message_chars = sum(_count_message_text_chars(message) for message in messages)
+    total_chars = system_chars + message_chars
 
     if total_chars <= budget:
         return
 
     overflow = total_chars - budget
-    dominant_source = "history"
-    dominant_value = history_chars
-    if user_chars >= dominant_value:
-        dominant_source = "user_message"
-        dominant_value = user_chars
+    message_breakdown = [
+        (
+            "user_message"
+            if isinstance(message, UserMessage)
+            else "assistant_message"
+            if isinstance(message, AssistantMessage)
+            else "tool_result"
+            if isinstance(message, ToolResultMessage)
+            else "message",
+            _count_message_text_chars(message),
+        )
+        for message in messages
+    ]
+    dominant_source = "messages"
+    dominant_value = message_chars
+    if message_breakdown:
+        dominant_source, dominant_value = max(message_breakdown, key=lambda item: item[1])
     if system_chars >= dominant_value:
         dominant_source = "system_prompt"
-        dominant_value = system_chars
 
     gpt_logger.warning(
-        "chat_v2_context_budget_exceeded model=%s budget=%s total_chars=%s overflow=%s system_chars=%s history_chars=%s user_chars=%s dominant_source=%s",
+        "chat_v2_context_budget_exceeded model=%s stage=%s budget=%s total_chars=%s overflow=%s system_chars=%s message_chars=%s dominant_source=%s",
         model_id,
+        stage,
         budget,
         total_chars,
         overflow,
         system_chars,
-        history_chars,
-        user_chars,
+        message_chars,
         dominant_source,
     )
     raise ChatContextTooLongError(
-        f"context budget exceeded: total_chars={total_chars} budget={budget} dominant_source={dominant_source}"
+        f"context budget exceeded: stage={stage} total_chars={total_chars} budget={budget} dominant_source={dominant_source}"
     )
 
 
@@ -682,7 +692,7 @@ async def chat_with_kernel_gptassistant(
             model_supports_native_images=model.supports_input("image"),
         )
         if attachment_guidance:
-            effective_system_prompt = f"{system_prompt}\n\n{attachment_guidance}"
+            effective_system_prompt = f"{effective_system_prompt}\n\n{attachment_guidance}"
 
     context = Context(
         system_prompt=effective_system_prompt,
@@ -732,8 +742,8 @@ async def chat_with_kernel_gptassistant(
             model_id=model.id,
             model_config=model_config,
             system_prompt=effective_system_prompt,
-            history=history,
-            user_message=user_message,
+            messages=[*history, user_message],
+            stage="initial_request",
         )
         context.messages = [*history, user_message]
 
@@ -746,6 +756,13 @@ async def chat_with_kernel_gptassistant(
 
         for turn in range(MAX_TOOL_CONTINUATION_TURNS):
             turn_index = turn + 1
+            _raise_if_context_too_long(
+                model_id=model.id,
+                model_config=model_config,
+                system_prompt=effective_system_prompt,
+                messages=current_messages,
+                stage=f"continuation_turn_{turn_index}",
+            )
             gpt_logger.info(
                 "tool_continuation turn_start conversation_id=%s response_id=%s turn=%s max_turns=%s message_count=%s",
                 conversation_id,

@@ -46,6 +46,7 @@ def map_chat_v2_error(raw_message: str | None) -> MappedChatError:
 def _looks_like_context_overflow(lowered: str) -> bool:
     patterns = (
         "context length exceeded",
+        "context budget exceeded",
         "maximum context length",
         "context window",
         "too many tokens",

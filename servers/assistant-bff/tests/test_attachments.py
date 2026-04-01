@@ -8,7 +8,11 @@ from app.attachments.service import (
     build_attachment_tool_guidance,
     build_user_message_from_attachments,
 )
-from app.attachments.tools import execute_attachment_tool, get_attachment_tool_definitions
+from app.attachments.tools import (
+    DEFAULT_ATTACHMENT_TOOL_MAX_CHARS,
+    execute_attachment_tool,
+    get_attachment_tool_definitions,
+)
 from app.gptassistant_planner import (
     DEFAULT_DOCUMENT_PRELOAD_MAX_CHARS,
     DEFAULT_IMAGE_PRELOAD_MAX_CHARS,
@@ -185,7 +189,7 @@ class AttachmentToolTests(unittest.TestCase):
 
         extract_text_from_file_ids_mock.assert_called_once_with(
             "file-1",
-            max_chars=None,
+            max_chars=DEFAULT_ATTACHMENT_TOOL_MAX_CHARS,
             page=None,
             page_from=2,
             page_to=4,
@@ -195,6 +199,40 @@ class AttachmentToolTests(unittest.TestCase):
         self.assertEqual(result.details["page_from"], 2)
         self.assertEqual(result.details["page_to"], 4)
         self.assertEqual(result.details["sheet_name"], "Summary")
+
+    @patch("app.attachments.tools.extract_text_from_file_ids")
+    @patch("app.attachments.tools.resolve_attachment_selection")
+    def test_document_read_text_uses_default_max_chars_when_omitted(
+        self,
+        resolve_attachment_selection_mock,
+        extract_text_from_file_ids_mock,
+    ):
+        resolve_attachment_selection_mock.return_value = AttachmentSelection(
+            image_file_ids=None,
+            document_file_ids="file-1",
+            image_paths=[],
+            document_paths=["/tmp/demo.txt"],
+        )
+        extract_text_from_file_ids_mock.return_value = "hello"
+
+        result = self._run_async(
+            execute_attachment_tool(
+                "document_read_text",
+                {},
+                available_file_ids=["file-1"],
+            )
+        )
+
+        extract_text_from_file_ids_mock.assert_called_once_with(
+            "file-1",
+            max_chars=DEFAULT_ATTACHMENT_TOOL_MAX_CHARS,
+            page=None,
+            page_from=None,
+            page_to=None,
+            sheet_name=None,
+            sheet_index=None,
+        )
+        self.assertEqual(result.details["max_chars"], DEFAULT_ATTACHMENT_TOOL_MAX_CHARS)
 
     @patch("app.attachments.tools.resolve_attachment_selection")
     def test_document_read_text_rejects_conflicting_page_options(self, resolve_attachment_selection_mock):

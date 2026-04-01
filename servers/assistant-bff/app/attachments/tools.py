@@ -31,6 +31,7 @@ DOCUMENT_LOAD_IMAGES_TOOL_NAME = "document_load_images"
 ATTACHMENT_LIST_TOOL_NAME = "attachment_list"
 ATTACHMENT_EXTRACT_TEXT_TOOL_NAME = "attachment_extract_text"
 ATTACHMENT_LOAD_IMAGES_TOOL_NAME = "attachment_load_images"
+DEFAULT_ATTACHMENT_TOOL_MAX_CHARS = 30000
 
 RESOURCE_TOOL_DEFINITIONS: list[ToolDefinition] = [
     ToolDefinition(
@@ -310,6 +311,8 @@ async def execute_attachment_tool(
     }:
         mode = arguments.get("mode", "auto")
         max_chars = arguments.get("max_chars")
+        if not isinstance(max_chars, int) or max_chars <= 0:
+            max_chars = DEFAULT_ATTACHMENT_TOOL_MAX_CHARS
         return await _execute_attachment_extract_text(
             file_ids,
             mode=mode,
