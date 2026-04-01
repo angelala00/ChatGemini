@@ -8,7 +8,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from app.auth.auth_routes import get_current_user
 from .gpts_routes import filter_models_for_user, gpts
-from app.gpts.model_metadata import resolve_gptassistant_model_configs
+from app.gpts.model_metadata import resolve_model_configs
 from .file_routes import extract_text_from_file_ids
 from app.logger import gpt_logger
 from app.chat_service import (
@@ -66,13 +66,14 @@ class QueryRequest(BaseModel):
     reasoning_enabled: Optional[bool] = None
 
 
-async def _get_gptassistant_model_config(
+async def _get_gid_model_config(
+    gid: str,
     requested_model: Optional[str],
     *,
     user_email: str,
     user_id: Optional[str] = None,
 ):
-    assistant_config = gpts.get("gptassistant", {})
+    assistant_config = gpts.get(gid, {})
     all_models = assistant_config.get("models", [])
     visible_models = filter_models_for_user(all_models, user_email, user_id)
     visible_model_ids = {
@@ -80,7 +81,7 @@ async def _get_gptassistant_model_config(
         for item in visible_models
         if isinstance(item, dict)
     }
-    models = await resolve_gptassistant_model_configs(visible_models)
+    models = await resolve_model_configs(visible_models)
     default_model = assistant_config.get("default_model", "")
     selected_model = requested_model or default_model
 
@@ -109,7 +110,8 @@ async def chat_with_gpt_assistant(request: QueryRequest, user: dict = Depends(ge
     assistant_config = gpts["gptassistant"]
     system_prompt = assistant_config["system_prompt"]
     user_prompt = request.query
-    selected_model_config = await _get_gptassistant_model_config(
+    selected_model_config = await _get_gid_model_config(
+        "gptassistant",
         request.base_model or request.model,
         user_email=user["email"],
         user_id=user.get("sub"),
@@ -170,7 +172,8 @@ async def chat_with_gpt_assistant_v2(request: QueryRequest, user: dict = Depends
     cid = request.conversation_id
     assistant_config = gpts["gptassistant"]
     system_prompt = assistant_config["system_prompt"]
-    selected_model_config = await _get_gptassistant_model_config(
+    selected_model_config = await _get_gid_model_config(
+        "gptassistant",
         request.base_model or request.model,
         user_email=user["email"],
         user_id=user.get("sub"),
@@ -220,7 +223,48 @@ async def chat_with_gpts(request: QueryRequest, gid: str, user: dict = Depends(g
     cid = request.conversation_id
     if gid not in gpts:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "gid not found")
-    system_prompt = gpts[gid]["system_prompt"]
+    assistant_config = gpts[gid]
+    if gid == "regulationassistant":
+        selected_model_config = await _get_gid_model_config(
+            gid,
+            request.base_model or request.model,
+            user_email=user["email"],
+            user_id=user.get("sub"),
+        )
+        if not selected_model_config:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "no available models")
+
+        reasoning_enabled = (
+            bool(request.reasoning_enabled)
+            if request.reasoning_enabled is not None
+            else bool(assistant_config.get("default_reasoning", False))
+        )
+        if not selected_model_config.get("supports_reasoning", False):
+            reasoning_enabled = False
+
+        tracker = create_usage_event(
+            user_id=user.get("sub", "unknown"),
+            user_email=user.get("email"),
+            conversation_id=cid,
+            gid=gid,
+            requested_model=selected_model_config.get("model_name") or selected_model_config.get("id"),
+            upload_count=0,
+        )
+        try:
+            generator = assistant_config["chat_function"](
+                request.query,
+                cid,
+                assistant_config["system_prompt"],
+                selected_model_config,
+                gid,
+                reasoning_enabled=reasoning_enabled,
+                usage_tracker=tracker,
+            )
+        except Exception as exc:
+            tracker.finalize(status="error", latency_ms=0.0, error=str(exc))
+            raise
+        return StreamingResponse(generator, media_type="text/event-stream")
+    system_prompt = assistant_config["system_prompt"]
     model_name = MODEL_NAME_THINKING
     if "model_name" in gpts[gid]:
         model_name = gpts[gid]["model_name"]

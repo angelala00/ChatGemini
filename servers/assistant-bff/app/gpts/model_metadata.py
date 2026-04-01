@@ -143,6 +143,10 @@ def merge_model_metadata(model_item: dict[str, Any], metadata_by_model: Mapping[
     return merged
 
 
-async def resolve_gptassistant_model_configs(models: list[dict[str, Any]]) -> list[dict[str, Any]]:
+async def resolve_model_configs(models: list[dict[str, Any]]) -> list[dict[str, Any]]:
     metadata_by_model = await fetch_remote_model_metadata()
     return [merge_model_metadata(item, metadata_by_model) for item in models]
+
+
+async def resolve_gptassistant_model_configs(models: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return await resolve_model_configs(models)
