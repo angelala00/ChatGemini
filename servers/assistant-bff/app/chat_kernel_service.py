@@ -273,7 +273,7 @@ def _load_history(conversation_id: str) -> list[Any]:
 
 def _save_history(conversation_id: str, messages: list[Any]) -> None:
     match_history[_history_key(conversation_id)] = [_serialize_message(item) for item in messages]
-    save_match_history()
+    save_match_history(_history_key(conversation_id))
 
 
 def _usage_tokens(message: AssistantMessage) -> tuple[Optional[int], Optional[int]]:
@@ -872,8 +872,6 @@ async def chat_with_kernel_gptassistant(
             )
             raise RuntimeError("tool continuation exceeded maximum turns")
 
-        _save_history(conversation_id, current_messages)
-        finalize_tracker("success", message=final_message)
         gpt_logger.info(
             "tool_continuation response_complete conversation_id=%s response_id=%s stop_reason=%s",
             conversation_id,
@@ -890,6 +888,16 @@ async def chat_with_kernel_gptassistant(
                 usage=asdict(final_message.usage),
             ),
         )
+        try:
+            _save_history(conversation_id, current_messages)
+            finalize_tracker("success", message=final_message)
+        except Exception as exc:
+            gpt_logger.exception(
+                "tool_continuation post_complete_finalize_failed conversation_id=%s response_id=%s error=%s",
+                conversation_id,
+                response_id,
+                str(exc),
+            )
     except Exception as exc:
         gpt_logger.exception(
             "tool_continuation response_failed conversation_id=%s response_id=%s model=%s error=%s",

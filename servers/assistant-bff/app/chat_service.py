@@ -209,7 +209,7 @@ async def chat_with_react_as_function_call(
                     # print(f"yield:data:{json.dumps(temp)}\n\n")
                     yield f"data: {json.dumps(temp)}\n\n"
                     messages.append({"role": "assistant", "content": sum_content})
-                    save_match_history()
+                    save_match_history(conversation_id)
                     print(f"sum_content:{sum_content}")
                     return  # 退出循环，避免重复处理
             response = await client.chat.completions.create(model=model_name, messages=messages, temperature=0.7,

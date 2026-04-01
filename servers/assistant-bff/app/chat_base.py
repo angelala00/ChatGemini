@@ -38,9 +38,20 @@ def load_match_history():
 load_match_history()
 
 
-def save_match_history():
+def save_match_history(conversation_id: str | None = None):
+    if conversation_id is None:
+        items = list(match_history.items())
+    else:
+        items = [(conversation_id, match_history.get(conversation_id))]
+
     with conn:
-        for cid, history in match_history.items():
+        for cid, history in items:
+            if history is None:
+                conn.execute(
+                    "DELETE FROM session_history WHERE conversation_id = ?",
+                    (cid,),
+                )
+                continue
             conn.execute(
                 "REPLACE INTO session_history (conversation_id, history) VALUES (?, ?)",
                 (cid, json.dumps(history, ensure_ascii=False)),

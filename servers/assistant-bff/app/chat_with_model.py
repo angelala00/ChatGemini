@@ -134,7 +134,6 @@ async def chat_with_model(
                 messages.append({"role": "assistant", "content": assistant_text})
 
             if not tool_acc:
-                save_match_history()
                 yield _sse(
                     "message_end",
                     {
@@ -142,6 +141,7 @@ async def chat_with_model(
                         "answer": "",
                     },
                 )
+                save_match_history(conversation_id)
                 return
 
             calls = []
@@ -210,7 +210,6 @@ async def chat_with_model(
                 )
 
             if finish_reason == "stop" and not calls:
-                save_match_history()
                 yield _sse(
                     "message_end",
                     {
@@ -218,6 +217,7 @@ async def chat_with_model(
                         "answer": "",
                     },
                 )
+                save_match_history(conversation_id)
                 return
         except Exception as exc:
             yield _sse(
@@ -229,7 +229,6 @@ async def chat_with_model(
             )
             raise StreamHandledError(str(exc)) from exc
 
-    save_match_history()
     yield _sse(
         "message_end",
         {
@@ -237,3 +236,4 @@ async def chat_with_model(
             "answer": "",
         },
     )
+    save_match_history(conversation_id)
