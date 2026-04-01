@@ -266,6 +266,43 @@ def _tool_call_blocks(message: AssistantMessage) -> list[ToolCallContent]:
     return [block for block in message.content if isinstance(block, ToolCallContent)]
 
 
+def _render_tool_call_message(tool_call: ToolCallContent) -> str:
+    if tool_call.name == FETCH_DOCUMENT_CATALOG_TOOL:
+        return "正在检索制度目录，确认应查阅的制度文件。"
+
+    if tool_call.name == FETCH_DOCUMENT_CONTENT_TOOL:
+        file_names = tool_call.arguments.get("file_names") if isinstance(tool_call.arguments, dict) else None
+        if isinstance(file_names, list) and file_names:
+            joined_names = "、".join(f"《{str(name)}》" for name in file_names[:5])
+            suffix = " 等文件" if len(file_names) > 5 else ""
+            return f"正在读取制度文件 {joined_names}{suffix}。"
+        return "正在读取相关制度文件内容。"
+
+    return f"正在调用工具 {tool_call.name}。"
+
+
+def _render_tool_result_message(tool_result: ToolResultMessage) -> str:
+    if tool_result.is_error:
+        return f"工具调用失败：{tool_result.tool_name}。"
+
+    if tool_result.tool_name == FETCH_DOCUMENT_CATALOG_TOOL:
+        return "已获取制度目录，正在继续定位相关制度文件。"
+
+    if tool_result.tool_name == FETCH_DOCUMENT_CONTENT_TOOL:
+        resolved_files = []
+        if isinstance(tool_result.details, dict):
+            detail_files = tool_result.details.get("resolved_files")
+            if isinstance(detail_files, list):
+                resolved_files = [str(name) for name in detail_files if str(name).strip()]
+        if resolved_files:
+            joined_names = "、".join(f"《{name}》" for name in resolved_files[:5])
+            suffix = " 等文件" if len(resolved_files) > 5 else ""
+            return f"已读取制度文件 {joined_names}{suffix}。"
+        return "已读取相关制度文件内容。"
+
+    return f"工具调用完成：{tool_result.tool_name}。"
+
+
 def _normalize_document_name(file_name: str) -> str:
     normalized = (file_name or "").strip()
     if not normalized:
@@ -477,18 +514,12 @@ async def chat_with_kernel_regulation(
                     next_sequence(),
                     conversation_id,
                 )
-                if show_reasoning and event.type == "thinking_start" and not reasoning_open:
-                    reasoning_open = True
-                    yield _legacy_sse("message", conversation_id, "<think>\n")
-                    continue
-                if show_reasoning and event.type == "thinking_delta":
-                    yield _legacy_sse("message", conversation_id, event.delta or "")
-                    continue
-                if show_reasoning and event.type == "thinking_end" and reasoning_open:
-                    reasoning_open = False
-                    yield _legacy_sse("message", conversation_id, "\n</think>\n\n")
+                if event.type in {"thinking_start", "thinking_delta", "thinking_end"}:
                     continue
                 if event.type == "text_delta":
+                    if reasoning_open:
+                        reasoning_open = False
+                        yield _legacy_sse("message", conversation_id, "<step><summary>完成</summary>完成</step></think>\n\n")
                     yield _legacy_sse("message", conversation_id, event.delta or "")
                     continue
                 if isinstance(event, ErrorEvent):
@@ -513,6 +544,18 @@ async def chat_with_kernel_regulation(
             if final_message.stop_reason != "tool_use":
                 break
 
+            if show_reasoning:
+                tool_calls = _tool_call_blocks(final_message)
+                if tool_calls and not reasoning_open:
+                    reasoning_open = True
+                    yield _legacy_sse("message", conversation_id, "<think>\n")
+                for tool_call in tool_calls:
+                    yield _legacy_sse(
+                        "message",
+                        conversation_id,
+                        f"<step><summary>工具调用中</summary>{_render_tool_call_message(tool_call)}</step>\n",
+                    )
+
             tool_results = await _execute_regulation_tool_calls(
                 tools=context.tools,
                 message=final_message,
@@ -521,6 +564,13 @@ async def chat_with_kernel_regulation(
                 turn_index=turn_index,
                 usage_tracker=usage_tracker,
             )
+            if show_reasoning:
+                for tool_result in tool_results:
+                    yield _legacy_sse(
+                        "message",
+                        conversation_id,
+                        f"<step><summary>工具调用结果</summary>{_render_tool_result_message(tool_result)}</step>\n",
+                    )
             current_messages.extend(tool_results)
             context.messages = list(current_messages)
         else:
@@ -528,14 +578,14 @@ async def chat_with_kernel_regulation(
 
         if reasoning_open:
             reasoning_open = False
-            yield _legacy_sse("message", conversation_id, "\n</think>\n\n")
+            yield _legacy_sse("message", conversation_id, "</think>\n\n")
 
         _save_history(conversation_id, current_messages)
         finalize_tracker("success", message=final_message)
         yield _legacy_sse("message_end", conversation_id, "")
     except Exception as exc:
         if reasoning_open:
-            yield _legacy_sse("message", conversation_id, "\n</think>\n\n")
+            yield _legacy_sse("message", conversation_id, "</think>\n\n")
         finalize_tracker("error", error=str(exc), message=final_message)
         mapped_error = map_chat_v2_error(str(exc))
         yield _legacy_sse("message", conversation_id, mapped_error.user_message)

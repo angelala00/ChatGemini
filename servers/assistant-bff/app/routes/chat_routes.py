@@ -259,6 +259,7 @@ async def chat_with_gpts(request: QueryRequest, gid: str, user: dict = Depends(g
                 gid,
                 reasoning_enabled=reasoning_enabled,
                 usage_tracker=tracker,
+                show_reasoning=True,
             )
         except Exception as exc:
             tracker.finalize(status="error", latency_ms=0.0, error=str(exc))
