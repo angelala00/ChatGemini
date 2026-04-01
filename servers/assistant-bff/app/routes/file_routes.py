@@ -106,6 +106,13 @@ def _validate_upload_limits(filename: str, file_content: bytes, model_rule: dict
     limits = _get_gptassistant_upload_limits()
     current_file_count = len(load_file_mapping())
     if current_file_count >= limits["max_active_files"]:
+        gpt_logger.warning(
+            "upload_validation_failed reason=max_active_files filename=%s current_file_count=%s limit=%s model_rule=%s",
+            filename,
+            current_file_count,
+            limits["max_active_files"],
+            model_rule,
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Too many uploaded files. Limit: {limits['max_active_files']}",
@@ -116,6 +123,14 @@ def _validate_upload_limits(filename: str, file_content: bytes, model_rule: dict
     is_image = extension.lstrip(".") in IMAGE_EXTENSIONS and model_rule.get("images")
     max_bytes = limits["image_max_bytes"] if is_image else limits["upload_max_bytes"]
     if file_size > max_bytes:
+        gpt_logger.warning(
+            "upload_validation_failed reason=file_too_large filename=%s file_size=%s max_bytes=%s is_image=%s model_rule=%s",
+            filename,
+            file_size,
+            max_bytes,
+            is_image,
+            model_rule,
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"File too large: {file_size} bytes (limit: {max_bytes} bytes)",
@@ -126,12 +141,26 @@ def _validate_upload_limits(filename: str, file_content: bytes, model_rule: dict
 
     dimensions = detect_image_dimensions_from_bytes(file_content)
     if not dimensions:
+        gpt_logger.warning(
+            "upload_validation_failed reason=image_dimensions_unreadable filename=%s file_size=%s model_rule=%s",
+            filename,
+            file_size,
+            model_rule,
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Unable to read image dimensions",
         )
     width, height = dimensions
     if width > limits["image_max_width"] or height > limits["image_max_height"]:
+        gpt_logger.warning(
+            "upload_validation_failed reason=image_dimensions_too_large filename=%s width=%s height=%s max_width=%s max_height=%s",
+            filename,
+            width,
+            height,
+            limits["image_max_width"],
+            limits["image_max_height"],
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
@@ -140,6 +169,12 @@ def _validate_upload_limits(filename: str, file_content: bytes, model_rule: dict
             ),
         )
     if width * height > limits["image_max_pixels"]:
+        gpt_logger.warning(
+            "upload_validation_failed reason=image_pixels_too_large filename=%s pixels=%s max_pixels=%s",
+            filename,
+            width * height,
+            limits["image_max_pixels"],
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
@@ -279,6 +314,7 @@ async def upload_file(
 
     is_allowed, model_rule = allowed_file(file.filename, model_id)
     if not is_allowed:
+        allowed_extensions, _ = _get_allowed_extensions_by_model(model_id)
         allowed_types = []
         if model_rule.get("documents"):
             allowed_types.append("documents")
@@ -286,6 +322,15 @@ async def upload_file(
             allowed_types.append("images")
         if not allowed_types:
             allowed_types.append("documents/images")
+        gpt_logger.warning(
+            "upload_validation_failed reason=file_type_not_allowed model_id=%s filename=%s content_type=%s allowed_types=%s allowed_extensions=%s model_rule=%s",
+            model_id,
+            file.filename,
+            file.content_type,
+            allowed_types,
+            sorted(allowed_extensions),
+            model_rule,
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"File type not allowed for model '{model_id}'. Allowed types: {', '.join(allowed_types)}"
@@ -296,6 +341,15 @@ async def upload_file(
         file_extension = os.path.splitext(file.filename)[1]
         file_path = os.path.join(UPLOAD_FOLDER, file_id)
         file_content = await file.read()
+        gpt_logger.info(
+            "upload_request_received model_id=%s filename=%s content_type=%s extension=%s file_size=%s model_rule=%s",
+            model_id,
+            file.filename,
+            file.content_type,
+            file_extension.lower(),
+            len(file_content),
+            model_rule,
+        )
         _validate_upload_limits(file.filename, file_content, model_rule)
 
         # 保存文件
@@ -304,12 +358,33 @@ async def upload_file(
 
         # 存储文件ID、文件路径和原始文件名的映射
         insert_file_mapping(file_id, file.filename, file_extension, file_path)
+        gpt_logger.info(
+            "upload_request_succeeded model_id=%s filename=%s file_id=%s path=%s",
+            model_id,
+            file.filename,
+            file_id,
+            file_path,
+        )
 
         return JSONResponse(
             {"message": "File successfully uploaded", "file_id": file_id, "original_filename": file.filename})
-    except HTTPException:
+    except HTTPException as exc:
+        gpt_logger.warning(
+            "upload_request_failed model_id=%s filename=%s content_type=%s detail=%s",
+            model_id,
+            file.filename,
+            file.content_type,
+            exc.detail,
+        )
         raise
     except Exception as e:
+        gpt_logger.exception(
+            "upload_request_failed_unexpected model_id=%s filename=%s content_type=%s error=%s",
+            model_id,
+            file.filename,
+            file.content_type,
+            str(e),
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"File save failed: {str(e)}"
