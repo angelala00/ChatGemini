@@ -4,6 +4,7 @@ import asyncio
 import json
 import time
 from typing import Any, Optional
+from urllib.parse import urljoin
 
 from app.logger import gpt_logger
 from ..event_stream import AssistantMessageEventStream, create_assistant_message_event_stream
@@ -301,10 +302,12 @@ class OpenAICompatProvider:
         except asyncio.CancelledError as exc:
             output.stop_reason = "aborted"
             output.error_message = str(exc)
+            request_target = _request_target_snapshot(self._client)
             gpt_logger.warning(
-                "openai_compat_stream_cancelled model=%s response_id=%s error=%s request_input=%s",
+                "openai_compat_stream_cancelled model=%s response_id=%s target=%s error=%s request_input=%s",
                 model.id,
                 output.response_id,
+                _log_preview(request_target),
                 str(exc),
                 _log_preview(request_snapshot),
             )
@@ -318,10 +321,12 @@ class OpenAICompatProvider:
         except Exception as exc:
             output.stop_reason = "aborted" if _is_abort_error(exc) else "error"
             output.error_message = str(exc)
+            request_target = _request_target_snapshot(self._client)
             gpt_logger.exception(
-                "openai_compat_stream_failed model=%s response_id=%s error=%s request_input=%s",
+                "openai_compat_stream_failed model=%s response_id=%s target=%s error=%s request_input=%s",
                 model.id,
                 output.response_id,
+                _log_preview(request_target),
                 str(exc),
                 _log_preview(request_snapshot),
             )
@@ -775,6 +780,23 @@ def _payload_snapshot(payload: dict[str, Any]) -> dict[str, Any]:
         "tool_choice": payload.get("tool_choice"),
         "extra_body": payload.get("extra_body"),
         "stream_options": payload.get("stream_options"),
+    }
+
+
+def _request_target_snapshot(client: Any) -> dict[str, Any]:
+    base_url = str(getattr(client, "base_url", "") or "")
+    normalized_base_url = base_url.rstrip("/")
+    chat_completions_url = (
+        urljoin(f"{normalized_base_url}/", "chat/completions")
+        if normalized_base_url
+        else ""
+    )
+    api_key = getattr(client, "api_key", None)
+    api_key_last4 = api_key[-4:] if isinstance(api_key, str) and len(api_key) >= 4 else ""
+    return {
+        "base_url": base_url,
+        "chat_completions_url": chat_completions_url,
+        "api_key_last4": api_key_last4,
     }
 
 
