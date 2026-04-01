@@ -200,6 +200,18 @@ async def get_gpts_detail(gid: str, user: dict = Depends(get_current_user)):
         exclude_fields.update({"system_prompt", "auth"})
 
     gpts_detail = {k: v for k, v in gpt_item.items() if k not in exclude_fields}
+    if isinstance(gpts_detail.get("models"), list):
+        visible_models = sanitize_models_for_detail(gpts_detail["models"], user["email"], user["sub"])
+        gpts_detail["models"] = visible_models
+        if isinstance(gpts_detail.get("default_model"), str):
+            default_model = gpts_detail["default_model"]
+            visible_model_ids = {item.get("id") for item in visible_models if isinstance(item, dict)}
+            if default_model not in visible_model_ids:
+                gpts_detail["default_model"] = (
+                    visible_models[0].get("id", "")
+                    if visible_models
+                    else ""
+                )
     return gpts_detail
 
 
@@ -298,11 +310,27 @@ async def delete_gpt(gid: str, user: dict = Depends(get_current_user)):
 def auth_ok(gpt_dict: dict, user: str, user_id: Optional[str] = None):
     if user_id and gpt_dict.get("owner") == user_id:
         return True
-    if gpt_dict['auth']['type'] == "all":
+    auth = gpt_dict.get("auth") or {"type": "all"}
+    if auth['type'] == "all":
         return True
-    if gpt_dict['auth']['type'] == "white":
-        if user in gpt_dict['auth']['user']:
+    if auth['type'] == "white":
+        if user in auth.get('user', []):
             return True
-    if gpt_dict['auth']['type'] == "self":
+    if auth['type'] == "self":
         return False
     return False
+
+
+def filter_models_for_user(models: list[dict], user: str, user_id: Optional[str] = None) -> list[dict]:
+    visible_models: list[dict] = []
+    for item in models:
+        if not isinstance(item, dict):
+            continue
+        if auth_ok(item, user, user_id):
+            visible_models.append(item)
+    return visible_models
+
+
+def sanitize_models_for_detail(models: list[dict], user: str, user_id: Optional[str] = None) -> list[dict]:
+    visible_models = filter_models_for_user(models, user, user_id)
+    return [{k: v for k, v in item.items() if k != "auth"} for item in visible_models]

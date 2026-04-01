@@ -49,6 +49,10 @@ register_gpt({
                 "supports_reasoning": GLM5_MODEL["supports_reasoning"],
                 "supports_native_image_input": GLM5_MODEL["supports_native_image_input"],
                 "compat": GLM5_MODEL["compat"],
+                "auth": {
+                    "type": "white",
+                    "user": ["alice@example.com", "user4-claude@nu.com"],
+                },
             },
         ]
     },

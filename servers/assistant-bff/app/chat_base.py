@@ -12,7 +12,8 @@ client = openai.AsyncOpenAI(
     base_url=model_config.BASE_URL,
     http_client=httpx.AsyncClient(
         timeout=60.0,
-        verify=False
+        verify=False,
+        trust_env=False,
     )
 )
 
