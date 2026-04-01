@@ -250,7 +250,7 @@ export const Markdown = (props: MarkdownProps) => {
             )}
         
             <ReactMarkdown
-                className={`prose text-sm lg:prose-base max-w-[100%] break-words ${
+                className={`prose min-w-0 max-w-full text-sm break-words [overflow-wrap:anywhere] lg:prose-base ${
                     className ?? ""
                 }`}
                 children={markdownContent}

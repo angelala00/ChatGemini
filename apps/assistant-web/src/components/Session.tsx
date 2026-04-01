@@ -111,8 +111,8 @@ export const Session = (props: SessionProps) => {
             <div
                 className={`${
                     isModel
-                        ? "w-full rounded-[1.75rem] border border-stone-200/80 bg-white px-7 py-6 shadow-[0_12px_32px_rgba(0,0,0,0.04)]"
-                        : "inline-flex w-fit max-w-[38rem] rounded-[1.35rem] border border-stone-300/70 bg-stone-200/90 px-5 py-4 text-stone-900 shadow-[0_6px_18px_rgba(28,25,23,0.06)]"
+                        ? "min-w-0 w-full overflow-hidden rounded-[1.75rem] border border-stone-200/80 bg-white px-7 py-6 shadow-[0_12px_32px_rgba(0,0,0,0.04)]"
+                        : "inline-flex min-w-0 w-fit max-w-[38rem] overflow-hidden rounded-[1.35rem] border border-stone-300/70 bg-stone-200/90 px-5 py-4 text-stone-900 shadow-[0_6px_18px_rgba(28,25,23,0.06)]"
                 }`}
             >
                 {editState.state === SessionEditState.Edit &&
