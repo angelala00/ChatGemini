@@ -1,11 +1,17 @@
 import aiIcon from "../assets/icons/wand-magic-sparkles-solid.svg";
 import userIcon from "../assets/icons/user-regular.svg";
-import editIcon from "../assets/icons/pen-to-square-solid.svg";
 import deleteIcon from "../assets/icons/trash-solid.svg";
-import refreshIcon from "../assets/icons/arrows-rotate-solid.svg";
-import ExportIcon from "../assets/icons/file-export-solid.svg?react";
-import clipboardIcon from "../assets/icons/clipboard-regular.svg";
-import { ReactElement, ReactNode, useRef } from "react";
+import { ArrowPathIcon } from "@heroicons/react/24/outline";
+import { DocumentDuplicateIcon } from "@heroicons/react/24/outline";
+import { ArrowRightStartOnRectangleIcon } from "@heroicons/react/24/outline";
+import { PencilSquareIcon } from "@heroicons/react/24/outline";
+import {
+    ReactElement,
+    ReactNode,
+    useEffect,
+    useRef,
+    useState,
+} from "react";
 import { setClipboardText } from "../helpers/setClipboardText";
 import { setTextAreaHeight } from "../helpers/setTextAreaHeight";
 import { sendUserAlert } from "../helpers/sendUserAlert";
@@ -55,6 +61,32 @@ export const Session = (props: SessionProps) => {
     } = props;
 
     const textAreaRef = useRef<HTMLTextAreaElement>(null);
+    const userActionsTimerRef = useRef<number | null>(null);
+    const [showUserActions, setShowUserActions] = useState(false);
+
+    const cancelUserActionsTimer = () => {
+        if (userActionsTimerRef.current !== null) {
+            window.clearTimeout(userActionsTimerRef.current);
+            userActionsTimerRef.current = null;
+        }
+    };
+
+    const handleUserActionsEnter = () => {
+        cancelUserActionsTimer();
+        userActionsTimerRef.current = window.setTimeout(() => {
+            setShowUserActions(true);
+            userActionsTimerRef.current = null;
+        }, 300);
+    };
+
+    const handleUserActionsLeave = () => {
+        cancelUserActionsTimer();
+        setShowUserActions(false);
+    };
+
+    useEffect(() => {
+        return () => cancelUserActionsTimer();
+    }, []);
 
     const handleCopy = async () => {
         let text: string = (children as ReactElement).props.children;
@@ -76,6 +108,8 @@ export const Session = (props: SessionProps) => {
             className={`mb-6 space-y-3 ${
                 isModel ? "" : "flex flex-col items-end"
             }`}
+            onMouseEnter={isModel ? undefined : handleUserActionsEnter}
+            onMouseLeave={isModel ? undefined : handleUserActionsLeave}
         >
             <div
                 className={`flex items-center ${
@@ -157,13 +191,25 @@ export const Session = (props: SessionProps) => {
                 )}
             </div>
             <div
-                className={`flex gap-1 ${isModel ? "ml-1" : "mr-1 justify-end self-end"}`}
+                className={`flex gap-1 ${
+                    isModel
+                        ? "ml-1"
+                        : `mt-1 h-8 items-center justify-end self-end transition-opacity duration-300 ease-out ${
+                              showUserActions
+                                  ? "opacity-100 pointer-events-auto"
+                                  : "opacity-0 pointer-events-none"
+                          }`
+                }`}
             >
                 <button
                     className="flex size-7 items-center justify-center rounded-xl text-stone-500 transition-colors hover:bg-stone-200/70"
                     onClick={handleCopy}
                 >
-                    <img src={clipboardIcon} className="size-4" alt="" />
+                    <DocumentDuplicateIcon
+                        className="size-[18px]"
+                        strokeWidth={2}
+                        color="#737373"
+                    />
                 </button>
                 {role === SessionRole.User &&
                     editState.state !== SessionEditState.Edit && (
@@ -173,7 +219,11 @@ export const Session = (props: SessionProps) => {
                                 onEdit(index, SessionEditState.Edit, "")
                             }
                         >
-                            <img src={editIcon} className="size-4" alt="" />
+                            <PencilSquareIcon
+                                className="size-[18px]"
+                                strokeWidth={2}
+                                color="#737373"
+                            />
                         </button>
                     )}
                 {role === SessionRole.Model && (
@@ -181,7 +231,11 @@ export const Session = (props: SessionProps) => {
                         className="flex size-7 items-center justify-center rounded-xl text-stone-500 transition-colors hover:bg-stone-200/70"
                         onClick={() => onRefresh(index)}
                     >
-                        <img src={refreshIcon} className="size-4" alt="" />
+                        <ArrowPathIcon
+                            className="size-[18px]"
+                            strokeWidth={2}
+                            color="#737373"
+                        />
                     </button>
                 )}
                 {role === SessionRole.Model && index !== 1 && (
@@ -198,7 +252,11 @@ export const Session = (props: SessionProps) => {
                         className="flex size-7 items-center justify-center rounded-xl text-stone-500 transition-colors hover:bg-stone-200/70"
                         onClick={() => onExport(index)}
                     >
-                        <ExportIcon className="size-4 text-gray-500" />
+                        <ArrowRightStartOnRectangleIcon
+                            className="size-[18px]"
+                            strokeWidth={2}
+                            color="#737373"
+                        />
                     </button>
                 )}
             </div>

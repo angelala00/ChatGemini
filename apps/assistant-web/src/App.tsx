@@ -17,7 +17,6 @@ import { initialMappings, onUpdate as updateMappings } from "./store/mappings";
 import { initialSessionExtensions, onUpdate as updateSessionExtensions } from "./store/sessionsExtension";
 import { chatWithAI } from "./helpers/chatWithAI";
 import { GenerativeContentBlob } from "@google/generative-ai";
-import { getBase64Img } from "./helpers/getBase64Img";
 import { handleRequest } from "./helpers/handleRequest";
 import { sendUserAlert } from "./helpers/sendUserAlert";
 import { sendUserConfirm } from "./helpers/sendUserConfirm";
@@ -29,6 +28,8 @@ import { useTranslation } from "react-i18next";
 import { getCurrentLocale } from "./helpers/getCurrentLocale";
 import { getFullPath } from "./helpers/getDomainAndPath";
 import { ModelOption, UploadCategory } from "./types/models";
+import { resolveAttachmentViewItems } from "./helpers/getAttachmentViewItems";
+import { buildAttachmentPostscriptHtml } from "./helpers/buildAttachmentPostscriptHtml";
 
 const PREFERRED_MODEL_COOKIE_KEY = "preferred_model";
 const PREFERRED_REASONING_COOKIE_KEY = "preferred_reasoning_enabled";
@@ -159,7 +160,7 @@ const App = () => {
     let r_gid = gid?gid:"gptassistant"
 
 
-    const handleExportSession = (id: string) => {
+    const handleExportSession = async (id: string) => {
         const session = sessions[id];
         if (session) {
             const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -172,19 +173,20 @@ const App = () => {
             )} ${sessionTime}\n- ${t(
                 "App.handleExportSession.export_time"
             )} ${exportTime}\n\n---\n\n`;
-            session.forEach(({ role, parts, timestamp, attachment }) => {
+            for (const { role, parts, timestamp, attachment } of session) {
+                let renderedParts = parts;
                 if (!!attachment?.data.length) {
                     const { data, mimeType } = attachment;
-                    const base64ImgData = `data:${mimeType};base64,${data}`;
-                    parts += `\n\n<img alt="" src="${base64ImgData}" />`;
+                    const attachmentItems = await resolveAttachmentViewItems(data);
+                    renderedParts += buildAttachmentPostscriptHtml(attachmentItems, mimeType);
                 }
                 const timeString = new Date(timestamp).toLocaleString();
                 exportData += `## ${
                     role === "user"
                         ? t("App.handleExportSession.role_user")
                         : t("App.handleExportSession.role_model")
-                }@${timeString}\n\n${parts}\n\n`;
-            });
+                }@${timeString}\n\n${renderedParts}\n\n`;
+            }
             saveMdToHtml(
                 exportData,
                 `${t("App.handleExportSession.filename_prefix")}_${site}_${id}`
