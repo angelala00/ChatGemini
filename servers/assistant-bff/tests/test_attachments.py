@@ -13,10 +13,6 @@ from app.attachments.tools import (
     execute_attachment_tool,
     get_attachment_tool_definitions,
 )
-from app.gptassistant_planner import (
-    DEFAULT_DOCUMENT_PRELOAD_MAX_CHARS,
-    DEFAULT_IMAGE_PRELOAD_MAX_CHARS,
-)
 
 
 class AttachmentToolTests(unittest.TestCase):
@@ -275,12 +271,12 @@ class AttachmentToolTests(unittest.TestCase):
 
 
 class AttachmentPreprocessTests(unittest.TestCase):
-    @patch("app.attachments.service.extract_text_from_file_ids")
+    @patch("app.attachments.service.load_file_mapping")
     @patch("app.attachments.service.resolve_attachment_selection")
-    def test_preload_text_limits_document_chars(
+    def test_tool_first_injects_manifest_for_document_requests(
         self,
         resolve_attachment_selection_mock,
-        extract_text_from_file_ids_mock,
+        load_file_mapping_mock,
     ):
         resolve_attachment_selection_mock.return_value = AttachmentSelection(
             image_file_ids=None,
@@ -288,30 +284,32 @@ class AttachmentPreprocessTests(unittest.TestCase):
             image_paths=[],
             document_paths=["/tmp/demo.pdf"],
         )
-        extract_text_from_file_ids_mock.return_value = "\n[上传文件内容]:\nDemo"
+        load_file_mapping_mock.return_value = {
+            "file-1": {"filename": "demo.pdf"},
+        }
 
-        self._run_async(
+        message = self._run_async(
             build_user_message_from_attachments(
                 query="附件内容是啥",
                 file_ids="file-1",
                 model_id="glm-4.7",
                 model_supports_native_images=False,
-                document_strategy="preload_text",
-                non_native_image_strategy="tool_only",
             )
         )
 
-        extract_text_from_file_ids_mock.assert_called_once_with(
-            "file-1",
-            max_chars=DEFAULT_DOCUMENT_PRELOAD_MAX_CHARS,
-        )
+        self.assertIsInstance(message.content, str)
+        self.assertIn("[附件清单]", message.content)
+        self.assertIn("document_read_text", message.content)
+        self.assertIn("demo.pdf", message.content)
 
-    @patch("app.attachments.service.extract_text_from_file_ids")
+    @patch("app.attachments.service._encode_image_content")
+    @patch("app.attachments.service.load_file_mapping")
     @patch("app.attachments.service.resolve_attachment_selection")
-    def test_preprocess_text_limits_image_chars(
+    def test_tool_first_attaches_native_images_without_preprocess(
         self,
         resolve_attachment_selection_mock,
-        extract_text_from_file_ids_mock,
+        load_file_mapping_mock,
+        encode_image_content_mock,
     ):
         resolve_attachment_selection_mock.return_value = AttachmentSelection(
             image_file_ids="file-1",
@@ -319,23 +317,25 @@ class AttachmentPreprocessTests(unittest.TestCase):
             image_paths=["/tmp/demo.png"],
             document_paths=[],
         )
-        extract_text_from_file_ids_mock.return_value = "\n[上传文件内容]:\nOCR"
+        load_file_mapping_mock.return_value = {
+            "file-1": {"filename": "demo.png"},
+        }
+        encode_image_content_mock.return_value = object()
 
-        self._run_async(
+        message = self._run_async(
             build_user_message_from_attachments(
                 query="图片内容是啥",
                 file_ids="file-1",
                 model_id="glm-4.7",
-                model_supports_native_images=False,
-                document_strategy="tool_only",
-                non_native_image_strategy="preprocess_text",
+                model_supports_native_images=True,
             )
         )
 
-        extract_text_from_file_ids_mock.assert_called_once_with(
-            "file-1",
-            max_chars=DEFAULT_IMAGE_PRELOAD_MAX_CHARS,
-        )
+        self.assertIsInstance(message.content, list)
+        self.assertEqual(len(message.content), 2)
+        self.assertIn("[附件清单]", message.content[0].text)
+        self.assertIn("document_load_images", message.content[0].text)
+        encode_image_content_mock.assert_called_once_with("/tmp/demo.png")
 
     def _run_async(self, coroutine):
         import asyncio

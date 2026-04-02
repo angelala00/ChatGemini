@@ -80,6 +80,12 @@ dashboard，时间范围筛选不生效
 修复思考标签问题
 26年1月，
 增加platform页面
+26年4月，
+gpt助手 chat-v2 去掉 planner，统一改为 tool-first 附件链路
+  有附件时默认暴露 attachment tools
+  文档不再 preload 到 prompt，交给模型按需调用 document_read_text
+  支持原生图片输入的模型直接挂图片 block
+  更新 chat-v2 流程图文档
 
 TODO
 聊天窗口，模型在返回用户问题的，不断的流式输出的过程中，有一些问题，体验特别不好，比如说，回复时间很长，我的理解又跟不上输出的速度，我想往上拉一点，慢慢看，再想拉到底部的时候，它并没有继续跟着滚动

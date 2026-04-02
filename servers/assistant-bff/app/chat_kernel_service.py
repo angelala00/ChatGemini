@@ -1,4 +1,3 @@
-import asyncio
 import json
 import time
 import uuid
@@ -13,7 +12,6 @@ from app.attachments import (
 )
 from app.chat_base import client, match_history, save_match_history
 from app.gptassistant_error_mapping import map_chat_v2_error
-from app.gptassistant_planner import PlannerRuntimeCapabilities, build_execution_plan
 from app.logger import gpt_logger
 from app.llm_kernel import (
     AssistantMessage,
@@ -39,7 +37,6 @@ from app.metrics.events import UsageEventTracker
 
 
 KERNEL_HISTORY_PREFIX = "llm_kernel:gptassistant:"
-IMAGE_PREPROCESS_TIMEOUT_SECONDS = 30
 MAX_TOOL_CONTINUATION_TURNS = 4
 DEFAULT_CHAT_V2_MAX_INPUT_CHARS = 120000
 DEFAULT_CHAT_V2_RECENT_TURNS = 8
@@ -114,15 +111,6 @@ def _model_compat(model_config: dict[str, Any]) -> OpenAICompletionsCompat:
     return OpenAICompletionsCompat(**merged_compat)
 
 
-def _planner_runtime_capabilities(model_name: str) -> PlannerRuntimeCapabilities:
-    lowered = (model_name or "").lower()
-    if lowered == "glm-4.7":
-        return PlannerRuntimeCapabilities(
-            supports_tool_result_continuation=False,
-        )
-    return PlannerRuntimeCapabilities()
-
-
 def _kernel_model_from_config(model_config: dict[str, Any], reasoning_enabled: bool) -> Model:
     model_name = model_config.get("model_name") or model_config.get("id") or ""
     supports_reasoning = bool(model_config.get("supports_reasoning"))
@@ -143,21 +131,12 @@ async def _build_user_message_with_preprocess_events(
     query: str,
     file_ids: Optional[str],
     model: Model,
-    execution_plan,
-    emit_event,
 ) -> UserMessage:
     return await build_user_message_from_attachments(
         query=query,
         file_ids=file_ids,
         model_id=model.id,
         model_supports_native_images=model.supports_input("image"),
-        emit_event=emit_event,
-        image_preprocess_timeout_seconds=IMAGE_PREPROCESS_TIMEOUT_SECONDS,
-        document_strategy=execution_plan.document_strategy,
-        non_native_image_strategy=execution_plan.non_native_image_strategy,
-        attach_native_images=execution_plan.attach_native_images,
-        document_preload_max_chars=execution_plan.document_preload_max_chars,
-        image_preload_max_chars=execution_plan.image_preload_max_chars,
     )
 
 
@@ -654,22 +633,8 @@ async def chat_with_kernel_gptassistant(
         )
         tracker_finalized = True
 
-    async def emit_preprocess_event(event_name: str, **payload: Any) -> None:
-        yield_payload = _event_payload(
-            response_id,
-            next_sequence(),
-            conversation_id,
-            **payload,
-        )
-        preprocess_events.append(_sse(event_name, yield_payload))
-
     model = _kernel_model_from_config(model_config, reasoning_enabled)
     requested_reasoning_enabled = bool(model.reasoning and reasoning_enabled)
-    execution_plan = build_execution_plan(
-        query=query,
-        has_attachments=bool(file_ids),
-        runtime_capabilities=_planner_runtime_capabilities(model.id),
-    )
     if usage_tracker:
         usage_tracker.set_model(model.id)
 
@@ -680,11 +645,10 @@ async def chat_with_kernel_gptassistant(
         model_id=model.id,
     )
     history = trimmed_history.messages
-    preprocess_events: list[str] = []
     effective_system_prompt = system_prompt
     if trimmed_history.summary:
         effective_system_prompt = f"{effective_system_prompt}\n\n{trimmed_history.summary}"
-    if file_ids and execution_plan.include_attachment_tool_guidance:
+    if file_ids:
         attachment_guidance = build_attachment_tool_guidance(
             file_ids=file_ids,
             model_supports_native_images=model.supports_input("image"),
@@ -692,14 +656,10 @@ async def chat_with_kernel_gptassistant(
         if attachment_guidance:
             effective_system_prompt = f"{effective_system_prompt}\n\n{attachment_guidance}"
 
-    context = Context(
-        system_prompt=effective_system_prompt,
-        messages=[],
-        tools=(
-            get_attachment_tool_definitions(model_supports_native_images=model.supports_input("image"))
-            if file_ids and execution_plan.expose_attachment_tools
-            else []
-        ),
+    base_tools = (
+        get_attachment_tool_definitions(model_supports_native_images=model.supports_input("image"))
+        if file_ids
+        else []
     )
     options = OpenAICompatOptions(
         reasoning_effort="high" if requested_reasoning_enabled else None,
@@ -718,14 +678,14 @@ async def chat_with_kernel_gptassistant(
         ),
     )
     gpt_logger.info(
-        "tool_continuation response_start conversation_id=%s response_id=%s model=%s reasoning_enabled=%s file_ids=%s execution_plan=%s tools=%s",
+        "tool_continuation response_start conversation_id=%s response_id=%s model=%s reasoning_enabled=%s file_ids=%s tool_first=%s tools=%s",
         conversation_id,
         response_id,
         model.id,
         requested_reasoning_enabled,
         _log_preview(_available_file_ids(file_ids)),
-        _log_preview(asdict(execution_plan)),
-        _log_preview([tool.name for tool in context.tools]),
+        True,
+        _log_preview([tool.name for tool in base_tools]),
     )
 
     try:
@@ -733,8 +693,6 @@ async def chat_with_kernel_gptassistant(
             query,
             file_ids,
             model,
-            execution_plan,
-            emit_preprocess_event,
         )
         _raise_if_context_too_long(
             model_id=model.id,
@@ -743,17 +701,15 @@ async def chat_with_kernel_gptassistant(
             messages=[*history, user_message],
             stage="initial_request",
         )
-        context.messages = [*history, user_message]
-
-        for item in preprocess_events:
-            yield item
-        preprocess_events.clear()
-
         current_messages = [*history, user_message]
-        context.messages = list(current_messages)
 
         for turn in range(MAX_TOOL_CONTINUATION_TURNS):
             turn_index = turn + 1
+            context = Context(
+                system_prompt=effective_system_prompt,
+                messages=list(current_messages),
+                tools=base_tools,
+            )
             _raise_if_context_too_long(
                 model_id=model.id,
                 model_config=model_config,
@@ -767,7 +723,7 @@ async def chat_with_kernel_gptassistant(
                 response_id,
                 turn_index,
                 MAX_TOOL_CONTINUATION_TURNS,
-                len(context.messages),
+                len(current_messages),
             )
             kernel_stream = stream(model, context, options)
 
@@ -824,7 +780,7 @@ async def chat_with_kernel_gptassistant(
             if final_message.stop_reason != "tool_use":
                 break
 
-            if not context.tools:
+            if not base_tools:
                 raise RuntimeError("tool continuation requested but no tools are available")
 
             tool_results = await _execute_attachment_tool_calls(
@@ -858,9 +814,8 @@ async def chat_with_kernel_gptassistant(
                         content=[_serialize_content_block(block) for block in tool_result.content],
                         details=tool_result.details,
                     ),
-                )
+            )
             current_messages.extend(tool_results)
-            context.messages = list(current_messages)
         else:
             gpt_logger.error(
                 "tool_continuation exceeded_max_turns conversation_id=%s response_id=%s model=%s max_turns=%s file_ids=%s",
@@ -906,9 +861,6 @@ async def chat_with_kernel_gptassistant(
             model.id,
             str(exc),
         )
-        for item in preprocess_events:
-            yield item
-        preprocess_events.clear()
         finalize_tracker("error", error=str(exc), message=final_message)
         if not emitted_error_event:
             mapped_error = map_chat_v2_error(str(exc))
