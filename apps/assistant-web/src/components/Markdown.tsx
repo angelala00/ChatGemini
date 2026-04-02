@@ -15,7 +15,6 @@ import { getPythonResult } from "../helpers/getPythonResult";
 import type { PyodideInterface } from "../types/pyodide";
 import { getPythonRuntime } from "../helpers/getPythonRuntime";
 import { useTranslation } from "react-i18next";
-import { ChevronDownIcon, ChevronUpIcon } from "@heroicons/react/24/outline";
 import { getFullPath } from "../helpers/getDomainAndPath";
 const LazyECharts = lazy(() =>
     import("./ECharts").then((module) => ({ default: module.ECharts }))
@@ -29,6 +28,17 @@ interface MarkdownProps {
     readonly pythonRuntime: PyodideInterface | null;
     readonly onPythonRuntimeCreated: (pyodide: PyodideInterface) => void;
     readonly children: string;
+}
+
+interface ThinkStep {
+    readonly summary: string;
+    readonly content: string;
+}
+
+interface ThinkingNode {
+    readonly kind: "thought" | "tool";
+    readonly summary: string;
+    readonly content: string;
 }
 
 const TraceLog = "😈 [TRACE]";
@@ -133,7 +143,6 @@ export const Markdown = (props: MarkdownProps) => {
     );
 
     const [isThinkingExpanded, setIsThinkingExpanded] = useState(false);
-    const [thinkingDots, setThinkingDots] = useState(".");
     
     // 解析 Markdown 中的超链接
     // 如果为"/api/"开头，是在调用后端的 API 服务，则获取完整路径
@@ -173,9 +182,7 @@ export const Markdown = (props: MarkdownProps) => {
         }
         return steps;
     }
-    // console.log('===thinkTexts[0]:'+thinkTexts[0]);
-    let steps = extractSteps(thinkTexts[0]);
-    function parseStep(raw: string){
+    function parseStep(raw: string): ThinkStep | null{
         const re = /^<summary>([\s\S]*?)<\/summary>([\s\S]*)$/;
         const m = re.exec(raw.trim());
         if (m) {
@@ -183,69 +190,90 @@ export const Markdown = (props: MarkdownProps) => {
         }
         return null
     }
-    let stepData = steps.map(parseStep);
-    // console.log('===stepData:'+stepData.length);
-    let lastStepData = stepData.slice(-1)[0];
-    // console.log('===lastStepData:'+lastStepData);
-    let lastSummary = lastStepData?lastStepData.summary:"...";
-    let lastContent = lastStepData?lastStepData.content:"";
-
-    //兼容老的聊天记录
-    if (stepData.length == 0 && thinkTexts.length > 0){
-        stepData = thinkTexts.map((text, index)=> {
-            return {"summary":text.trim(),"content":text.trim()}
-        });
-        lastSummary = "已思考"
-    }
-
-    const thinkingTitle = isThinking
-        ? `${t("components.Markdown.thinking_title_pending")}${thinkingDots}`
-        : t("components.Markdown.thinking_title_done");
+    const mergeToolSteps = (steps: Array<ThinkStep | null>): ThinkStep[] => {
+        const filtered = steps.filter((step): step is ThinkStep => step !== null);
+        const merged: ThinkStep[] = [];
+        for (let index = 0; index < filtered.length; index += 1) {
+            const current = filtered[index];
+            const next = filtered[index + 1];
+            if (
+                current &&
+                next &&
+                current.summary === "工具调用中" &&
+                next.summary === "工具调用结果"
+            ) {
+                merged.push({
+                    summary: "工具调用",
+                    content: `${current.content} ${next.content}`.trim(),
+                });
+                index += 1;
+                continue;
+            }
+            merged.push(current);
+        }
+        return merged;
+    };
+    const thinkingNodes: ThinkingNode[] = thinkTexts.flatMap((text) => {
+        const parsedSteps = mergeToolSteps(extractSteps(text).map(parseStep));
+        if (parsedSteps.length > 0) {
+            return parsedSteps.map((step) => ({
+                kind: step.summary === "工具调用" ? "tool" : "thought",
+                summary: step.summary,
+                content: step.content,
+            }));
+        }
+        const trimmed = text.trim();
+        if (!trimmed) {
+            return [];
+        }
+        return [
+            {
+                kind: "thought",
+                summary: "思考",
+                content: trimmed,
+            },
+        ];
+    });
+    const thinkingCompleted = !isThinking && thinkingNodes.length > 0;
+    const thinkingTitle = thinkingCompleted
+        ? t("components.Markdown.thinking_title_done")
+        : t("components.Markdown.thinking_title_pending");
 
     useEffect(() => {
         setPythonResult({ result: "", startPos: null, endPos: null });
     }, [t, children]);
 
-    useEffect(() => {
-        if (!isThinking) {
-            setThinkingDots(".");
-            return;
-        }
-        const dotsFrames = [".", "..", "..."];
-        let frameIndex = 0;
-        const timer = window.setInterval(() => {
-            frameIndex = (frameIndex + 1) % dotsFrames.length;
-            setThinkingDots(dotsFrames[frameIndex]);
-        }, 450);
-        return () => window.clearInterval(timer);
-    }, [isThinking]);
-
     return (
         <div className={`relative ${className ?? ""}`}>
             {/* 如果有 <think> 标签，则显示思考内容 */}
-            {thinkTexts.length > 0 && (
-                <div className="mb-4 rounded-2xl border border-stone-200 bg-stone-100/90 px-4 py-3">
-                    <div
-                        className="flex items-center justify-between cursor-pointer"
+            {thinkingNodes.length > 0 && (
+                <div className="mb-4">
+                    <button
+                        type="button"
+                        className="thought-toggle"
                         onClick={() => setIsThinkingExpanded(!isThinkingExpanded)}
                     >
-                        <span className="text-sm font-semibold text-stone-700">{thinkingTitle}</span>
-                        {isThinkingExpanded ? (
-                            <ChevronUpIcon className="h-5 w-5 text-stone-500" />
-                        ) : (
-                            <ChevronDownIcon className="h-5 w-5 text-stone-500" />
-                        )}
-                    </div>
-                    {!isThinkingExpanded && isThinking && !!lastContent && (
-                        <span className="text-sm text-stone-600">{lastContent}</span>
-                    )}
-                    {isThinkingExpanded && (
-                        <div className="timeline-container">
-                            {stepData.map((step, index) => (
-                                <p key={index} className="mt-2 text-sm leading-7 text-stone-600">{step?.content}</p>
+                        <span className="thought-toggle-label">{thinkingTitle}</span>
+                        <span className="thought-toggle-caret" aria-hidden="true">
+                            {isThinkingExpanded ? "∨" : ">"}
+                        </span>
+                    </button>
+                    {isThinkingExpanded ? (
+                        <div className="thought-thread">
+                            {thinkingNodes.map((node, index) => (
+                                <div key={index} className={`thought-node ${node.kind}`}>
+                                    <div className="thought-node-body">
+                                        {node.content.replace(/\s*\n+\s*/g, " ").trim()}
+                                    </div>
+                                </div>
                             ))}
+                            {thinkingCompleted && (
+                                <div className="thought-node complete">
+                                    <div className="thought-node-body">思考完成</div>
+                                </div>
+                            )}
                         </div>
-                    )}
+                    ) : null}
                 </div>
             )}
         
