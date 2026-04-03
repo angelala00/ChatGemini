@@ -23,10 +23,6 @@ class AttachmentToolTests(unittest.TestCase):
             [
                 "document_list",
                 "document_read_text",
-                "resource_list",
-                "resource_read_text",
-                "attachment_list",
-                "attachment_extract_text",
             ],
         )
 
@@ -38,12 +34,6 @@ class AttachmentToolTests(unittest.TestCase):
                 "document_list",
                 "document_read_text",
                 "document_load_images",
-                "resource_list",
-                "resource_read_text",
-                "resource_load_images",
-                "attachment_list",
-                "attachment_extract_text",
-                "attachment_load_images",
             ],
         )
 
@@ -62,7 +52,7 @@ class AttachmentToolTests(unittest.TestCase):
         )
 
         self.assertIn("prefer document_read_text", guidance)
-        self.assertIn("attachment_extract_text", guidance)
+        self.assertNotIn("attachment_extract_text", guidance)
         self.assertNotIn("document_load_images", guidance)
 
     @patch("app.attachments.service.resolve_attachment_selection")
@@ -80,8 +70,8 @@ class AttachmentToolTests(unittest.TestCase):
         )
 
         self.assertIn("document_load_images", guidance)
-        self.assertIn("resource_load_images", guidance)
-        self.assertIn("attachment_load_images", guidance)
+        self.assertNotIn("resource_load_images", guidance)
+        self.assertNotIn("attachment_load_images", guidance)
 
     @patch("app.attachments.tools._execute_attachment_list")
     def test_legacy_attachment_alias_executes_same_handler(self, execute_attachment_list_mock):

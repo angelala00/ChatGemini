@@ -19,12 +19,17 @@ from app.chat_service import (
 from app.chat_kernel_service import chat_with_kernel_gptassistant
 from app.utils.model_tool import MODEL_NAME_THINKING
 from app.metrics.events import create_usage_event
+from app.tracing import create_chat_trace
 
 
-def _invoke_chat_function(func, args, *, usage_tracker):
-    if "usage_tracker" in inspect.signature(func).parameters:
-        return func(*args, usage_tracker=usage_tracker)
-    return func(*args)
+def _invoke_chat_function(func, args, *, usage_tracker, trace_recorder):
+    kwargs = {}
+    parameters = inspect.signature(func).parameters
+    if "usage_tracker" in parameters:
+        kwargs["usage_tracker"] = usage_tracker
+    if "trace_recorder" in parameters:
+        kwargs["trace_recorder"] = trace_recorder
+    return func(*args, **kwargs)
 
 
 def _count_file_ids(file_ids: Optional[str]) -> int:
@@ -45,6 +50,14 @@ async def _stream_with_metrics(generator, tracker):
         raise
     else:
         tracker.finalize(status="success", latency_ms=(time.perf_counter() - start_time) * 1000)
+
+
+def _dump_model(model):
+    if hasattr(model, "model_dump"):
+        return model.model_dump()
+    if hasattr(model, "dict"):
+        return model.dict()
+    return model
 
 
 router = APIRouter(prefix="/api", tags=["chat"])
@@ -126,10 +139,6 @@ async def chat_with_gpt_assistant(request: QueryRequest, user: dict = Depends(ge
     )
     if not selected_model_config.get("supports_reasoning", False):
         reasoning_enabled = False
-    print(f"request.file_ids:{request.file_ids}")
-    # if request.file_ids:
-    #     user_prompt += extract_text_from_file_ids(request.file_ids)
-    print(f"user_prompt:{user_prompt}")
     upload_count = _count_file_ids(request.file_ids)
     tracker = create_usage_event(
         user_id=user.get("sub", "unknown"),
@@ -139,6 +148,41 @@ async def chat_with_gpt_assistant(request: QueryRequest, user: dict = Depends(ge
         requested_model=model_name,
         upload_count=upload_count,
     )
+    trace_recorder = create_chat_trace(
+        user_id=user.get("sub", "unknown"),
+        user_email=user.get("email"),
+        conversation_id=cid,
+        gid="gptassistant",
+        route="/api/chat",
+        requested_model=request.base_model or request.model or model_name,
+        selected_model=model_name,
+        reasoning_enabled=reasoning_enabled,
+        query=request.query,
+        system_prompt=system_prompt,
+        file_ids=request.file_ids,
+        request_payload=_dump_model(request),
+    )
+    if trace_recorder:
+        trace_recorder.log(
+            "request.received",
+            {
+                "conversation_id": cid,
+                "query": request.query,
+                "file_ids": request.file_ids,
+                "model": request.model,
+                "base_model": request.base_model,
+                "reasoning_enabled": reasoning_enabled,
+            },
+        )
+        trace_recorder.log(
+            "request.normalized",
+            {
+                "conversation_id": cid,
+                "user_prompt": user_prompt,
+                "file_ids": request.file_ids,
+                "model_name": model_name,
+            },
+        )
     chat_function = chat_with_gpt
     try:
         generator = _invoke_chat_function(
@@ -154,9 +198,12 @@ async def chat_with_gpt_assistant(request: QueryRequest, user: dict = Depends(ge
                 selected_model_config,
             ),
             usage_tracker=tracker,
+            trace_recorder=trace_recorder,
         )
     except Exception as exc:
         tracker.finalize(status="error", latency_ms=0.0, error=str(exc))
+        if trace_recorder:
+            trace_recorder.finalize(status="error", error=str(exc), duration_ms=0.0)
         raise
     return StreamingResponse(
         _stream_with_metrics(generator, tracker),
@@ -199,6 +246,32 @@ async def chat_with_gpt_assistant_v2(request: QueryRequest, user: dict = Depends
         requested_model=model_name,
         upload_count=upload_count,
     )
+    trace_recorder = create_chat_trace(
+        user_id=user.get("sub", "unknown"),
+        user_email=user.get("email"),
+        conversation_id=cid,
+        gid="gptassistant",
+        route="/api/chat-v2",
+        requested_model=request.base_model or request.model or model_name,
+        selected_model=model_name,
+        reasoning_enabled=reasoning_enabled,
+        query=request.query,
+        system_prompt=system_prompt,
+        file_ids=request.file_ids,
+        request_payload=_dump_model(request),
+    )
+    if trace_recorder:
+        trace_recorder.log(
+            "request.received",
+            {
+                "conversation_id": cid,
+                "query": request.query,
+                "file_ids": request.file_ids,
+                "model": request.model,
+                "base_model": request.base_model,
+                "reasoning_enabled": reasoning_enabled,
+            },
+        )
     try:
         generator = chat_with_kernel_gptassistant(
             request.query,
@@ -208,9 +281,12 @@ async def chat_with_gpt_assistant_v2(request: QueryRequest, user: dict = Depends
             file_ids=request.file_ids,
             reasoning_enabled=reasoning_enabled,
             usage_tracker=tracker,
+            trace_recorder=trace_recorder,
         )
     except Exception as exc:
         tracker.finalize(status="error", latency_ms=0.0, error=str(exc))
+        if trace_recorder:
+            trace_recorder.finalize(status="error", error=str(exc), duration_ms=0.0)
         raise
     return StreamingResponse(generator, media_type="text/event-stream")
 
@@ -250,6 +326,31 @@ async def chat_with_gpts(request: QueryRequest, gid: str, user: dict = Depends(g
             requested_model=selected_model_config.get("model_name") or selected_model_config.get("id"),
             upload_count=0,
         )
+        trace_recorder = create_chat_trace(
+            user_id=user.get("sub", "unknown"),
+            user_email=user.get("email"),
+            conversation_id=cid,
+            gid=gid,
+            route=f"/api/{gid}/chat-messages",
+            requested_model=request.base_model or request.model or selected_model_config.get("model_name") or selected_model_config.get("id"),
+            selected_model=selected_model_config.get("model_name") or selected_model_config.get("id"),
+            reasoning_enabled=reasoning_enabled,
+            query=request.query,
+            system_prompt=assistant_config["system_prompt"],
+            file_ids=request.file_ids,
+            request_payload=_dump_model(request),
+        )
+        if trace_recorder:
+            trace_recorder.log(
+                "request.received",
+                {
+                    "conversation_id": cid,
+                    "query": request.query,
+                    "file_ids": request.file_ids,
+                    "gid": gid,
+                    "reasoning_enabled": reasoning_enabled,
+                },
+            )
         try:
             generator = assistant_config["chat_function"](
                 request.query,
@@ -260,9 +361,12 @@ async def chat_with_gpts(request: QueryRequest, gid: str, user: dict = Depends(g
                 reasoning_enabled=reasoning_enabled,
                 usage_tracker=tracker,
                 show_reasoning=True,
+                trace_recorder=trace_recorder,
             )
         except Exception as exc:
             tracker.finalize(status="error", latency_ms=0.0, error=str(exc))
+            if trace_recorder:
+                trace_recorder.finalize(status="error", error=str(exc), duration_ms=0.0)
             raise
         return StreamingResponse(generator, media_type="text/event-stream")
     system_prompt = assistant_config["system_prompt"]
@@ -283,6 +387,31 @@ async def chat_with_gpts(request: QueryRequest, gid: str, user: dict = Depends(g
         upload_count=upload_count,
     )
     tracker.set_model(model_name)
+    trace_recorder = create_chat_trace(
+        user_id=user.get("sub", "unknown"),
+        user_email=user.get("email"),
+        conversation_id=cid,
+        gid=gid,
+        route=f"/api/{gid}/chat-messages",
+        requested_model=request.base_model or request.model or model_name,
+        selected_model=model_name,
+        reasoning_enabled=False,
+        query=user_prompt,
+        system_prompt=system_prompt,
+        file_ids=request.file_ids,
+        request_payload=_dump_model(request),
+    )
+    if trace_recorder:
+        trace_recorder.log(
+            "request.received",
+            {
+                "conversation_id": cid,
+                "query": request.query,
+                "file_ids": request.file_ids,
+                "gid": gid,
+                "resolved_model": model_name,
+            },
+        )
     chat_function = chat_with_react_as_function_call
     if "chat_function" in gpts[gid]:
         chat_function = gpts[gid]["chat_function"]
@@ -291,9 +420,12 @@ async def chat_with_gpts(request: QueryRequest, gid: str, user: dict = Depends(g
             chat_function,
             (user_prompt, cid, system_prompt, model_name, gid),
             usage_tracker=tracker,
+            trace_recorder=trace_recorder,
         )
     except Exception as exc:
         tracker.finalize(status="error", latency_ms=0.0, error=str(exc))
+        if trace_recorder:
+            trace_recorder.finalize(status="error", error=str(exc), duration_ms=0.0)
         raise
     return StreamingResponse(
         _stream_with_metrics(generator, tracker),

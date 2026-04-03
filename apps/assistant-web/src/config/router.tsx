@@ -6,6 +6,7 @@ const Home = lazy(() => import("../views/Home"));
 const HomeGPTsAssistant = lazy(() => import("../views/HomeGPTsAssistant"));
 const Chat = lazy(() => import("../views/Chat"));
 const GptAssistantChat = lazy(() => import("../views/GptAssistantChat"));
+const TraceInspector = lazy(() => import("../views/TraceInspector"));
 const Gpts = lazy(() => import("../views/Gpts"));
 const MyGpts = lazy(() => import("../views/MyGpts"));
 const CreateGpt = lazy(() => import("../views/CreateGpt"));
@@ -45,6 +46,7 @@ export const routerConfig: RouterConfig = {
     routes: {
         index: { prefix: "/", uri: "", suffix: "", element: Home },
         chat: { prefix: "/chat", uri: "/:id", suffix: "", element: GptAssistantChat },
+        trace: { prefix: "/trace", uri: "/:conversationId?", suffix: "", element: TraceInspector },
         gpts: { prefix: "/gpts", uri: "", suffix: "", element: Gpts },
         my_gpts: { prefix: "/my-gpts", uri: "", suffix: "", element: MyGpts },
         gpts_create: { prefix: "/gpts/create", uri: "", suffix: "", element: CreateGpt },

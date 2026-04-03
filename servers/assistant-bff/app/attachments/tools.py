@@ -149,11 +149,7 @@ LEGACY_ATTACHMENT_TOOL_DEFINITIONS: list[ToolDefinition] = [
 
 
 def get_attachment_tool_definitions(*, model_supports_native_images: bool) -> list[ToolDefinition]:
-    tools = (
-        list(DOCUMENT_TOOL_DEFINITIONS)
-        + list(RESOURCE_TOOL_DEFINITIONS)
-        + list(LEGACY_ATTACHMENT_TOOL_DEFINITIONS)
-    )
+    tools = list(DOCUMENT_TOOL_DEFINITIONS)
     if not model_supports_native_images:
         tools = [
             tool
@@ -161,8 +157,6 @@ def get_attachment_tool_definitions(*, model_supports_native_images: bool) -> li
             if tool.name
             not in {
                 DOCUMENT_LOAD_IMAGES_TOOL_NAME,
-                RESOURCE_LOAD_IMAGES_TOOL_NAME,
-                ATTACHMENT_LOAD_IMAGES_TOOL_NAME,
             }
         ]
     return tools

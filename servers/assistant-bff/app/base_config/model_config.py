@@ -29,3 +29,4 @@ ALLOW_ORIGINS: List[str] = [
 GPTS_WHITE_LIST: Set[str] = {
     email.strip() for email in os.getenv("GPTS_WHITE_LIST", "").split(",") if email.strip()
 }
+TRACE_ENABLED: bool = os.getenv("GPT_TRACE_ENABLED", "false").lower() == "true"

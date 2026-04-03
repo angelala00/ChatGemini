@@ -674,99 +674,124 @@ const App = () => {
             currentPath
         )
     );
+    const isTracePage = !!matchPath(
+        {
+            path: `${routes.trace.prefix}${routes.trace.uri}${routes.trace.suffix}`,
+        },
+        currentPath,
+    );
     return (
-        <Container
-            className={
-                !hasLogined ? "flex flex-col items-center justify-center min-h-screen p-10" : ""
-            }
-            toaster={true}
-        >
-            {hasLogined ? (
-                <>
-                    <Sidebar
-                        title={header}
-                        locales={locales}
-                        sessions={sessions}
-                        expand={sidebarExpand}
-                        currentLocale={currentLocale}
-                        onSwitchLocale={handleSwitchLocale}
-                        onExportSession={handleExportSession}
-                        onDeleteSession={handleDeleteSession}
-                        onRenameSession={handleRenameSession}
-                    />
-                    <Container
-                        className={`min-w-full flex flex-col h-screen bg-stone-100/80 ${
-                            !sidebarExpand ? "col-span-2" : ""
-                        }`}
-                    >
-                        {!isGptsPage && (
-                            <Header
-                                userName={userName}
-                                logoutIcon={!!passcodes.length}
-                                newChatUrl={routes.index.prefix}
-                                sidebarExpand={sidebarExpand}
-                                title={pageName}
-                                models={models}
-                                defaultModel={defaultModel}
-                                onPurgeSessions={handlePurgeSessions}
-                                onToggleSidebar={() =>
-                                    setSidebarExpand((state) => !state)
-                                }
-                                onLogout={handleLogout}
-                                onModelChange={handleModelChange}
-                            />
-                        )}
-                        <div
-                            ref={mainSectionRef}
-                            className={`relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden ${
-                                isGptsPage ? "h-screen" : ""
+        hasLogined && isTracePage ? (
+            <div className="min-h-screen w-full bg-slate-950 text-slate-100">
+                <RouterView
+                    routes={routes}
+                    suspense={<Skeleton />}
+                    routerProps={{
+                        refs: { mainSectionRef, textAreaRef },
+                        onAbortUpdate: onAbortUpdate,
+                        gid: gid,
+                        title: pageTitle,
+                        logo: pageLogo,
+                        subTitle: pageSubTitle,
+                        samples: pageSamples,
+                        userName: userName,
+                    }}
+                />
+            </div>
+        ) : (
+            <Container
+                className={
+                    !hasLogined ? "flex flex-col items-center justify-center min-h-screen p-10" : ""
+                }
+                toaster={true}
+            >
+                {hasLogined ? (
+                    <>
+                        <Sidebar
+                            title={header}
+                            locales={locales}
+                            sessions={sessions}
+                            expand={sidebarExpand}
+                            currentLocale={currentLocale}
+                            onSwitchLocale={handleSwitchLocale}
+                            onExportSession={handleExportSession}
+                            onDeleteSession={handleDeleteSession}
+                            onRenameSession={handleRenameSession}
+                        />
+                        <Container
+                            className={`min-w-full flex flex-col h-screen bg-stone-100/80 ${
+                                !sidebarExpand ? "col-span-2" : ""
                             }`}
                         >
-                            <RouterView
-                                routes={routes}
-                                suspense={<Skeleton />}
-                                routerProps={{
-                                    refs: { mainSectionRef, textAreaRef },
-                                    onAbortUpdate: onAbortUpdate,
-                                    gid: gid,
-                                    title: pageTitle,
-                                    logo: pageLogo,
-                                    subTitle: pageSubTitle,
-                                    samples: pageSamples,
-                                    userName: userName,
-                                }}
-                            />
-                        </div>
-                        {!isGptsPage && (
-                            <>
-                                <InputArea
-                                    minHeight={45}
-                                    ref={textAreaRef}
-                                    busy={ai.busy}
-                                    fileUploadEnabled={fileUploadEnabled}
-                                    showReasoningToggle={showReasoningToggle}
-                                    reasoningEnabled={effectiveReasoningEnabled}
-                                    reasoningAvailable={reasoningAvailable}
-                                    allowedFileTypes={resolvedUploadCategories}
-                                    key={location.pathname}
-                                    onSubmit={handleSubmit}
-                                    onUpload={handleUpload}
-                                    onAbort={handleAbort}
-                                    onReasoningChange={handleReasoningChange}
+                            {!isGptsPage && (
+                                <Header
+                                    userName={userName}
+                                    logoutIcon={!!passcodes.length}
+                                    newChatUrl={routes.index.prefix}
+                                    sidebarExpand={sidebarExpand}
+                                    title={pageName}
+                                    models={models}
+                                    defaultModel={defaultModel}
+                                    onPurgeSessions={handlePurgeSessions}
+                                    onToggleSidebar={() =>
+                                        setSidebarExpand((state) => !state)
+                                    }
+                                    onLogout={handleLogout}
+                                    onModelChange={handleModelChange}
                                 />
-                            </>
-                        )}
-                    </Container>
-                </>
-            ) : (
-                <LoginByOAuth
-                    title={header}
-                    logo={siteLogo}
-                    isNoAuthorized={isNoAuthorized}
-                    onLogined={(uname) => {setHasLogined(true);setUserName(uname)}}
-                />
-            )}
-        </Container>
+                            )}
+                            <div
+                                ref={mainSectionRef}
+                                className={`relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden ${
+                                    isGptsPage ? "h-screen" : ""
+                                }`}
+                            >
+                                <RouterView
+                                    routes={routes}
+                                    suspense={<Skeleton />}
+                                    routerProps={{
+                                        refs: { mainSectionRef, textAreaRef },
+                                        onAbortUpdate: onAbortUpdate,
+                                        gid: gid,
+                                        title: pageTitle,
+                                        logo: pageLogo,
+                                        subTitle: pageSubTitle,
+                                        samples: pageSamples,
+                                        userName: userName,
+                                    }}
+                                />
+                            </div>
+                            {!isGptsPage && (
+                                <>
+                                    <InputArea
+                                        minHeight={45}
+                                        ref={textAreaRef}
+                                        busy={ai.busy}
+                                        fileUploadEnabled={fileUploadEnabled}
+                                        showReasoningToggle={showReasoningToggle}
+                                        reasoningEnabled={effectiveReasoningEnabled}
+                                        reasoningAvailable={reasoningAvailable}
+                                        allowedFileTypes={resolvedUploadCategories}
+                                        key={location.pathname}
+                                        onSubmit={handleSubmit}
+                                        onUpload={handleUpload}
+                                        onAbort={handleAbort}
+                                        onReasoningChange={handleReasoningChange}
+                                    />
+                                </>
+                            )}
+                        </Container>
+                    </>
+                ) : (
+                    <LoginByOAuth
+                        title={header}
+                        logo={siteLogo}
+                        isNoAuthorized={isNoAuthorized}
+                        onLogined={(uname) => {setHasLogined(true);setUserName(uname)}}
+                    />
+                )}
+            </Container>
+        )
     );
 };
 

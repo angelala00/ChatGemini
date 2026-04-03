@@ -34,6 +34,7 @@ from app.llm_kernel import (
 )
 from app.llm_kernel.types import DoneEvent
 from app.metrics.events import UsageEventTracker
+from app.tracing import ChatTraceRecorder
 
 
 KERNEL_HISTORY_PREFIX = "llm_kernel:gptassistant:"
@@ -65,6 +66,16 @@ def _log_preview(value: Any, *, limit: int = 1200) -> str:
 def _sse(name: str, payload: Dict[str, Any]) -> str:
     body = {"event": name, **payload}
     return f"data: {json.dumps(body, ensure_ascii=False)}\n\n"
+
+
+def _trace_sse(
+    trace_recorder: Optional[ChatTraceRecorder],
+    name: str,
+    payload: Dict[str, Any],
+) -> str:
+    if trace_recorder:
+        trace_recorder.log(name, payload)
+    return _sse(name, payload)
 
 
 def _event_payload(
@@ -508,6 +519,7 @@ async def _execute_attachment_tool_calls(
     conversation_id: str,
     response_id: str,
     turn_index: int,
+    trace_recorder: Optional[ChatTraceRecorder] = None,
 ) -> list[ToolResultMessage]:
     available_file_ids = _available_file_ids(file_ids)
     results: list[ToolResultMessage] = []
@@ -535,6 +547,18 @@ async def _execute_attachment_tool_calls(
             )
         try:
             validated_arguments = validate_tool_call(tools, block)
+            if trace_recorder:
+                trace_recorder.log(
+                    "tool.call",
+                    {
+                        "conversation_id": conversation_id,
+                        "response_id": response_id,
+                        "turn": turn_index,
+                        "tool_call_id": block.id,
+                        "tool_name": block.name,
+                        "arguments": validated_arguments,
+                    },
+                )
             gpt_logger.info(
                 "tool_continuation tool_call_validated conversation_id=%s response_id=%s turn=%s tool_call_id=%s tool_name=%s validated_arguments=%s",
                 conversation_id,
@@ -569,6 +593,20 @@ async def _execute_attachment_tool_calls(
                     timestamp=int(time.time() * 1000),
                 )
             )
+            if trace_recorder:
+                trace_recorder.log(
+                    "tool.result",
+                    {
+                        "conversation_id": conversation_id,
+                        "response_id": response_id,
+                        "turn": turn_index,
+                        "tool_call_id": block.id,
+                        "tool_name": block.name,
+                        "is_error": False,
+                        "details": execution.details,
+                        "content": execution.content,
+                    },
+                )
         except Exception as exc:
             gpt_logger.warning(
                 "tool_continuation tool_call_failed conversation_id=%s response_id=%s turn=%s tool_call_id=%s tool_name=%s error_type=%s error=%s raw_arguments=%s",
@@ -591,6 +629,20 @@ async def _execute_attachment_tool_calls(
                     timestamp=int(time.time() * 1000),
                 )
             )
+            if trace_recorder:
+                trace_recorder.log(
+                    "tool.result",
+                    {
+                        "conversation_id": conversation_id,
+                        "response_id": response_id,
+                        "turn": turn_index,
+                        "tool_call_id": block.id,
+                        "tool_name": block.name,
+                        "is_error": True,
+                        "error": str(exc),
+                        "arguments": block.arguments,
+                    },
+                )
     return results
 
 
@@ -603,6 +655,7 @@ async def chat_with_kernel_gptassistant(
     file_ids: Optional[str] = None,
     reasoning_enabled: bool = False,
     usage_tracker: Optional[UsageEventTracker] = None,
+    trace_recorder: Optional[ChatTraceRecorder] = None,
 ) -> AsyncGenerator[str, None]:
     _ensure_openai_compat_provider()
 
@@ -637,6 +690,8 @@ async def chat_with_kernel_gptassistant(
     requested_reasoning_enabled = bool(model.reasoning and reasoning_enabled)
     if usage_tracker:
         usage_tracker.set_model(model.id)
+    if trace_recorder:
+        trace_recorder.update(selected_model=model.id)
 
     trimmed_history = _trim_history_to_recent_turns(
         history=_load_history(conversation_id),
@@ -655,6 +710,19 @@ async def chat_with_kernel_gptassistant(
         )
         if attachment_guidance:
             effective_system_prompt = f"{effective_system_prompt}\n\n{attachment_guidance}"
+    if trace_recorder:
+        trace_recorder.log(
+            "request.prepared",
+            {
+                "conversation_id": conversation_id,
+                "query": query,
+                "file_ids": file_ids,
+                "effective_system_prompt": effective_system_prompt,
+                "history_summary": trimmed_history.summary,
+                "reasoning_enabled": requested_reasoning_enabled,
+                "model": model.id,
+            },
+        )
 
     base_tools = (
         get_attachment_tool_definitions(model_supports_native_images=model.supports_input("image"))
@@ -667,7 +735,8 @@ async def chat_with_kernel_gptassistant(
     final_message: Optional[AssistantMessage] = None
     emitted_error_event = False
 
-    yield _sse(
+    yield _trace_sse(
+        trace_recorder,
         "response_start",
         _event_payload(
             response_id,
@@ -689,11 +758,29 @@ async def chat_with_kernel_gptassistant(
     )
 
     try:
+        if trace_recorder:
+            trace_recorder.log(
+                "preprocess_start",
+                {
+                    "conversation_id": conversation_id,
+                    "response_id": response_id,
+                    "file_ids": file_ids,
+                },
+            )
         user_message = await _build_user_message_with_preprocess_events(
             query,
             file_ids,
             model,
         )
+        if trace_recorder:
+            trace_recorder.log(
+                "preprocess_complete",
+                {
+                    "conversation_id": conversation_id,
+                    "response_id": response_id,
+                    "user_message": _serialize_message(user_message),
+                },
+            )
         _raise_if_context_too_long(
             model_id=model.id,
             model_config=model_config,
@@ -725,6 +812,38 @@ async def chat_with_kernel_gptassistant(
                 MAX_TOOL_CONTINUATION_TURNS,
                 len(current_messages),
             )
+            if trace_recorder:
+                trace_recorder.log(
+                    "turn.start",
+                    {
+                        "conversation_id": conversation_id,
+                        "response_id": response_id,
+                        "turn": turn_index,
+                        "messages": [_serialize_message(message) for message in current_messages],
+                        "tools": [tool.name for tool in context.tools],
+                    },
+                )
+                async def _trace_model_input_payload(
+                    payload: Any,
+                    provider_model: Model,
+                    *,
+                    _turn_index: int = turn_index,
+                ) -> Any:
+                    trace_recorder.log(
+                        "model_input.prepared",
+                        {
+                            "conversation_id": conversation_id,
+                            "response_id": response_id,
+                            "turn": _turn_index,
+                            "model": provider_model.id,
+                            "provider": provider_model.provider,
+                            "api": provider_model.api,
+                            "payload": payload,
+                        },
+                    )
+                    return payload
+
+                options.on_payload = _trace_model_input_payload
             kernel_stream = stream(model, context, options)
 
             async for event in kernel_stream:
@@ -751,7 +870,8 @@ async def chat_with_kernel_gptassistant(
                     payload["error_message"] = mapped_error.user_message
                     emitted_error_event = True
 
-                yield _sse(
+                yield _trace_sse(
+                    trace_recorder,
                     event_name,
                     _event_payload(
                         response_id,
@@ -790,6 +910,7 @@ async def chat_with_kernel_gptassistant(
                 conversation_id=conversation_id,
                 response_id=response_id,
                 turn_index=turn_index,
+                trace_recorder=trace_recorder,
             )
             for tool_result in tool_results:
                 gpt_logger.info(
@@ -802,19 +923,6 @@ async def chat_with_kernel_gptassistant(
                     tool_result.is_error,
                     _log_preview(tool_result.details),
                 )
-                yield _sse(
-                    "tool_result",
-                    _event_payload(
-                        response_id,
-                        next_sequence(),
-                        conversation_id,
-                        tool_call_id=tool_result.tool_call_id,
-                        tool_name=tool_result.tool_name,
-                        is_error=tool_result.is_error,
-                        content=[_serialize_content_block(block) for block in tool_result.content],
-                        details=tool_result.details,
-                    ),
-            )
             current_messages.extend(tool_results)
         else:
             gpt_logger.error(
@@ -833,7 +941,8 @@ async def chat_with_kernel_gptassistant(
             response_id,
             final_message.stop_reason,
         )
-        yield _sse(
+        yield _trace_sse(
+            trace_recorder,
             "response_complete",
             _event_payload(
                 response_id,
@@ -846,6 +955,12 @@ async def chat_with_kernel_gptassistant(
         try:
             _save_history(conversation_id, current_messages)
             finalize_tracker("success", message=final_message)
+            if trace_recorder:
+                trace_recorder.finalize(
+                    status="success",
+                    duration_ms=(time.perf_counter() - started_at) * 1000,
+                    response_preview=_summarize_message(final_message) if final_message else None,
+                )
         except Exception as exc:
             gpt_logger.exception(
                 "tool_continuation post_complete_finalize_failed conversation_id=%s response_id=%s error=%s",
@@ -853,6 +968,13 @@ async def chat_with_kernel_gptassistant(
                 response_id,
                 str(exc),
             )
+            if trace_recorder:
+                trace_recorder.finalize(
+                    status="error",
+                    error=str(exc),
+                    duration_ms=(time.perf_counter() - started_at) * 1000,
+                    response_preview=_summarize_message(final_message) if final_message else None,
+                )
     except Exception as exc:
         gpt_logger.exception(
             "tool_continuation response_failed conversation_id=%s response_id=%s model=%s error=%s",
@@ -862,9 +984,17 @@ async def chat_with_kernel_gptassistant(
             str(exc),
         )
         finalize_tracker("error", error=str(exc), message=final_message)
+        if trace_recorder:
+            trace_recorder.finalize(
+                status="error",
+                error=str(exc),
+                duration_ms=(time.perf_counter() - started_at) * 1000,
+                response_preview=_summarize_message(final_message) if final_message else None,
+            )
         if not emitted_error_event:
             mapped_error = map_chat_v2_error(str(exc))
-            yield _sse(
+            yield _trace_sse(
+                trace_recorder,
                 "error",
                 _event_payload(
                     response_id,

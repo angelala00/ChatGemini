@@ -60,7 +60,6 @@ def _render_attachment_manifest_for_model(
             [
                 "如果你需要附件内容，先调用附件工具，不要臆测文件内容。",
                 f"可用文档工具：{'、'.join(available_tools)}。",
-                "兼容别名：resource_list、resource_read_text、resource_load_images，以及 attachment_*（如适用）。",
             ]
         )
     else:
@@ -98,12 +97,10 @@ def build_attachment_tool_guidance(
         "- This request includes uploaded attachments.",
         "- Do not invent attachment contents.",
         "- If the answer depends on attachment contents, call document_list or document_read_text first.",
-        "- Compatible aliases resource_list/resource_read_text and attachment_list/attachment_extract_text are also supported.",
     ]
     if selection.image_file_ids:
         if model_supports_native_images:
             lines.append("- Native image input is available for this model. You may use document_load_images when explicit image loading is useful.")
-            lines.append("- Compatible aliases resource_load_images and attachment_load_images are also supported.")
         else:
             lines.append("- This model does not have native image input for uploaded files.")
             lines.append("- For image questions, prefer document_read_text and do not claim to directly see the uploaded image.")

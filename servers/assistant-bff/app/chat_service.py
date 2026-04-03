@@ -18,6 +18,7 @@ from app.utils.model_tool import (
     MODEL_NAME_QWQ,
 )
 from app.metrics.events import UsageEventTracker
+from app.tracing import ChatTraceRecorder
 
 
 LEGACY_REASONING_MODELS = {
@@ -49,10 +50,12 @@ async def chat_with_react_as_function_call(
     file_ids: str = None,
     show_reasoning: bool = True,
     usage_tracker: Optional[UsageEventTracker] = None,
+    trace_recorder: Optional[ChatTraceRecorder] = None,
 ):
-    print(f"query:{query}")
     if usage_tracker:
         usage_tracker.set_model(model_name)
+    if trace_recorder:
+        trace_recorder.update(selected_model=model_name)
     # 获取当前对话历史（如果不存在则创建）
     messages = match_history.setdefault(conversation_id, [])
 
@@ -64,15 +67,39 @@ async def chat_with_react_as_function_call(
         messages.append({"role": "user", "content": convert_image_message(file_paths, query)})
     else:
         messages.append({"role": "user", "content": query})
+    trace_finished = False
+
+    def finalize_trace(status: str, *, error: Optional[str] = None, response_preview: Optional[str] = None) -> None:
+        nonlocal trace_finished
+        if not trace_recorder or trace_finished:
+            return
+        trace_recorder.finalize(
+            status=status,
+            error=error,
+            duration_ms=None,
+            response_preview=response_preview,
+        )
+        trace_finished = True
+
     try:
         # 3. 调用大模型
         # 使用异步方式调用模型
+        if trace_recorder:
+            trace_recorder.log(
+                "model.request",
+                {
+                    "conversation_id": conversation_id,
+                    "model": model_name,
+                    "temperature": 0.7,
+                    "messages": messages,
+                },
+            )
         response = await client.chat.completions.create(model=model_name, messages=messages, temperature=0.7,
                                                         stream=True)
         think_begin = False
         think_end = False
         max_retry = 3
-        for _ in range(max_retry):
+        for attempt_index in range(1, max_retry + 1):
             think_tag_detected = False  # 标记是否已遇到 </think>
             post_think_tokens = []  # 缓冲 </think> 后的 token
             function_check_done = False  # 是否已经完成前三 token 的检查
@@ -91,6 +118,15 @@ async def chat_with_react_as_function_call(
                         content = content.replace("<think>", "", 1)
                         if not content:
                             continue
+                    if trace_recorder:
+                        trace_recorder.log(
+                            "model.delta",
+                            {
+                                "conversation_id": conversation_id,
+                                "attempt": attempt_index,
+                                "content": content,
+                            },
+                        )
                     sum_content = sum_content + content
                     if start_token:
                         start_token = False
@@ -111,7 +147,15 @@ async def chat_with_react_as_function_call(
                             if show_reasoning:
                                 temp = {"event": "message", "conversation_id": conversation_id,
                                         "answer": parts[0] + "</step>"}
-                                print(f"found </think>,content: {content}")
+                                if trace_recorder:
+                                    trace_recorder.log(
+                                        "model.reasoning_end",
+                                        {
+                                            "conversation_id": conversation_id,
+                                            "attempt": attempt_index,
+                                            "content": content,
+                                        },
+                                    )
                                 yield f"data: {json.dumps(temp)}\n\n"
                             elif parts[1]:
                                 temp = {"event": "message", "conversation_id": conversation_id, "answer": parts[1]}
@@ -131,14 +175,11 @@ async def chat_with_react_as_function_call(
                             if len(post_think_tokens) >= 10:
                                 combined = "".join(post_think_tokens[:10])
                                 if combined.lstrip().startswith("```") and "tool" in combined:
-                                    print(f"found tool processing...")
                                     # 检测到函数调用描述，进入函数调用处理模式
                                     function_mode = True
                                     function_check_done = True
                                     # yield"\n\n[系统] 正在处理函数调用，请稍候..."
                                 else:
-                                    # 未检测到函数调用，将缓冲区内的 token flush 给前端
-                                    print(f"not found tool continue")
                                     function_check_done = True  # 后续直接流式输出
                         else:
                             # 检查阶段已完成
@@ -154,16 +195,44 @@ async def chat_with_react_as_function_call(
                                         function_json_str = function_json_str.split("json")[1]
                                     except IndexError as e:
                                         function_json_str = ""
-                                        print(f"======函数处理异常，conversation_id:{conversation_id}, e:{e}")
+                                        if trace_recorder:
+                                            trace_recorder.log(
+                                                "tool.call_parse_error",
+                                                {
+                                                    "conversation_id": conversation_id,
+                                                    "attempt": attempt_index,
+                                                    "error": str(e),
+                                                    "content": code_block,
+                                                },
+                                            )
                                     if isinstance(function_json_str, str):
                                         try:
                                             tool_info = json.loads(function_json_str)
+                                            if trace_recorder:
+                                                trace_recorder.log(
+                                                    "model.response",
+                                                    {
+                                                        "conversation_id": conversation_id,
+                                                        "attempt": attempt_index,
+                                                        "content": function_json_str,
+                                                        "finish_reason": "tool_call",
+                                                    },
+                                                )
+                                            if trace_recorder:
+                                                trace_recorder.log(
+                                                    "tool.call",
+                                                    {
+                                                        "conversation_id": conversation_id,
+                                                        "attempt": attempt_index,
+                                                        "tool_name": tool_info["tool_call"]["name"],
+                                                        "arguments": tool_info["tool_call"]["arguments"],
+                                                    },
+                                                )
                                             chunk_data = {"event": "message", "conversation_id": conversation_id,
                                                           "answer": f"<step><summary>工具调用中</summary>"}
                                             yield f"data: {json.dumps(chunk_data)}\n\n"
                                             chunk_data = {"event": "message", "conversation_id": conversation_id,
                                                           "answer": f"正在调用工具{tool_info['tool_call']['name']}，{tool_info['tool_call']['arguments']}</step>"}
-                                            print(f"工具调用信息：{chunk_data}")
                                             yield f"data: {json.dumps(chunk_data)}\n\n"
                                             messages.append({"role": "assistant", "content": function_json_str})
                                             tool_name = tool_info['tool_call']['name']
@@ -171,10 +240,30 @@ async def chat_with_react_as_function_call(
                                                 usage_tracker.mark_tool(tool_name)
                                             tool_response = await dispatch_tool(tool_name,
                                                                                 tool_info['tool_call']['arguments'])
+                                            if trace_recorder:
+                                                trace_recorder.log(
+                                                    "tool.result",
+                                                    {
+                                                        "conversation_id": conversation_id,
+                                                        "attempt": attempt_index,
+                                                        "tool_name": tool_name,
+                                                        "arguments": tool_info['tool_call']['arguments'],
+                                                        "result": tool_response,
+                                                    },
+                                                )
                                             messages.append({"role": "assistant",
                                                              "content": f"我调用了工具{tool_info['tool_call']['name']}，返回信息如下：{tool_response}，请继续回答用户的问题"})
                                         except json.JSONDecodeError as e:
-                                            print(f"=====JSONDecodeError，conversation_id:{conversation_id}, e:{e}")
+                                            if trace_recorder:
+                                                trace_recorder.log(
+                                                    "tool.call_parse_error",
+                                                    {
+                                                        "conversation_id": conversation_id,
+                                                        "attempt": attempt_index,
+                                                        "error": str(e),
+                                                        "content": function_json_str,
+                                                    },
+                                                )
                                     break
                             else:
                                 if not think_end:
@@ -204,26 +293,61 @@ async def chat_with_react_as_function_call(
                             # print(f"yield:data: {json.dumps(temp)}\n\n")
                             yield f"data: {json.dumps(temp)}\n\n"
                         post_think_tokens = []  # 清空缓冲区
-                    print(f"=======content:stop")
+                    if trace_recorder:
+                        trace_recorder.log(
+                            "model.response",
+                            {
+                                "conversation_id": conversation_id,
+                                "attempt": attempt_index,
+                                "content": sum_content,
+                                "finish_reason": "stop",
+                            },
+                        )
                     temp = {"event": "message_end", "conversation_id": conversation_id, "answer": ""}
                     # print(f"yield:data:{json.dumps(temp)}\n\n")
                     yield f"data: {json.dumps(temp)}\n\n"
                     messages.append({"role": "assistant", "content": sum_content})
                     save_match_history(conversation_id)
-                    print(f"sum_content:{sum_content}")
+                    finalize_trace("success", response_preview=sum_content)
                     return  # 退出循环，避免重复处理
             response = await client.chat.completions.create(model=model_name, messages=messages, temperature=0.7,
                                                             stream=True)
     except Exception as e:
-        print(f"调用失败，conversation_id:{conversation_id}, e:{e}")
+        if trace_recorder:
+            trace_recorder.log(
+                "model.error",
+                {
+                    "conversation_id": conversation_id,
+                    "error": str(e),
+                    "model": model_name,
+                },
+            )
+        finalize_trace("error", error=str(e))
         raise
     finally:
-        print(f"调用完成，conversation_id:{conversation_id}")
+        if trace_recorder:
+            trace_recorder.log(
+                "request.finished",
+                {
+                    "conversation_id": conversation_id,
+                    "model": model_name,
+                },
+            )
 
 
 async def _ask_once_stream(messages: List[Dict[str, Any]],
                            tools: List[Dict[str, Any]],
-                           model_name: str) -> AsyncGenerator[Dict[str, Any], None]:
+                           model_name: str,
+                           trace_recorder: Optional[ChatTraceRecorder] = None) -> AsyncGenerator[Dict[str, Any], None]:
+    if trace_recorder:
+        trace_recorder.log(
+            "model.request",
+            {
+                "model": model_name,
+                "messages": messages,
+                "tools": tools,
+            },
+        )
     if tools:
         stream = await client.chat.completions.create(
             model=model_name,
@@ -248,6 +372,15 @@ async def _ask_once_stream(messages: List[Dict[str, Any]],
             if getattr(delta, "content", None):
                 piece = delta.content
                 text_buf.append(piece)
+                if trace_recorder:
+                    trace_recorder.log(
+                        "model.delta",
+                        {
+                            "model": model_name,
+                            "type": "text.delta",
+                            "text": piece,
+                        },
+                    )
                 yield {"type": "text.delta", "data": {"text": piece}}
 
             if getattr(delta, "tool_calls", None):
@@ -265,6 +398,17 @@ async def _ask_once_stream(messages: List[Dict[str, Any]],
                         if getattr(tc.function, "arguments", None):
                             acc["arguments"] += tc.function.arguments
                             args_delta = tc.function.arguments
+                    if trace_recorder:
+                        trace_recorder.log(
+                            "tool.delta",
+                            {
+                                "model": model_name,
+                                "index": idx,
+                                "id": acc["id"],
+                                "name": name_delta,
+                                "arguments_delta": args_delta,
+                            },
+                        )
                     yield {
                         "type": "tool.delta",
                         "data": {
@@ -281,9 +425,25 @@ async def _ask_once_stream(messages: List[Dict[str, Any]],
             if not item["id"]:
                 item["id"] = f"call_{uuid.uuid4().hex[:8]}"
             calls.append({"index": i, "id": item["id"], "name": item["name"], "arguments": item["arguments"]})
+        if trace_recorder:
+            trace_recorder.log(
+                "tool.calls",
+                {
+                    "model": model_name,
+                    "calls": calls,
+                },
+            )
         yield {"type": "tool.calls", "data": {"calls": calls}}
         return
     else:
+        if trace_recorder:
+            trace_recorder.log(
+                "model.response",
+                {
+                    "model": model_name,
+                    "text": "".join(text_buf).strip(),
+                },
+            )
         yield {"type": "text.content", "data": "".join(text_buf).strip()}
         return
 
@@ -294,7 +454,8 @@ async def _chat_with_agent(
         system_prompt: str,
         tools: List[Dict[str, Any]],
         model_name: str,
-        file_ids: str = None
+        file_ids: str = None,
+        trace_recorder: Optional[ChatTraceRecorder] = None,
 ) -> AsyncGenerator[Dict[str, Any], None]:
     max_turns = 3
     # 获取当前对话历史（如果不存在则创建）
@@ -310,15 +471,22 @@ async def _chat_with_agent(
         messages.append({"role": "user", "content": convert_image_message(file_paths, query)})
     else:
         messages.append({"role": "user", "content": query})
+    if trace_recorder:
+        trace_recorder.update(selected_model=model_name)
+        trace_recorder.log(
+            "model.request",
+            {
+                "model": model_name,
+                "messages": messages,
+                "tools": tools,
+            },
+        )
     turn = 0
     while turn < max_turns:
-        print(f"turn:{turn}")
-        print(f"messages:{messages}")
-        print(f"toolsssssss:{tools}")
         turn += 1
         try:
             summary = None
-            async for event in _ask_once_stream(messages, tools, model_name):
+            async for event in _ask_once_stream(messages, tools, model_name, trace_recorder=trace_recorder):
                 # print(f"event:{event}")
                 if event.get("type") == "tool.calls":
                     summary = event
@@ -328,9 +496,20 @@ async def _chat_with_agent(
                     yield event
         except Exception as e:
             traceback.print_exc()
+            if trace_recorder:
+                trace_recorder.finalize(
+                    status="error",
+                    error=str(e),
+                    response_preview=None,
+                )
             yield {"type": "error", "data": {"message": f"stream error: {e}"}}
             raise StreamHandledError(str(e)) from e
         if summary is None:
+            if trace_recorder:
+                trace_recorder.finalize(
+                    status="success",
+                    response_preview="",
+                )
             yield {"type": "assistant.final", "data": {"text": ""}}
             return
         calls = summary["data"]["calls"]
@@ -351,6 +530,16 @@ async def _chat_with_agent(
             except Exception:
                 args = {}
             result = await dispatch_tool(fn_name, args)
+            if trace_recorder:
+                trace_recorder.log(
+                    "tool.result",
+                    {
+                        "tool_name": fn_name,
+                        "tool_call_id": call["id"],
+                        "arguments": args,
+                        "result": result,
+                    },
+                )
             tool_result_msgs.append({
                 "tool_call_id": call["id"],
                 "role": "tool",
@@ -358,6 +547,11 @@ async def _chat_with_agent(
                 "content": json.dumps(result, ensure_ascii=False),
             })
         messages.extend(tool_result_msgs)
+    if trace_recorder:
+        trace_recorder.finalize(
+            status="success",
+            response_preview="",
+        )
     yield {"type": "assistant.final", "data": {"text": ""}}
 
 
@@ -369,10 +563,11 @@ async def chat_with_agent(
     gid,
     file_ids=None,
     show_reasoning: bool = True,
+    trace_recorder: Optional[ChatTraceRecorder] = None,
 ):
     first = True
     think_end = False
-    async for ev in _chat_with_agent(query, conversation_id, system_prompt, get_tools(gid), model_name, file_ids):
+    async for ev in _chat_with_agent(query, conversation_id, system_prompt, get_tools(gid), model_name, file_ids, trace_recorder=trace_recorder):
         # print(f"ev:{ev}")
         if first and show_reasoning:
             first = False
@@ -391,7 +586,6 @@ async def chat_with_agent(
                 temp = {"event": "message", "conversation_id": conversation_id, "answer": f"正在调用工具{ev['data']['calls'][0]['name']}，{ev['data']['calls'][0]['arguments']}"}
                 yield f"data: {json.dumps(temp)}\n\n"
                 temp = {"event": "message", "conversation_id": conversation_id, "answer": f"工具调用结果："}
-                print(f"result:{temp}")
                 # yield f"data: {json.dumps(temp)}\n\n"
                 temp = {"event": "message", "conversation_id": conversation_id, "answer": f"</step>"}
                 yield f"data: {json.dumps(temp)}\n\n"
@@ -422,9 +616,8 @@ async def chat_with_gpt(
     reasoning_enabled,
     model_config,
     usage_tracker: Optional[UsageEventTracker] = None,
+    trace_recorder: Optional[ChatTraceRecorder] = None,
 ):
-    print(f"model_name===1:{model_name}")
-
     file_paths = get_file_paths(file_ids)
     has_file_ids = bool(file_ids)
     image_only = is_image_only(file_paths)
@@ -450,9 +643,19 @@ async def chat_with_gpt(
         if image_file_ids and not native_image_input:
             query += await extract_text_from_file_ids(image_file_ids)
 
-    print(f"model_name===2:{model_name}")
     if usage_tracker:
         usage_tracker.set_model(model_name)
+    if trace_recorder:
+        trace_recorder.update(selected_model=model_name)
+        trace_recorder.log(
+            "model.resolved",
+            {
+                "model": model_name,
+                "has_file_ids": has_file_ids,
+                "image_only": image_only,
+                "forwarded_image_file_ids": forwarded_image_file_ids,
+            },
+        )
 
     if use_reasoning or _is_reasoning_model(model_name):
         async for ev in chat_with_react_as_function_call(
@@ -464,6 +667,7 @@ async def chat_with_gpt(
             file_ids=forwarded_image_file_ids,
             show_reasoning=use_reasoning,
             usage_tracker=usage_tracker,
+            trace_recorder=trace_recorder,
         ):
             yield ev
         return
@@ -478,6 +682,7 @@ async def chat_with_gpt(
             gid,
             forwarded_image_file_ids,
             show_reasoning=False,
+            trace_recorder=trace_recorder,
         ):
             yield ev
         return
@@ -490,6 +695,7 @@ async def chat_with_gpt(
             gid,
             forwarded_image_file_ids or file_ids,
             show_reasoning=False,
+            trace_recorder=trace_recorder,
         ):
             yield ev
 
