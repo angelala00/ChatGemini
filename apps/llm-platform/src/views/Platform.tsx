@@ -10,15 +10,26 @@ import {
 
 interface GatewayUserTokenInfo {
     token: string;
+    tokenId?: string;
     enabled: boolean;
     ownerType: "user" | "project";
     projectId?: string;
     projectName?: string;
+    diagnosticsAuthorized?: boolean;
+    diagnosticsActive?: boolean;
+    diagnosticsExpiresAt?: string | null;
 }
 
 interface GatewayUserTokenUpdateResponse {
     token: string;
     enabled: boolean;
+}
+
+interface TokenDiagnosticsState {
+    tokenId: string;
+    authorized: boolean;
+    active: boolean;
+    expiresAt?: string | null;
 }
 
 interface GatewayUserSummary {
@@ -76,11 +87,30 @@ interface ProjectUsageSummary {
     error?: string;
 }
 
+interface TokenDiagnosticsLogEntry {
+    timestamp: string;
+    event: string;
+    token_id: string;
+    model?: string | null;
+    endpoint?: string | null;
+    request_id?: string | null;
+    status?: number | null;
+    payload?: unknown;
+}
+
+interface TokenDiagnosticsLogsResponse {
+    tokenId: string;
+    range: string;
+    limit: number;
+    entries: TokenDiagnosticsLogEntry[];
+    partial?: boolean;
+}
+
 interface UserUsageResponse extends UserModelRankingResponse {
     projects?: ProjectUsageSummary[];
 }
 
-type TopMenu = "console" | "market" | "docs";
+type TopMenu = "console" | "market" | "docs" | "diagnostics";
 type ConsoleSideMenu = "apikey" | "usage";
 type DocsPage = "gateway-api" | "claude-zhipu";
 
@@ -154,7 +184,7 @@ const Platform = (props: RouterComponentProps) => {
     const location = useLocation();
     const navigate = useNavigate();
     const parseTopMenu = (value?: string | null): TopMenu => {
-        if (value === "market" || value === "docs" || value === "console") {
+        if (value === "market" || value === "docs" || value === "console" || value === "diagnostics") {
             return value;
         }
         return "console";
@@ -211,6 +241,11 @@ const Platform = (props: RouterComponentProps) => {
     const [copiedToken, setCopiedToken] = useState<string | null>(null);
     const [tokenUpdating, setTokenUpdating] = useState<Record<string, boolean>>({});
     const [tokenActionError, setTokenActionError] = useState<string | null>(null);
+    const [diagnosticsRange, setDiagnosticsRange] = useState("24h");
+    const [diagnosticsLogs, setDiagnosticsLogs] = useState<TokenDiagnosticsLogsResponse | null>(null);
+    const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
+    const [diagnosticsError, setDiagnosticsError] = useState<string | null>(null);
+    const [diagnosticsActionLoading, setDiagnosticsActionLoading] = useState<Record<string, boolean>>({});
     const maskToken = (token: string, head = 6, tail = 4) => {
         const safeToken = token?.trim() ?? "";
         if (!safeToken) {
@@ -221,6 +256,23 @@ const Platform = (props: RouterComponentProps) => {
         }
         const maskedLength = Math.max(4, safeToken.length - head - tail);
         return `${safeToken.slice(0, head)}${"*".repeat(maskedLength)}${safeToken.slice(-tail)}`;
+    };
+    const formatDateTime = (value?: string | null) => {
+        if (!value) {
+            return "-";
+        }
+        const parsed = new Date(value);
+        if (Number.isNaN(parsed.getTime())) {
+            return value;
+        }
+        return parsed.toLocaleString("zh-CN", {
+            hour12: false,
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+        });
     };
     const getUsageTotals = (ranking: RankingEntry[] = []) => ({
         requests: ranking.reduce((sum, item) => sum + item.requests, 0),
@@ -441,6 +493,11 @@ const Platform = (props: RouterComponentProps) => {
     const projectUsage = usageData?.projects ?? [];
     const usageTotals = getUsageTotals(usageRanking);
     const ownedProjects = apiKeyUser?.projects ?? [];
+    const diagnosticsTokenFromQuery = useMemo(() => {
+        const params = new URLSearchParams(location.search);
+        const tokenId = params.get("tokenId");
+        return tokenId?.trim() || "";
+    }, [location.search]);
     const userTokenLimit = apiKeyUser?.limits?.userMax ?? 0;
     const projectTokenLimit = apiKeyUser?.limits?.projectMax ?? 0;
     const userTokenCount = useMemo(
@@ -469,6 +526,22 @@ const Platform = (props: RouterComponentProps) => {
         }
         return counts;
     }, [apiKeyUser?.tokens]);
+    const diagnosticsTokens = useMemo(
+        () => (apiKeyUser?.tokens ?? []).filter((token) => token.diagnosticsAuthorized && token.tokenId),
+        [apiKeyUser?.tokens],
+    );
+    const selectedDiagnosticsToken = useMemo(() => {
+        if (diagnosticsTokens.length === 0) {
+            return null;
+        }
+        if (diagnosticsTokenFromQuery) {
+            const matched = diagnosticsTokens.find((token) => token.tokenId === diagnosticsTokenFromQuery);
+            if (matched) {
+                return matched;
+            }
+        }
+        return diagnosticsTokens[0];
+    }, [diagnosticsTokenFromQuery, diagnosticsTokens]);
     const userLimitReached = userTokenLimit > 0 && userTokenCount >= userTokenLimit;
     const groupedVisibleModels = useMemo(() => {
         const entries = visibleModels?.models ?? [];
@@ -545,6 +618,8 @@ const Platform = (props: RouterComponentProps) => {
                 ? `/${topMenu}/${sideMenu}`
                 : topMenu === "docs"
                     ? `/${topMenu}/${docsPage}`
+                    : topMenu === "diagnostics"
+                        ? "/diagnostics"
                     : `/${topMenu}`;
         navigate(nextPath, { replace: true });
     };
@@ -586,7 +661,12 @@ const Platform = (props: RouterComponentProps) => {
     }, [activeTopMenu, modelsLoading, modelsRetryCount, visibleModels, MAX_RETRIES, RETRY_DELAY_MS]);
 
     useEffect(() => {
-        if (activeTopMenu !== "console" || activeSideMenu !== "apikey") {
+        if (
+            !(
+                (activeTopMenu === "console" && activeSideMenu === "apikey") ||
+                activeTopMenu === "diagnostics"
+            )
+        ) {
             return;
         }
         setApiKeyRetryCount(0);
@@ -609,8 +689,37 @@ const Platform = (props: RouterComponentProps) => {
         }
     }, []);
 
+    const loadDiagnosticsLogs = useCallback(async () => {
+        if (!selectedDiagnosticsToken?.tokenId) {
+            setDiagnosticsLogs(null);
+            setDiagnosticsError(null);
+            return;
+        }
+        setDiagnosticsLoading(true);
+        setDiagnosticsError(null);
+        try {
+            const payload = await platformUserGet<TokenDiagnosticsLogsResponse>("/diagnostics/logs", {
+                params: {
+                    tokenId: selectedDiagnosticsToken.tokenId,
+                    range: diagnosticsRange,
+                    limit: 100,
+                },
+            });
+            setDiagnosticsLogs(payload ?? null);
+        } catch (error) {
+            setDiagnosticsError(error instanceof Error ? error.message : "诊断日志加载失败");
+        } finally {
+            setDiagnosticsLoading(false);
+        }
+    }, [diagnosticsRange, selectedDiagnosticsToken?.tokenId]);
+
     useEffect(() => {
-        if (activeTopMenu !== "console" || activeSideMenu !== "apikey") {
+        if (
+            !(
+                (activeTopMenu === "console" && activeSideMenu === "apikey") ||
+                activeTopMenu === "diagnostics"
+            )
+        ) {
             return;
         }
         if (apiKeyLoading || apiKeyUser) {
@@ -679,6 +788,20 @@ const Platform = (props: RouterComponentProps) => {
     ]);
 
     useEffect(() => {
+        if (activeTopMenu !== "diagnostics") {
+            return;
+        }
+        if (apiKeyLoading) {
+            return;
+        }
+        if (!selectedDiagnosticsToken?.tokenId) {
+            setDiagnosticsLogs(null);
+            return;
+        }
+        void loadDiagnosticsLogs();
+    }, [activeTopMenu, apiKeyLoading, loadDiagnosticsLogs, selectedDiagnosticsToken?.tokenId]);
+
+    useEffect(() => {
         if (activeSideMenu !== "usage") {
             return;
         }
@@ -735,6 +858,52 @@ const Platform = (props: RouterComponentProps) => {
         }
     };
 
+    const updateDiagnosticsState = async (token: GatewayUserTokenInfo, activate: boolean) => {
+        if (!token.tokenId) {
+            setTokenActionError("该 API Key 缺少 Key ID，无法操作调试功能");
+            return;
+        }
+        if (diagnosticsActionLoading[token.tokenId]) {
+            return;
+        }
+        setDiagnosticsActionLoading((prev) => ({ ...prev, [token.tokenId!]: true }));
+        setTokenActionError(null);
+        try {
+            const payload = await platformUserPost<TokenDiagnosticsState>(
+                `/diagnostics/tokens/${token.tokenId}/${activate ? "activate" : "deactivate"}`,
+            );
+            setApiKeyUser((prev) => {
+                if (!prev) return prev;
+                return {
+                    ...prev,
+                    tokens: prev.tokens.map((item) =>
+                        item.tokenId === payload.tokenId
+                            ? {
+                                  ...item,
+                                  diagnosticsAuthorized: payload.authorized,
+                                  diagnosticsActive: payload.active,
+                                  diagnosticsExpiresAt: payload.expiresAt ?? null,
+                              }
+                            : item,
+                    ),
+                };
+            });
+            if (activeTopMenu === "diagnostics") {
+                await loadDiagnosticsLogs();
+            }
+        } catch (error) {
+            setTokenActionError(error instanceof Error ? error.message : "调试状态更新失败");
+        } finally {
+            setDiagnosticsActionLoading((prev) => ({ ...prev, [token.tokenId!]: false }));
+        }
+    };
+
+    const openDiagnosticsPage = (tokenId?: string) => {
+        const query = tokenId ? `?tokenId=${encodeURIComponent(tokenId)}` : "";
+        navigate(`/diagnostics${query}`, { replace: true });
+        setActiveTopMenu("diagnostics");
+    };
+
     const handleCopyToken = (token: string) => {
         const textArea = document.createElement("textarea");
         textArea.value = token;
@@ -764,7 +933,7 @@ const Platform = (props: RouterComponentProps) => {
                             {header}
                         </span>
                         <nav className="flex items-center gap-3 text-sm font-medium text-slate-500">
-                            {["console", "market", "docs"].map((item) => (
+                            {["console", "market", "docs", "diagnostics"].map((item) => (
                                 <button
                                     key={item}
                                     type="button"
@@ -781,6 +950,7 @@ const Platform = (props: RouterComponentProps) => {
                                     {item === "console" && "控制台"}
                                     {item === "market" && "模型广场"}
                                     {item === "docs" && "API 文档"}
+                                    {item === "diagnostics" && "诊断日志"}
                                 </button>
                             ))}
                         </nav>
@@ -839,14 +1009,23 @@ const Platform = (props: RouterComponentProps) => {
                                         可用额度：用户 {userTokenCount}/{userTokenLimit || "-"}
                                         ，项目 {Object.keys(projectTokenCounts).length}/{projectTokenLimit || "-"}
                                     </div>
-                                    <button
-                                        type="button"
-                                        className="rounded-full border border-slate-200 bg-white px-3 py-1 text-sm text-slate-600"
-                                        onClick={loadApiKeys}
-                                        disabled={apiKeyLoading}
-                                    >
-                                        {apiKeyLoading ? "刷新中..." : "刷新"}
-                                    </button>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <button
+                                            type="button"
+                                            className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-sm text-blue-700"
+                                            onClick={() => openDiagnosticsPage()}
+                                        >
+                                            诊断日志
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="rounded-full border border-slate-200 bg-white px-3 py-1 text-sm text-slate-600"
+                                            onClick={loadApiKeys}
+                                            disabled={apiKeyLoading}
+                                        >
+                                            {apiKeyLoading ? "刷新中..." : "刷新"}
+                                        </button>
+                                    </div>
                                 </div>
                                 {apiKeyError && (
                                     <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-600">
@@ -892,6 +1071,7 @@ const Platform = (props: RouterComponentProps) => {
                                                         <th className="px-4 py-3">API Keys</th>
                                                         <th className="px-4 py-3">归属</th>
                                                         <th className="px-4 py-3">状态</th>
+                                                        <th className="px-4 py-3">调试</th>
                                                         <th className="px-4 py-3">操作</th>
                                                     </tr>
                                                 </thead>
@@ -910,6 +1090,22 @@ const Platform = (props: RouterComponentProps) => {
                                                             </td>
                                                             <td className="px-4 py-3 text-slate-600">
                                                                 {token.enabled ? "启用" : "禁用"}
+                                                            </td>
+                                                            <td className="px-4 py-3 text-slate-600">
+                                                                {!token.diagnosticsAuthorized ? (
+                                                                    <span className="text-xs text-slate-400">未授权</span>
+                                                                ) : token.diagnosticsActive ? (
+                                                                    <div className="flex flex-col gap-1">
+                                                                        <span className="text-xs font-medium text-emerald-600">
+                                                                            采集中
+                                                                        </span>
+                                                                        <span className="text-xs text-slate-400">
+                                                                            截至 {formatDateTime(token.diagnosticsExpiresAt)}
+                                                                        </span>
+                                                                    </div>
+                                                                ) : (
+                                                                    <span className="text-xs text-slate-500">可开启</span>
+                                                                )}
                                                             </td>
                                                             <td className="px-4 py-3 text-slate-600">
                                                                 <div className="flex flex-wrap items-center gap-2">
@@ -932,6 +1128,34 @@ const Platform = (props: RouterComponentProps) => {
                                                                     >
                                                                         {token.enabled ? "禁用" : "启用"}
                                                                     </button>
+                                                                    {token.diagnosticsAuthorized && token.tokenId && (
+                                                                        <>
+                                                                            <button
+                                                                                type="button"
+                                                                                className="rounded-full border border-blue-200 px-3 py-1 text-xs text-blue-700 transition hover:border-blue-300"
+                                                                                onClick={() =>
+                                                                                    updateDiagnosticsState(
+                                                                                        token,
+                                                                                        !token.diagnosticsActive,
+                                                                                    )
+                                                                                }
+                                                                                disabled={diagnosticsActionLoading[token.tokenId]}
+                                                                            >
+                                                                                {diagnosticsActionLoading[token.tokenId]
+                                                                                    ? "处理中..."
+                                                                                    : token.diagnosticsActive
+                                                                                        ? "关闭调试"
+                                                                                        : "开启调试"}
+                                                                            </button>
+                                                                            <button
+                                                                                type="button"
+                                                                                className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-600 transition hover:border-slate-300"
+                                                                                onClick={() => openDiagnosticsPage(token.tokenId)}
+                                                                            >
+                                                                                查看日志
+                                                                            </button>
+                                                                        </>
+                                                                    )}
                                                                 </div>
                                                             </td>
                                                         </tr>
@@ -1193,6 +1417,163 @@ const Platform = (props: RouterComponentProps) => {
                             </div>
                         )}
                     </main>
+                </div>
+            )}
+            {activeTopMenu === "diagnostics" && (
+                <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-8">
+                    <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+                        <div className="flex flex-wrap items-start justify-between gap-4">
+                            <div>
+                                <h2 className="text-xl font-semibold text-slate-900">诊断日志</h2>
+                                <p className="mt-2 text-sm text-slate-600">
+                                    查看已授权 API Key 的原文诊断日志，并在这里开启或关闭 2 小时采集窗口。
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                className="rounded-full border border-slate-200 bg-white px-3 py-1 text-sm text-slate-600"
+                                onClick={loadApiKeys}
+                                disabled={apiKeyLoading}
+                            >
+                                {apiKeyLoading ? "刷新中..." : "刷新 Key 状态"}
+                            </button>
+                        </div>
+                        <div className="mt-6 flex flex-wrap items-center gap-3">
+                            <label className="text-sm text-slate-600">
+                                <span className="mr-2">API Key</span>
+                                <select
+                                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                                    value={selectedDiagnosticsToken?.tokenId ?? ""}
+                                    onChange={(event) => openDiagnosticsPage(event.target.value || undefined)}
+                                >
+                                    {diagnosticsTokens.length === 0 && <option value="">暂无已授权 Key</option>}
+                                    {diagnosticsTokens.map((token) => (
+                                        <option key={token.tokenId} value={token.tokenId}>
+                                            {maskToken(token.token)} ·{" "}
+                                            {token.ownerType === "project"
+                                                ? `项目 ${token.projectName ?? token.projectId ?? ""}`
+                                                : "个人"}
+                                        </option>
+                                    ))}
+                                </select>
+                            </label>
+                            <label className="text-sm text-slate-600">
+                                <span className="mr-2">时间范围</span>
+                                <select
+                                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                                    value={diagnosticsRange}
+                                    onChange={(event) => setDiagnosticsRange(event.target.value)}
+                                >
+                                    <option value="1h">最近 1 小时</option>
+                                    <option value="6h">最近 6 小时</option>
+                                    <option value="24h">最近 24 小时</option>
+                                </select>
+                            </label>
+                            <button
+                                type="button"
+                                className="rounded-full border border-slate-200 px-4 py-2 text-sm text-slate-700 transition hover:border-slate-300"
+                                onClick={() => void loadDiagnosticsLogs()}
+                                disabled={diagnosticsLoading || !selectedDiagnosticsToken?.tokenId}
+                            >
+                                {diagnosticsLoading ? "加载中..." : "刷新日志"}
+                            </button>
+                            {selectedDiagnosticsToken?.diagnosticsAuthorized && selectedDiagnosticsToken.tokenId && (
+                                <button
+                                    type="button"
+                                    className="rounded-full border border-blue-200 bg-blue-50 px-4 py-2 text-sm text-blue-700 transition hover:border-blue-300"
+                                    onClick={() =>
+                                        updateDiagnosticsState(
+                                            selectedDiagnosticsToken,
+                                            !selectedDiagnosticsToken.diagnosticsActive,
+                                        )
+                                    }
+                                    disabled={diagnosticsActionLoading[selectedDiagnosticsToken.tokenId]}
+                                >
+                                    {diagnosticsActionLoading[selectedDiagnosticsToken.tokenId]
+                                        ? "处理中..."
+                                        : selectedDiagnosticsToken.diagnosticsActive
+                                            ? "关闭调试"
+                                            : "开启 2 小时调试"}
+                                </button>
+                            )}
+                        </div>
+                        {selectedDiagnosticsToken?.diagnosticsAuthorized && (
+                            <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                                当前状态：
+                                <span className="ml-2 font-medium text-slate-800">
+                                    {selectedDiagnosticsToken.diagnosticsActive ? "采集中" : "未开启"}
+                                </span>
+                                {selectedDiagnosticsToken.diagnosticsExpiresAt && (
+                                    <span className="ml-3 text-slate-500">
+                                        截至 {formatDateTime(selectedDiagnosticsToken.diagnosticsExpiresAt)}
+                                    </span>
+                                )}
+                            </div>
+                        )}
+                        {apiKeyError && (
+                            <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-600">
+                                {apiKeyError}
+                            </div>
+                        )}
+                        {tokenActionError && (
+                            <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-600">
+                                {tokenActionError}
+                            </div>
+                        )}
+                        {diagnosticsError && (
+                            <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-600">
+                                {diagnosticsError}
+                            </div>
+                        )}
+                        {!apiKeyLoading && diagnosticsTokens.length === 0 && (
+                            <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">
+                                当前账号还没有被授权可用的诊断 Key。管理员需要先在 portal 中为某个 API Key 打开调试权限。
+                            </div>
+                        )}
+                        {!apiKeyLoading && diagnosticsTokens.length > 0 && (
+                            <div className="mt-6 space-y-4">
+                                {diagnosticsLogs?.partial && (
+                                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
+                                        部分节点日志暂时不可用，当前结果可能不完整。
+                                    </div>
+                                )}
+                                {diagnosticsLoading && (
+                                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+                                        正在加载诊断日志...
+                                    </div>
+                                )}
+                                {!diagnosticsLoading && diagnosticsLogs && diagnosticsLogs.entries.length === 0 && (
+                                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+                                        当前时间范围内暂无日志。
+                                    </div>
+                                )}
+                                {!diagnosticsLoading && diagnosticsLogs && diagnosticsLogs.entries.length > 0 && (
+                                    <div className="space-y-4">
+                                        {diagnosticsLogs.entries.map((entry, index) => (
+                                            <div
+                                                key={`${entry.timestamp}-${entry.event}-${entry.request_id ?? index}`}
+                                                className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50"
+                                            >
+                                                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-slate-200 bg-white px-4 py-3 text-xs text-slate-500">
+                                                    <span>{formatDateTime(entry.timestamp)}</span>
+                                                    <span>{entry.event}</span>
+                                                    {entry.model && <span>模型 {entry.model}</span>}
+                                                    {entry.endpoint && <span>{entry.endpoint}</span>}
+                                                    {typeof entry.status === "number" && <span>状态 {entry.status}</span>}
+                                                    {entry.request_id && <span>请求 {entry.request_id}</span>}
+                                                </div>
+                                                <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap break-all px-4 py-4 text-xs leading-6 text-slate-700">
+                                                    {typeof entry.payload === "string"
+                                                        ? entry.payload
+                                                        : JSON.stringify(entry.payload, null, 2)}
+                                                </pre>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
             {activeTopMenu === "market" && (

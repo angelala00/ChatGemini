@@ -143,6 +143,146 @@ async def _fetch_json_with_params(
         return status.HTTP_502_BAD_GATEWAY, {"detail": "上游返回非 JSON 数据"}
 
 
+async def _load_user_api_key_summary(
+    request: Request,
+    user: dict,
+) -> tuple[dict | None, JSONResponse | None]:
+    user_email = _get_user_email(user)
+    target_url = _build_target_url("/access", "/db")
+    status_code, access_db = await _fetch_json(request, target_url, method="GET")
+    if status_code >= 400:
+        return None, JSONResponse(status_code=status_code, content=access_db)
+
+    access_db, error_response = await _ensure_user_registered(request, user, access_db)
+    if error_response is not None:
+        return None, error_response
+
+    access_tokens_url = _build_target_url("/access", "/tokens")
+    access_tokens_status, access_tokens_payload = await _fetch_json(request, access_tokens_url, method="GET")
+    if access_tokens_status >= 400:
+        return None, JSONResponse(status_code=access_tokens_status, content=access_tokens_payload)
+
+    access_token_entries = access_tokens_payload.get("tokens") if isinstance(access_tokens_payload, dict) else None
+    access_token_by_value: dict[str, dict] = {}
+    if isinstance(access_token_entries, list):
+        for item in access_token_entries:
+            if not isinstance(item, dict):
+                continue
+            token_value = item.get("token")
+            if isinstance(token_value, str) and token_value:
+                access_token_by_value[token_value] = item
+
+    users = access_db.get("users") if isinstance(access_db, dict) else None
+    projects = access_db.get("projects") if isinstance(access_db, dict) else None
+    tokens = access_db.get("tokens") if isinstance(access_db, dict) else None
+    if not isinstance(users, dict) or not isinstance(tokens, dict):
+        return None, JSONResponse(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            content={"detail": "上游返回数据缺失"},
+        )
+
+    user_entry = users.get(user_email) if isinstance(users, dict) else None
+    display_name = None
+    if isinstance(user_entry, dict):
+        display_name = user_entry.get("displayName") or None
+
+    owned_projects: dict[str, dict] = {}
+    if isinstance(projects, dict):
+        for project_id, entry in projects.items():
+            if not isinstance(entry, dict):
+                continue
+            owners = entry.get("owners")
+            if isinstance(owners, list) and user_email in owners:
+                owned_projects[project_id] = entry
+
+    token_entries = []
+    enabled = False
+    for token_value, entry in tokens.items():
+        if not isinstance(entry, dict):
+            continue
+        access_token_entry = access_token_by_value.get(token_value, {})
+        owner_payload = None
+        if entry.get("user") == user_email:
+            owner_payload = {
+                "ownerType": "user",
+            }
+        elif isinstance(entry.get("project"), str) and entry.get("project") in owned_projects:
+            project_id = entry.get("project")
+            owner_payload = {
+                "ownerType": "project",
+                "projectId": project_id,
+                "projectName": owned_projects.get(project_id, {}).get("name") or project_id,
+            }
+        if owner_payload is None:
+            continue
+        token_payload = {
+            "token": token_value,
+            "tokenId": access_token_entry.get("tokenId") or entry.get("id"),
+            "enabled": bool(access_token_entry.get("enabled", entry.get("enabled", True))),
+            "diagnosticsAuthorized": bool(access_token_entry.get("diagnosticsAuthorized", False)),
+            "diagnosticsActive": bool(access_token_entry.get("diagnosticsActive", False)),
+            "diagnosticsExpiresAt": access_token_entry.get("diagnosticsExpiresAt"),
+            **owner_payload,
+        }
+        token_entries.append(token_payload)
+        if token_payload["enabled"]:
+            enabled = True
+
+    project_list = [
+        {
+            "id": project_id,
+            "name": entry.get("name") or project_id,
+            "department": entry.get("department"),
+        }
+        for project_id, entry in owned_projects.items()
+        if isinstance(entry, dict)
+    ]
+
+    return {
+        "id": user_email,
+        "displayName": display_name,
+        "enabled": enabled,
+        "isAdmin": False,
+        "tokenCount": len(token_entries),
+        "tokens": token_entries,
+        "projects": project_list,
+        "limits": {"userMax": USER_TOKEN_LIMIT, "projectMax": PROJECT_TOKEN_LIMIT},
+    }, None
+
+
+async def _ensure_user_token_access(
+    request: Request,
+    user: dict,
+    token_id: str,
+    *,
+    require_diagnostics_authorized: bool = False,
+) -> tuple[dict | None, JSONResponse | None]:
+    summary, error_response = await _load_user_api_key_summary(request, user)
+    if error_response is not None:
+        return None, error_response
+    tokens = summary.get("tokens") if isinstance(summary, dict) else None
+    if not isinstance(tokens, list):
+        return None, JSONResponse(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            content={"detail": "上游返回数据缺失"},
+        )
+    for item in tokens:
+        if not isinstance(item, dict):
+            continue
+        if item.get("tokenId") != token_id:
+            continue
+        if require_diagnostics_authorized and not item.get("diagnosticsAuthorized"):
+            return None, JSONResponse(
+                status_code=status.HTTP_403_FORBIDDEN,
+                content={"detail": "该 API Key 未授权调试功能"},
+            )
+        return item, None
+    return None, JSONResponse(
+        status_code=status.HTTP_404_NOT_FOUND,
+        content={"detail": "API Key 不存在或无权限访问"},
+    )
+
+
 def _filter_query_params(request: Request, excluded: set[str]) -> dict[str, str]:
     return {key: value for key, value in request.query_params.items() if key not in excluded}
 
@@ -312,85 +452,10 @@ async def get_user_api_keys(
     request: Request,
     user: dict = Depends(get_current_user),
 ) -> JSONResponse:
-    user_email = _get_user_email(user)
-    target_url = _build_target_url("/access", "/db")
-    status_code, payload = await _fetch_json(request, target_url)
-    if status_code >= 400:
-        return JSONResponse(status_code=status_code, content=payload)
-
-    payload, error_response = await _ensure_user_registered(request, user, payload)
+    payload, error_response = await _load_user_api_key_summary(request, user)
     if error_response is not None:
         return error_response
-
-    users = payload.get("users") if isinstance(payload, dict) else None
-    projects = payload.get("projects") if isinstance(payload, dict) else None
-    tokens = payload.get("tokens") if isinstance(payload, dict) else None
-    if not isinstance(users, dict) or not isinstance(tokens, dict):
-        return JSONResponse(status_code=status.HTTP_502_BAD_GATEWAY, content={"detail": "上游返回数据缺失"})
-
-    user_entry = users.get(user_email) if isinstance(users, dict) else None
-    display_name = None
-    if isinstance(user_entry, dict):
-        display_name = user_entry.get("displayName") or None
-
-    owned_projects: dict[str, dict] = {}
-    if isinstance(projects, dict):
-        for project_id, entry in projects.items():
-            if not isinstance(entry, dict):
-                continue
-            owners = entry.get("owners")
-            if isinstance(owners, list) and user_email in owners:
-                owned_projects[project_id] = entry
-
-    token_entries = []
-    enabled = False
-    for token_value, entry in tokens.items():
-        if not isinstance(entry, dict):
-            continue
-        if entry.get("user") == user_email:
-            token_entries.append(
-                {
-                    "token": token_value,
-                    "enabled": bool(entry.get("enabled", True)),
-                    "ownerType": "user",
-                }
-            )
-        elif isinstance(entry.get("project"), str) and entry.get("project") in owned_projects:
-            project_id = entry.get("project")
-            token_entries.append(
-                {
-                    "token": token_value,
-                    "enabled": bool(entry.get("enabled", True)),
-                    "ownerType": "project",
-                    "projectId": project_id,
-                    "projectName": owned_projects.get(project_id, {}).get("name") or project_id,
-                }
-            )
-        if token_entries and token_entries[-1].get("enabled"):
-            enabled = True
-
-    project_list = [
-        {
-            "id": project_id,
-            "name": entry.get("name") or project_id,
-            "department": entry.get("department"),
-        }
-        for project_id, entry in owned_projects.items()
-        if isinstance(entry, dict)
-    ]
-
-    return JSONResponse(
-        content={
-            "id": user_email,
-            "displayName": display_name,
-            "enabled": enabled,
-            "isAdmin": False,
-            "tokenCount": len(token_entries),
-            "tokens": token_entries,
-            "projects": project_list,
-            "limits": {"userMax": USER_TOKEN_LIMIT, "projectMax": PROJECT_TOKEN_LIMIT},
-        }
-    )
+    return JSONResponse(content=payload)
 
 
 @router.post("/user/tokens")
@@ -476,6 +541,71 @@ async def update_user_token_enabled(
         f"/tokens/{token}/enabled",
     )
     return await _proxy_request(request, target_url)
+
+
+@router.post("/user/diagnostics/tokens/{token_id}/activate")
+async def activate_user_token_diagnostics(
+    request: Request,
+    token_id: str,
+    user: dict = Depends(get_current_user),
+) -> Response:
+    _, error_response = await _ensure_user_token_access(
+        request,
+        user,
+        token_id,
+        require_diagnostics_authorized=True,
+    )
+    if error_response is not None:
+        return error_response
+    target_url = _build_target_url("/diagnostics", f"/tokens/{token_id}/activate")
+    return await _proxy_request(request, target_url)
+
+
+@router.post("/user/diagnostics/tokens/{token_id}/deactivate")
+async def deactivate_user_token_diagnostics(
+    request: Request,
+    token_id: str,
+    user: dict = Depends(get_current_user),
+) -> Response:
+    _, error_response = await _ensure_user_token_access(
+        request,
+        user,
+        token_id,
+        require_diagnostics_authorized=True,
+    )
+    if error_response is not None:
+        return error_response
+    target_url = _build_target_url("/diagnostics", f"/tokens/{token_id}/deactivate")
+    return await _proxy_request(request, target_url)
+
+
+@router.get("/user/diagnostics/logs")
+async def get_user_diagnostics_logs(
+    request: Request,
+    token_id: str = Query(..., alias="tokenId"),
+    range_value: str | None = Query(None, alias="range"),
+    limit: int | None = Query(None, alias="limit"),
+    event: str | None = Query(None, alias="event"),
+    user: dict = Depends(get_current_user),
+) -> Response:
+    _, error_response = await _ensure_user_token_access(
+        request,
+        user,
+        token_id,
+        require_diagnostics_authorized=True,
+    )
+    if error_response is not None:
+        return error_response
+    params: dict[str, str] = {"token_id": token_id}
+    if range_value:
+        params["range"] = range_value
+    if limit is not None:
+        params["limit"] = str(limit)
+    if event:
+        params["event"] = event
+    target_url = _build_target_url("/diagnostics", "/logs")
+    status_code, payload = await _fetch_json_with_params(request, target_url, params, method="GET")
+    return JSONResponse(status_code=status_code, content=payload)
 
 
 __all__ = ["router"]
