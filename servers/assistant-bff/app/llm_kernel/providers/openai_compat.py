@@ -372,8 +372,6 @@ class OpenAICompatProvider:
                 }
                 for tool in context.tools
             ]
-        elif _has_tool_history(context.messages):
-            payload["tools"] = []
         if options.temperature is not None:
             payload["temperature"] = options.temperature
         if options.max_tokens is not None:
@@ -803,13 +801,3 @@ def _request_target_snapshot(client: Any) -> dict[str, Any]:
 def _is_abort_error(exc: Exception) -> bool:
     name = exc.__class__.__name__
     return name == "CancelledError" or "abort" in str(exc).lower()
-
-
-def _has_tool_history(messages: list[Any]) -> bool:
-    for message in messages:
-        if getattr(message, "role", None) == "tool_result":
-            return True
-        if getattr(message, "role", None) == "assistant":
-            if any(isinstance(block, ToolCallContent) for block in getattr(message, "content", [])):
-                return True
-    return False
