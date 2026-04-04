@@ -93,6 +93,7 @@ interface TokenDiagnosticsLogEntry {
     token_id: string;
     model?: string | null;
     endpoint?: string | null;
+    gateway_request_id?: string | null;
     request_id?: string | null;
     status?: number | null;
     payload?: unknown;
@@ -104,6 +105,22 @@ interface TokenDiagnosticsLogsResponse {
     limit: number;
     entries: TokenDiagnosticsLogEntry[];
     partial?: boolean;
+}
+
+type DiagnosticsEntryRole = "input" | "output" | "other";
+
+interface DiagnosticsRequestEntry {
+    key: string;
+    role: DiagnosticsEntryRole;
+    payloadText: string;
+    entry: TokenDiagnosticsLogEntry;
+}
+
+interface DiagnosticsRequestGroup {
+    key: string;
+    gatewayRequestId?: string | null;
+    summary: TokenDiagnosticsLogEntry;
+    entries: DiagnosticsRequestEntry[];
 }
 
 interface UserUsageResponse extends UserModelRankingResponse {
@@ -239,6 +256,8 @@ const Platform = (props: RouterComponentProps) => {
     const [usageRetryCount, setUsageRetryCount] = useState(0);
     const [usageRange, setUsageRange] = useState("7d");
     const [copiedToken, setCopiedToken] = useState<string | null>(null);
+    const [copiedDiagnosticsPayload, setCopiedDiagnosticsPayload] = useState<string | null>(null);
+    const [expandedDiagnosticsGroups, setExpandedDiagnosticsGroups] = useState<Record<string, boolean>>({});
     const [tokenUpdating, setTokenUpdating] = useState<Record<string, boolean>>({});
     const [tokenActionError, setTokenActionError] = useState<string | null>(null);
     const [diagnosticsRange, setDiagnosticsRange] = useState("24h");
@@ -273,6 +292,55 @@ const Platform = (props: RouterComponentProps) => {
             minute: "2-digit",
             second: "2-digit",
         });
+    };
+    const formatDiagnosticsPayload = (payload: unknown) => {
+        if (payload === null || payload === undefined) {
+            return "";
+        }
+        if (typeof payload === "string") {
+            const trimmed = payload.trim();
+            if (!trimmed) {
+                return "";
+            }
+            if (
+                (trimmed.startsWith("{") && trimmed.endsWith("}")) ||
+                (trimmed.startsWith("[") && trimmed.endsWith("]"))
+            ) {
+                try {
+                    return JSON.stringify(JSON.parse(trimmed), null, 2);
+                } catch {
+                    return payload;
+                }
+            }
+            return payload;
+        }
+        try {
+            return JSON.stringify(payload, null, 2);
+        } catch {
+            return String(payload);
+        }
+    };
+    const getDiagnosticsEntryRole = (event: string): DiagnosticsEntryRole => {
+        const normalized = event.trim().toLowerCase();
+        if (
+            normalized.includes("request") ||
+            normalized.includes("input") ||
+            normalized.includes("prompt") ||
+            normalized.includes("received") ||
+            normalized.includes("normalized")
+        ) {
+            return "input";
+        }
+        if (
+            normalized.includes("response") ||
+            normalized.includes("output") ||
+            normalized.includes("completion") ||
+            normalized.includes("result") ||
+            normalized.includes("reply")
+        ) {
+            return "output";
+        }
+        return "other";
     };
     const getUsageTotals = (ranking: RankingEntry[] = []) => ({
         requests: ranking.reduce((sum, item) => sum + item.requests, 0),
@@ -542,6 +610,64 @@ const Platform = (props: RouterComponentProps) => {
         }
         return diagnosticsTokens[0];
     }, [diagnosticsTokenFromQuery, diagnosticsTokens]);
+    const groupedDiagnosticsLogs = useMemo<DiagnosticsRequestGroup[]>(() => {
+        const groups: DiagnosticsRequestGroup[] = [];
+        const groupByGatewayRequestId = new Map<string, DiagnosticsRequestGroup>();
+        const getTimeValue = (value?: string | null) => {
+            const parsed = new Date(value ?? "");
+            return Number.isNaN(parsed.getTime()) ? Number.MAX_SAFE_INTEGER : parsed.getTime();
+        };
+
+        for (const [index, entry] of (diagnosticsLogs?.entries ?? []).entries()) {
+            const gatewayRequestId = entry.gateway_request_id?.trim() || null;
+            const item: DiagnosticsRequestEntry = {
+                key: `${entry.timestamp}-${entry.event}-${gatewayRequestId ?? entry.request_id ?? index}`,
+                role: getDiagnosticsEntryRole(entry.event),
+                payloadText: formatDiagnosticsPayload(entry.payload),
+                entry,
+            };
+
+            if (gatewayRequestId) {
+                const existing = groupByGatewayRequestId.get(gatewayRequestId);
+                if (existing) {
+                    existing.entries.push(item);
+                    continue;
+                }
+                const group: DiagnosticsRequestGroup = {
+                    key: `gateway:${gatewayRequestId}`,
+                    gatewayRequestId,
+                    summary: entry,
+                    entries: [item],
+                };
+                groupByGatewayRequestId.set(gatewayRequestId, group);
+                groups.push(group);
+                continue;
+            }
+
+            groups.push({
+                key: `entry:${item.key}`,
+                gatewayRequestId: null,
+                summary: entry,
+                entries: [item],
+            });
+        }
+
+        for (const group of groups) {
+            group.entries.sort(
+                (a, b) => getTimeValue(a.entry.timestamp) - getTimeValue(b.entry.timestamp),
+            );
+            const recognizedCount = group.entries.filter((item) => item.role !== "other").length;
+            if (recognizedCount === 0 && group.entries.length === 2) {
+                group.entries[0].role = "input";
+                group.entries[1].role = "output";
+            }
+            group.summary = group.entries[0]?.entry ?? group.summary;
+        }
+
+        return groups.sort(
+            (a, b) => getTimeValue(b.summary.timestamp) - getTimeValue(a.summary.timestamp),
+        );
+    }, [diagnosticsLogs]);
     const userLimitReached = userTokenLimit > 0 && userTokenCount >= userTokenLimit;
     const groupedVisibleModels = useMemo(() => {
         const entries = visibleModels?.models ?? [];
@@ -914,6 +1040,16 @@ const Platform = (props: RouterComponentProps) => {
         setCopiedToken(token);
     };
 
+    const handleCopyDiagnosticsPayload = (key: string, payload: string) => {
+        const textArea = document.createElement("textarea");
+        textArea.value = payload;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textArea);
+        setCopiedDiagnosticsPayload(key);
+    };
+
     useEffect(() => {
         if (!copiedToken) {
             return;
@@ -924,6 +1060,20 @@ const Platform = (props: RouterComponentProps) => {
         return () => window.clearTimeout(timer);
     }, [copiedToken]);
 
+    useEffect(() => {
+        if (!copiedDiagnosticsPayload) {
+            return;
+        }
+        const timer = window.setTimeout(() => {
+            setCopiedDiagnosticsPayload(null);
+        }, 1500);
+        return () => window.clearTimeout(timer);
+    }, [copiedDiagnosticsPayload]);
+
+    useEffect(() => {
+        setExpandedDiagnosticsGroups({});
+    }, [selectedDiagnosticsToken?.tokenId, diagnosticsRange, diagnosticsLogs?.entries.length]);
+
     return (
         <div className="min-h-screen w-full bg-gradient-to-b from-slate-50 via-white to-slate-100 text-slate-900">
             <header className="w-full border-b border-slate-200/70 bg-white/80 backdrop-blur">
@@ -933,7 +1083,11 @@ const Platform = (props: RouterComponentProps) => {
                             {header}
                         </span>
                         <nav className="flex items-center gap-3 text-sm font-medium text-slate-500">
-                            {["console", "market", "docs", "diagnostics"].map((item) => (
+                            {(
+                                activeTopMenu === "diagnostics"
+                                    ? ["console", "market", "docs", "diagnostics"]
+                                    : ["console", "market", "docs"]
+                            ).map((item) => (
                                 <button
                                     key={item}
                                     type="button"
@@ -1071,7 +1225,6 @@ const Platform = (props: RouterComponentProps) => {
                                                         <th className="px-4 py-3">API Keys</th>
                                                         <th className="px-4 py-3">归属</th>
                                                         <th className="px-4 py-3">状态</th>
-                                                        <th className="px-4 py-3">调试</th>
                                                         <th className="px-4 py-3">操作</th>
                                                     </tr>
                                                 </thead>
@@ -1090,22 +1243,6 @@ const Platform = (props: RouterComponentProps) => {
                                                             </td>
                                                             <td className="px-4 py-3 text-slate-600">
                                                                 {token.enabled ? "启用" : "禁用"}
-                                                            </td>
-                                                            <td className="px-4 py-3 text-slate-600">
-                                                                {!token.diagnosticsAuthorized ? (
-                                                                    <span className="text-xs text-slate-400">未授权</span>
-                                                                ) : token.diagnosticsActive ? (
-                                                                    <div className="flex flex-col gap-1">
-                                                                        <span className="text-xs font-medium text-emerald-600">
-                                                                            采集中
-                                                                        </span>
-                                                                        <span className="text-xs text-slate-400">
-                                                                            截至 {formatDateTime(token.diagnosticsExpiresAt)}
-                                                                        </span>
-                                                                    </div>
-                                                                ) : (
-                                                                    <span className="text-xs text-slate-500">可开启</span>
-                                                                )}
                                                             </td>
                                                             <td className="px-4 py-3 text-slate-600">
                                                                 <div className="flex flex-wrap items-center gap-2">
@@ -1426,17 +1563,9 @@ const Platform = (props: RouterComponentProps) => {
                             <div>
                                 <h2 className="text-xl font-semibold text-slate-900">诊断日志</h2>
                                 <p className="mt-2 text-sm text-slate-600">
-                                    查看已授权 API Key 的原文诊断日志，并在这里开启或关闭 2 小时采集窗口。
+                                    查看已授权 API Key 的原文诊断日志，并按 Key 与时间范围筛选。
                                 </p>
                             </div>
-                            <button
-                                type="button"
-                                className="rounded-full border border-slate-200 bg-white px-3 py-1 text-sm text-slate-600"
-                                onClick={loadApiKeys}
-                                disabled={apiKeyLoading}
-                            >
-                                {apiKeyLoading ? "刷新中..." : "刷新 Key 状态"}
-                            </button>
                         </div>
                         <div className="mt-6 flex flex-wrap items-center gap-3">
                             <label className="text-sm text-slate-600">
@@ -1469,33 +1598,6 @@ const Platform = (props: RouterComponentProps) => {
                                     <option value="24h">最近 24 小时</option>
                                 </select>
                             </label>
-                            <button
-                                type="button"
-                                className="rounded-full border border-slate-200 px-4 py-2 text-sm text-slate-700 transition hover:border-slate-300"
-                                onClick={() => void loadDiagnosticsLogs()}
-                                disabled={diagnosticsLoading || !selectedDiagnosticsToken?.tokenId}
-                            >
-                                {diagnosticsLoading ? "加载中..." : "刷新日志"}
-                            </button>
-                            {selectedDiagnosticsToken?.diagnosticsAuthorized && selectedDiagnosticsToken.tokenId && (
-                                <button
-                                    type="button"
-                                    className="rounded-full border border-blue-200 bg-blue-50 px-4 py-2 text-sm text-blue-700 transition hover:border-blue-300"
-                                    onClick={() =>
-                                        updateDiagnosticsState(
-                                            selectedDiagnosticsToken,
-                                            !selectedDiagnosticsToken.diagnosticsActive,
-                                        )
-                                    }
-                                    disabled={diagnosticsActionLoading[selectedDiagnosticsToken.tokenId]}
-                                >
-                                    {diagnosticsActionLoading[selectedDiagnosticsToken.tokenId]
-                                        ? "处理中..."
-                                        : selectedDiagnosticsToken.diagnosticsActive
-                                            ? "关闭调试"
-                                            : "开启 2 小时调试"}
-                                </button>
-                            )}
                         </div>
                         {selectedDiagnosticsToken?.diagnosticsAuthorized && (
                             <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
@@ -1548,27 +1650,112 @@ const Platform = (props: RouterComponentProps) => {
                                     </div>
                                 )}
                                 {!diagnosticsLoading && diagnosticsLogs && diagnosticsLogs.entries.length > 0 && (
-                                    <div className="space-y-4">
-                                        {diagnosticsLogs.entries.map((entry, index) => (
-                                            <div
-                                                key={`${entry.timestamp}-${entry.event}-${entry.request_id ?? index}`}
-                                                className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50"
-                                            >
-                                                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-slate-200 bg-white px-4 py-3 text-xs text-slate-500">
-                                                    <span>{formatDateTime(entry.timestamp)}</span>
-                                                    <span>{entry.event}</span>
-                                                    {entry.model && <span>模型 {entry.model}</span>}
-                                                    {entry.endpoint && <span>{entry.endpoint}</span>}
-                                                    {typeof entry.status === "number" && <span>状态 {entry.status}</span>}
-                                                    {entry.request_id && <span>请求 {entry.request_id}</span>}
+                                    <div className="space-y-3">
+                                        {groupedDiagnosticsLogs.map((group) => {
+                                            const isExpanded = Boolean(expandedDiagnosticsGroups[group.key]);
+                                            const inputEntries = group.entries.filter((item) => item.role === "input");
+                                            const outputEntries = group.entries.filter((item) => item.role === "output");
+                                            const otherEntries = group.entries.filter((item) => item.role === "other");
+                                            const sections = [
+                                                { key: "input", title: "输入", items: inputEntries },
+                                                { key: "output", title: "输出", items: outputEntries },
+                                                { key: "other", title: "其他", items: otherEntries },
+                                            ].filter((section) => section.items.length > 0);
+                                            return (
+                                                <div
+                                                    key={group.key}
+                                                    className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50"
+                                                >
+                                                    <button
+                                                        type="button"
+                                                        className="flex w-full flex-wrap items-center justify-between gap-3 bg-white px-4 py-3 text-left transition hover:bg-slate-50"
+                                                        onClick={() =>
+                                                            setExpandedDiagnosticsGroups((prev) => ({
+                                                                ...prev,
+                                                                [group.key]: !prev[group.key],
+                                                            }))
+                                                        }
+                                                    >
+                                                        <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-500">
+                                                            <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 font-medium text-slate-700">
+                                                                请求
+                                                            </span>
+                                                            <span>{formatDateTime(group.summary.timestamp)}</span>
+                                                            {group.gatewayRequestId ? (
+                                                                <span>网关请求 {group.gatewayRequestId}</span>
+                                                            ) : (
+                                                                <span>未关联网关请求</span>
+                                                            )}
+                                                            {group.summary.model && <span>模型 {group.summary.model}</span>}
+                                                            {group.summary.endpoint && <span>{group.summary.endpoint}</span>}
+                                                            {typeof group.summary.status === "number" && (
+                                                                <span>状态 {group.summary.status}</span>
+                                                            )}
+                                                            <span>{group.entries.length} 条日志</span>
+                                                        </div>
+                                                        <span className="text-xs font-medium text-slate-600">
+                                                            {isExpanded ? "收起" : "展开"}
+                                                        </span>
+                                                    </button>
+                                                    {isExpanded && (
+                                                        <div className="border-t border-slate-200 bg-slate-50">
+                                                            {sections.map((section) => (
+                                                                <div
+                                                                    key={section.key}
+                                                                    className="border-t border-slate-200 first:border-t-0"
+                                                                >
+                                                                    <div className="bg-slate-100 px-4 py-2 text-xs font-medium tracking-wide text-slate-600">
+                                                                        {section.title}
+                                                                    </div>
+                                                                    <div className="divide-y divide-slate-200">
+                                                                        {section.items.map((item) => (
+                                                                            <div key={item.key}>
+                                                                                <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-xs text-slate-500">
+                                                                                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                                                                                        <span>{item.entry.event}</span>
+                                                                                        <span>{formatDateTime(item.entry.timestamp)}</span>
+                                                                                        {item.entry.model && (
+                                                                                            <span>模型 {item.entry.model}</span>
+                                                                                        )}
+                                                                                        {item.entry.endpoint && (
+                                                                                            <span>{item.entry.endpoint}</span>
+                                                                                        )}
+                                                                                        {typeof item.entry.status === "number" && (
+                                                                                            <span>状态 {item.entry.status}</span>
+                                                                                        )}
+                                                                                        {item.entry.request_id && (
+                                                                                            <span>请求 {item.entry.request_id}</span>
+                                                                                        )}
+                                                                                    </div>
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-600 transition hover:border-slate-300 hover:text-slate-800"
+                                                                                        onClick={(event) => {
+                                                                                            event.stopPropagation();
+                                                                                            handleCopyDiagnosticsPayload(
+                                                                                                item.key,
+                                                                                                item.payloadText,
+                                                                                            );
+                                                                                        }}
+                                                                                    >
+                                                                                        {copiedDiagnosticsPayload === item.key
+                                                                                            ? "已复制"
+                                                                                            : "复制"}
+                                                                                    </button>
+                                                                                </div>
+                                                                                <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap break-all px-4 py-4 text-xs leading-6 text-slate-700">
+                                                                                    {item.payloadText}
+                                                                                </pre>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
                                                 </div>
-                                                <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap break-all px-4 py-4 text-xs leading-6 text-slate-700">
-                                                    {typeof entry.payload === "string"
-                                                        ? entry.payload
-                                                        : JSON.stringify(entry.payload, null, 2)}
-                                                </pre>
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 )}
                             </div>
