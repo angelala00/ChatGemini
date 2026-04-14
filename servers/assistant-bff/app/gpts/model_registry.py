@@ -6,7 +6,7 @@ class RegisteredModel(TypedDict):
 
 
 GLM47_MODEL: RegisteredModel = {
-    "model_name": "glm-4.7",
+    "model_name": "GLM-4.7-W8A8",
 }
 
 QWEN35_MODEL: RegisteredModel = {
