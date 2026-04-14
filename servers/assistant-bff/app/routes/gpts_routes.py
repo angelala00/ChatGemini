@@ -18,10 +18,22 @@ MAX_SAMPLES = 5
 GPTS_WHITE_LIST = model_config.GPTS_WHITE_LIST
 
 
+def is_gpts_feature_allowed(user: dict) -> bool:
+    if not model_config.GPTS_FEATURE_ENABLED:
+        return False
+    if not GPTS_WHITE_LIST:
+        return True
+    return user.get("email") in GPTS_WHITE_LIST or user.get("sub") in GPTS_WHITE_LIST
+
+
+def ensure_gpts_feature_allowed(user: dict) -> None:
+    if not is_gpts_feature_allowed(user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "GPTS feature not enabled")
+
+
 @router.get("/gpts/permission")
 async def gpts_permission(user: dict = Depends(get_current_user)):
-    allowed = not GPTS_WHITE_LIST or user["email"] in GPTS_WHITE_LIST
-    return {"allowed": allowed}
+    return {"allowed": is_gpts_feature_allowed(user)}
 
 
 def init_db():
@@ -54,6 +66,7 @@ init_db()
 
 @router.get("/gpts")
 async def get_gpts(user: dict = Depends(get_current_user)):
+    ensure_gpts_feature_allowed(user)
     gpt_logger.info(f"path=get_gpts user={user['email']} at={time.strftime('%Y-%m-%d %H:%M:%S')}")
     refresh_gpts()
     conn = get_db()
@@ -76,6 +89,7 @@ async def get_gpts(user: dict = Depends(get_current_user)):
 
 @router.patch("/gpts/{gid}/pin")
 async def toggle_pin(gid: str, request: Request, user: dict = Depends(get_current_user)):
+    ensure_gpts_feature_allowed(user)
     body = await request.json()
     is_pinned = bool(body.get("is_pinned"))
     refresh_gpts()
@@ -121,6 +135,7 @@ def parse_version(v: str) -> Tuple[int, ...]:
 
 @router.get("/gpts/pined")
 async def gpts_pined(user: dict = Depends(get_current_user)):
+    ensure_gpts_feature_allowed(user)
     gpt_logger.info(f"path=gpts_pined user={user['email']} at={time.strftime('%Y-%m-%d %H:%M:%S')}")
     refresh_gpts()
     conn = get_db()
@@ -170,6 +185,7 @@ async def gpts_pined(user: dict = Depends(get_current_user)):
 
 @router.get("/gpts/created")
 async def gpts_created(user: dict = Depends(get_current_user)):
+    ensure_gpts_feature_allowed(user)
     gpt_logger.info(f"path=gpts_created user={user['email']} at={time.strftime('%Y-%m-%d %H:%M:%S')}")
     refresh_gpts()
     created = []
@@ -191,6 +207,8 @@ async def get_gpts_detail(gid: str, user: dict = Depends(get_current_user)):
     refresh_gpts()
     if gid not in gpts:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "gid not found")
+    if gid != "gptassistant":
+        ensure_gpts_feature_allowed(user)
 
     gpt_item = gpts[gid]
     if not auth_ok(gpt_item, user['email'], user['sub']):
@@ -219,6 +237,7 @@ async def get_gpts_detail(gid: str, user: dict = Depends(get_current_user)):
 
 @router.post("/gpts")
 async def create_gpt(request: Request, user: dict = Depends(get_current_user)):
+    ensure_gpts_feature_allowed(user)
     body = await request.json()
     for field in ("name", "desc", "system_prompt"):
         if not body.get(field):
@@ -256,6 +275,7 @@ async def create_gpt(request: Request, user: dict = Depends(get_current_user)):
 
 @router.put("/gpts/{gid}")
 async def update_gpt(gid: str, request: Request, user: dict = Depends(get_current_user)):
+    ensure_gpts_feature_allowed(user)
     refresh_gpts()
     if gid in BUILTIN_GIDS:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "builtin gpts cannot be modified")
@@ -292,6 +312,7 @@ async def update_gpt(gid: str, request: Request, user: dict = Depends(get_curren
 
 @router.delete("/gpts/{gid}")
 async def delete_gpt(gid: str, user: dict = Depends(get_current_user)):
+    ensure_gpts_feature_allowed(user)
     refresh_gpts()
     if gid in BUILTIN_GIDS:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "builtin gpts cannot be deleted")

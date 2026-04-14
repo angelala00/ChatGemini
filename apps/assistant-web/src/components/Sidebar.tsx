@@ -24,6 +24,7 @@ import { normalizeAssetPath } from "../helpers/normalizeAssetPath";
 interface SidebarProps {
     readonly title: string;
     readonly expand: boolean;
+    readonly gptsFeatureAllowed: boolean;
     readonly limitation?: number;
     readonly sessions: Sessions;
     readonly locales: Record<string, string>;
@@ -39,6 +40,7 @@ export const Sidebar = (props: SidebarProps) => {
     const {
         title,
         expand,
+        gptsFeatureAllowed,
         limitation,
         sessions,
         locales,
@@ -106,12 +108,16 @@ export const Sidebar = (props: SidebarProps) => {
             ).toLocaleDateString();
 
     useEffect(() => {
+        if (!gptsFeatureAllowed) {
+            dispatch(updatePinnedGpts([]));
+            return;
+        }
         handleRequest('GET', getFullPath('/api/gpts/pined') ).then(response_json => {
             // console.log("1111:"+response_json)
             // setPinnedGpts(response_json)
             dispatch(updatePinnedGpts(response_json ?? []));
-        });
-    }, [dispatch]);
+        }).catch(() => dispatch(updatePinnedGpts([])));
+    }, [dispatch, gptsFeatureAllowed]);
         
     useEffect(() => {
         const today = getCategorizedSessions(sessions, isTimestampToday);
@@ -158,18 +164,20 @@ export const Sidebar = (props: SidebarProps) => {
                     <img src={editIcon} className="w-8 h-8 object-contain"/>
                     {t("components.Sidebar.new_chat")}
                 </div>
-                <div
-                    className="p-1 mx-3 my-1 py-1 text-sm text-center text-gray-200 hover:bg-slate-600 transition-all rounded-lg cursor-pointer flex items-center justify-start gap-2"
-                    onClick={() => {
-                        navigate("/gpts/")
-                    }}
-                >
-                    <img src={appsIcon} className="w-8 h-8 object-contain"/>
-                    {t("components.Sidebar.gpts")}
-                </div>
+                {gptsFeatureAllowed && (
+                    <div
+                        className="p-1 mx-3 my-1 py-1 text-sm text-center text-gray-200 hover:bg-slate-600 transition-all rounded-lg cursor-pointer flex items-center justify-start gap-2"
+                        onClick={() => {
+                            navigate("/gpts/")
+                        }}
+                    >
+                        <img src={appsIcon} className="w-8 h-8 object-contain"/>
+                        {t("components.Sidebar.gpts")}
+                    </div>
+                )}
             </div>
             <div className="flex-1 overflow-auto min-h-0">
-            {pinnedGpts.map(({ gid, name, logo }, index) => {
+            {gptsFeatureAllowed && pinnedGpts.map(({ gid, name, logo }, index) => {
                 console.log
                 if (gid === "gptassistant") {
                     return

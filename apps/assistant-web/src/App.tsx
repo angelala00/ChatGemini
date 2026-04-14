@@ -144,6 +144,8 @@ const App = () => {
     const [pageSubTitle, setPageSubTitle] = useState("");
     const [pageSamples, setPageSamples] = useState<string[]>([]);
     const [isNoAuthorized, setIsNoAuthorized] = useState(false);
+    const [gptsFeatureAllowed, setGptsFeatureAllowed] = useState(false);
+    const [gptsPermissionLoaded, setGptsPermissionLoaded] = useState(false);
     
     const pathParts = location.pathname.split("/")
     const mod = pathParts[1];
@@ -507,9 +509,74 @@ const App = () => {
         setUploadInlineData({ data: "", mimeType: "" });
     };
 
+    const currentPath = location.pathname;
+    const gptsRoutes: Array<keyof typeof routes> = [
+        "gpts",
+        "my_gpts",
+        "gpts_create",
+    ];
+    const isGptsPage = gptsRoutes.some((key) =>
+        matchPath(
+            {
+                path: `${routes[key].prefix}${routes[key].uri}${routes[key].suffix}`,
+            },
+            currentPath
+        )
+    );
+    const isTracePage = !!matchPath(
+        {
+            path: `${routes.trace.prefix}${routes.trace.uri}${routes.trace.suffix}`,
+        },
+        currentPath,
+    );
+
+    useEffect(() => {
+        if (!hasLogined) {
+            setGptsFeatureAllowed(false);
+            setGptsPermissionLoaded(false);
+            return;
+        }
+        setGptsPermissionLoaded(false);
+        handleRequest('GET', getFullPath('/api/gpts/permission'))
+            .then((responseJson) => {
+                setGptsFeatureAllowed(Boolean(responseJson.allowed));
+            })
+            .catch(() => {
+                setGptsFeatureAllowed(false);
+            })
+            .finally(() => {
+                setGptsPermissionLoaded(true);
+            });
+    }, [hasLogined]);
+
+    useEffect(() => {
+        if (
+            hasLogined &&
+            gptsPermissionLoaded &&
+            !gptsFeatureAllowed &&
+            (isGptsPage || (!!gid && gid !== "gptassistant"))
+        ) {
+            navigate(routes.index.prefix, { replace: true });
+        }
+    }, [
+        gid,
+        gptsFeatureAllowed,
+        gptsPermissionLoaded,
+        hasLogined,
+        isGptsPage,
+        navigate,
+        routes.index.prefix,
+    ]);
+
     useEffect(() => {
         // console.log("gid change")
         if (hasLogined) {
+            if (gid && gid !== "gptassistant" && !gptsPermissionLoaded) {
+                return;
+            }
+            if (gid && gid !== "gptassistant" && !gptsFeatureAllowed) {
+                return;
+            }
             fetch(getFullPath('/api/gpts/detail/' + r_gid), {
                 method: 'GET',
                 credentials: 'include' // 确保带上 HttpOnly Cookie
@@ -570,7 +637,7 @@ const App = () => {
                 }
             });
         }
-    }, [hasLogined, gid]);
+    }, [gptsFeatureAllowed, gptsPermissionLoaded, hasLogined, gid]);
 
     useEffect(() => {
         if (!models || models.length === 0) {
@@ -660,26 +727,6 @@ const App = () => {
     }, [hasLogined]);
 
     // console.log("=====22222"+hasLogined)
-    const currentPath = location.pathname;
-    const gptsRoutes: Array<keyof typeof routes> = [
-        "gpts",
-        "my_gpts",
-        "gpts_create",
-    ];
-    const isGptsPage = gptsRoutes.some((key) =>
-        matchPath(
-            {
-                path: `${routes[key].prefix}${routes[key].uri}${routes[key].suffix}`,
-            },
-            currentPath
-        )
-    );
-    const isTracePage = !!matchPath(
-        {
-            path: `${routes.trace.prefix}${routes.trace.uri}${routes.trace.suffix}`,
-        },
-        currentPath,
-    );
     return (
         hasLogined && isTracePage ? (
             <div className="min-h-screen w-full bg-slate-950 text-slate-100">
@@ -712,6 +759,7 @@ const App = () => {
                             locales={locales}
                             sessions={sessions}
                             expand={sidebarExpand}
+                            gptsFeatureAllowed={gptsFeatureAllowed}
                             currentLocale={currentLocale}
                             onSwitchLocale={handleSwitchLocale}
                             onExportSession={handleExportSession}
