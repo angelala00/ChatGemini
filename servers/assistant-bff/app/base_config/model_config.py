@@ -33,6 +33,9 @@ def _parse_list_env(value: str | None) -> Set[str]:
 
 API_KEY: str = os.getenv("OPENAI_API_KEY", "")
 BASE_URL: str = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+ASSISTANT_MODEL_GLM47: str = os.getenv("ASSISTANT_MODEL_GLM47", "GLM-4.7-W8A8")
+ASSISTANT_MODEL_QWEN35: str = os.getenv("ASSISTANT_MODEL_QWEN35", "qwen3.5-35b-a3b")
+ASSISTANT_MODEL_GLM5: str = os.getenv("ASSISTANT_MODEL_GLM5", "glm-5")
 FILE_BASE: str = os.getenv("FILE_BASE", "/tmp")
 LOG_BASE: str = os.getenv("LOG_BASE", "/tmp")
 _allow_origins_env = os.getenv("ALLOW_ORIGINS", "*")

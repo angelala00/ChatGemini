@@ -1,18 +1,20 @@
 from typing import TypedDict
 
+from app.base_config import model_config
+
 
 class RegisteredModel(TypedDict):
     model_name: str
 
 
 GLM47_MODEL: RegisteredModel = {
-    "model_name": "GLM-4.7-W8A8",
+    "model_name": model_config.ASSISTANT_MODEL_GLM47,
 }
 
 QWEN35_MODEL: RegisteredModel = {
-    "model_name": "qwen3.5-35b-a3b",
+    "model_name": model_config.ASSISTANT_MODEL_QWEN35,
 }
 
 GLM5_MODEL: RegisteredModel = {
-    "model_name": "glm-5",
+    "model_name": model_config.ASSISTANT_MODEL_GLM5,
 }
