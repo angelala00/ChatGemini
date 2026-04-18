@@ -24,3 +24,21 @@
 
 - `--process`：检查后端进程与前端构建产物
 - `--health`：检查后端健康状态
+
+
+
+## 远端同步
+
+仓库可配置 GitHub 以外的镜像远端（例如 ModelScope）用于发布同步。
+
+- 远端 URL 与访问凭据应通过本地 git remote、环境变量或安全凭据管理工具维护。
+- 同步时优先使用已配置好的 remote 名称，例如将当前分支推送到目标镜像分支。
+
+示例：
+
+```bash
+git remote add modelscope <modelscope-repository-url>
+git push --set-upstream modelscope main:refs/for/github
+git push modelscope master:github-master
+git push modelscope HEAD:github-master
+```
