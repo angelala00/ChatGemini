@@ -170,7 +170,11 @@
             "no_history_chat": "No history chat",
             "rename": "Rename",
             "export": "Export",
-            "delete": "Delete"
+            "delete": "Delete",
+            "version_tooltip": "Click to view release notes",
+            "release_history_title": "Release Notes",
+            "release_history_subtitle": "Current version {{version}}",
+            "close_release_history": "Close release notes"
         }
     }
 }

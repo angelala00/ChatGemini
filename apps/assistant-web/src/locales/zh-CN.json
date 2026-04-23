@@ -170,7 +170,11 @@
             "no_history_chat": "没有历史记录",
             "rename": "重命名",
             "export": "导出",
-            "delete": "删除"
+            "delete": "删除",
+            "version_tooltip": "点击查看功能变更记录",
+            "release_history_title": "功能变更记录",
+            "release_history_subtitle": "当前版本 {{version}}",
+            "close_release_history": "关闭功能变更记录"
         }
     }
 }
