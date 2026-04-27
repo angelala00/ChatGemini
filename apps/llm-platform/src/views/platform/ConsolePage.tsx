@@ -46,7 +46,6 @@ interface ConsolePageProps {
     setActiveSideMenu: (sideMenu: ConsoleSideMenu) => void;
     setUsageRange: (range: string) => void;
     syncPath: (topMenu: TopMenu, sideMenu: ConsoleSideMenu, docsPage: DocsPage) => void;
-    loadApiKeys: () => void;
     openDiagnosticsPage: (tokenId?: string) => void;
     handleCopyToken: (token: string) => void;
     maskToken: (token: string, head?: number, tail?: number) => string;
@@ -86,7 +85,6 @@ const ConsolePage = ({
     setActiveSideMenu,
     setUsageRange,
     syncPath,
-    loadApiKeys,
     openDiagnosticsPage,
     handleCopyToken,
     maskToken,
@@ -140,7 +138,6 @@ const ConsolePage = ({
                     tokenActionError={tokenActionError}
                     diagnosticsActionLoading={diagnosticsActionLoading}
                     ownedProjects={ownedProjects}
-                    loadApiKeys={loadApiKeys}
                     openDiagnosticsPage={openDiagnosticsPage}
                     handleCopyToken={handleCopyToken}
                     maskToken={maskToken}

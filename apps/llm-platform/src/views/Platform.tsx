@@ -791,7 +791,6 @@ const Platform = (props: RouterComponentProps) => {
                     setActiveSideMenu={setActiveSideMenu}
                     setUsageRange={setUsageRange}
                     syncPath={syncPath}
-                    loadApiKeys={loadApiKeys}
                     openDiagnosticsPage={openDiagnosticsPage}
                     handleCopyToken={handleCopyToken}
                     maskToken={maskToken}

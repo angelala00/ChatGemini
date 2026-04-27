@@ -20,7 +20,6 @@ interface ApiKeysPageProps {
     tokenActionError: string | null;
     diagnosticsActionLoading: Record<string, boolean>;
     ownedProjects: NonNullable<GatewayUserSummary["projects"]>;
-    loadApiKeys: () => void;
     openDiagnosticsPage: (tokenId?: string) => void;
     handleCopyToken: (token: string) => void;
     maskToken: (token: string, head?: number, tail?: number) => string;
@@ -46,7 +45,6 @@ const ApiKeysPage = ({
     tokenActionError,
     diagnosticsActionLoading,
     ownedProjects,
-    loadApiKeys,
     openDiagnosticsPage,
     handleCopyToken,
     maskToken,
@@ -59,27 +57,10 @@ const ApiKeysPage = ({
         <p className="text-sm text-slate-600">
             管理你的 API Keys、启用/禁用状态以及额度。
         </p>
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="mt-4 flex flex-wrap items-center gap-3">
             <div className="text-sm text-slate-500">
                 可用额度：用户 {userTokenCount}/{userTokenLimit || "-"}
                 ，项目 {Object.keys(projectTokenCounts).length}/{projectTokenLimit || "-"}
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-                <button
-                    type="button"
-                    className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-sm text-blue-700"
-                    onClick={() => openDiagnosticsPage()}
-                >
-                    诊断日志
-                </button>
-                <button
-                    type="button"
-                    className="rounded-full border border-slate-200 bg-white px-3 py-1 text-sm text-slate-600"
-                    onClick={loadApiKeys}
-                    disabled={apiKeyLoading}
-                >
-                    {apiKeyLoading ? "刷新中..." : "刷新"}
-                </button>
             </div>
         </div>
         {apiKeyError && (
