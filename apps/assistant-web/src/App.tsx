@@ -775,12 +775,10 @@ const App = () => {
                                 <Header
                                     userName={userName}
                                     logoutIcon={!!passcodes.length}
-                                    newChatUrl={routes.index.prefix}
                                     sidebarExpand={sidebarExpand}
                                     title={pageName}
                                     models={models}
                                     defaultModel={defaultModel}
-                                    onPurgeSessions={handlePurgeSessions}
                                     onToggleSidebar={() =>
                                         setSidebarExpand((state) => !state)
                                     }
