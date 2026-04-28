@@ -296,7 +296,7 @@ const Chat = (props: RouterComponentProps) => {
                         mimeType,
                     );
 
-                    const typingEffect = `<div class="inline px-1 bg-gray-900 animate-pulse animate-duration-700"></div>`;
+                    const typingEffect = `<div class="inline px-1 bg-[#2f3a46] animate-pulse animate-duration-700"></div>`;
                     if (
                         ai.busy &&
                         role === SessionRole.Model &&
@@ -320,8 +320,8 @@ const Chat = (props: RouterComponentProps) => {
                                 <Markdown
                                     className={
                                         role === SessionRole.Model
-                                            ? "prose-stone"
-                                        : "prose-stone prose-headings:text-stone-900 prose-strong:text-stone-900 prose-p:text-stone-900"
+                                            ? "prose-slate"
+                                        : "prose-slate prose-headings:text-[#2f3a46] prose-strong:text-[#2f3a46] prose-p:text-[#2f3a46]"
                                     }
                                 typingEffect={typingEffect}
                                 pythonRuntime={pythonRuntime}
@@ -342,10 +342,10 @@ const Chat = (props: RouterComponentProps) => {
             {showJumpToLatest && (
                 <div className="sticky bottom-5 z-10 flex justify-end">
                     <button
-                        className="inline-flex items-center justify-center gap-2 rounded-full border border-stone-300/80 bg-white/95 px-3.5 py-2 text-sm font-medium leading-none text-stone-700 shadow-[0_10px_24px_rgba(0,0,0,0.08)] backdrop-blur hover:bg-stone-50"
+                        className="inline-flex items-center justify-center gap-2 rounded-full border border-[#d4dde5]/90 bg-white/95 px-3.5 py-2 text-sm font-medium leading-none text-[#66717d] shadow-[0_10px_24px_rgba(23,28,38,0.08)] backdrop-blur hover:bg-[#f8fafb]"
                         onClick={() => jumpToLatest()}
                     >
-                        <ArrowDownIcon className="size-3.5 text-stone-500" />
+                        <ArrowDownIcon className="size-3.5 text-[#87919d]" />
                         <span>{t("views.Chat.jump_to_latest", "回到最新")}</span>
                     </button>
                 </div>

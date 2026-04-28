@@ -31,9 +31,9 @@ export const Header = (props: HeaderProps) => {
         onModelChange,
     } = props;
     return (
-        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-stone-200/80 bg-stone-100/92 px-3 py-3 backdrop-blur supports-[backdrop-filter]:bg-stone-100/80">
+        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-[#e7edf2]/90 bg-white/80 px-3 py-3 text-[#2f3a46] backdrop-blur supports-[backdrop-filter]:bg-white/75">
             <button
-                className="rounded-xl p-2 text-stone-700 transition-colors hover:bg-stone-200/80"
+                className="rounded-xl p-2 text-[#66717d] transition-colors hover:bg-[#f4f7f9] hover:text-[#2f3a46]"
                 onClick={onToggleSidebar}
             >
                 <img src={menuIcon} className="size-4" alt="" />
@@ -52,7 +52,7 @@ export const Header = (props: HeaderProps) => {
             {/* <h1 className="font-semibold text-lg">GPT助手</h1> */}
             <div className="flex items-center gap-1">
                 {logoutIcon && (
-                    <div className="ml-2 rounded-full border border-stone-200 bg-white px-3 py-1.5 text-sm font-medium text-stone-700 shadow-sm">
+                    <div className="ml-2 rounded-full border border-[#e2e8ee] bg-white/95 px-3 py-1.5 text-sm font-medium text-[#66717d] shadow-[0_2px_8px_rgba(23,28,38,0.04)]">
                         <span>{userName}</span>
                         {/* <button
                             className="hover:bg-gray-200 rounded-lg p-2"

@@ -14,7 +14,7 @@ export const Landing = (props: LandingProps) => {
                 <img src={logo} alt="" className="w-50 h-50 object-contain" />
             </div>
 
-            <h1 className="font-bold text-lg md:text-xl lg:text-2xl text-gray-900">
+            <h1 className="text-center text-[28px] font-bold leading-tight text-gray-900">
                 {title}
             </h1>
             <div className="sub-title">
@@ -28,7 +28,7 @@ export const Landing = (props: LandingProps) => {
                         className="p-3 rounded-lg hover:bg-gray-100 border text-left w-full max-w-[250px]"
                         onClick={() => onSelectSample(prompt)}
                     >
-                        <div className="md:text-md text-sm text-gray-800/80">
+                        <div className="text-[13px] font-medium leading-5 text-gray-800/80">
                             {prompt}
                         </div>
                     </button>

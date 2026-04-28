@@ -278,7 +278,7 @@ export const Markdown = (props: MarkdownProps) => {
             )}
         
             <ReactMarkdown
-                className={`prose min-w-0 max-w-full text-sm break-words [overflow-wrap:anywhere] lg:prose-base ${
+                className={`prose min-w-0 max-w-full break-words text-[15px] leading-[1.7] [overflow-wrap:anywhere] prose-p:leading-[1.7] ${
                     className ?? ""
                 }`}
                 children={markdownContent}

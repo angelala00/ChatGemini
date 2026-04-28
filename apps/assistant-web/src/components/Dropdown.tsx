@@ -70,11 +70,11 @@ export const HeaderDropdown = (props: HeaderDropdownProps) => {
                 <button
                     type="button"
                     onClick={() => setOpen(!open)}
-                    className="inline-flex items-center gap-2 rounded-2xl border border-gray-300 bg-white px-4 py-2 shadow-sm hover:bg-gray-50"
+                    className="inline-flex items-center gap-2 rounded-2xl border border-[#d4dde5] bg-white/95 px-4 py-2 text-[#2f3a46] shadow-[0_2px_8px_rgba(23,28,38,0.04)] hover:bg-[#f8fafb]"
                 >
                     <div className="flex items-center gap-1 font-semibold text-sm">
                         {title}{" "}
-                        <span className="font-medium text-blue-600">
+                        <span className="font-medium text-[#279ab3]">
                             {selectedOption?.name ?? selected}
                         </span>
                     </div>
@@ -96,20 +96,20 @@ export const HeaderDropdown = (props: HeaderDropdownProps) => {
                 </button>
             )}
             {defaultModel && open && models && (
-                <div className="absolute mt-2 w-80 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
+                <div className="absolute mt-2 w-80 rounded-md bg-white shadow-lg ring-1 ring-[#d4dde5] z-10">
                     <ul className="py-1">
                         {models.map((opt) => (
                             <li key={opt.id}>
                                 <button
                                     onClick={() => handleSelect(opt.id)}
-                                    className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 ${
+                                    className={`w-full text-left px-4 py-2 text-sm text-[#2f3a46] hover:bg-[#f4f7f9] ${
                                         opt.id === selected
-                                            ? "font-semibold text-blue-600"
+                                            ? "font-semibold !text-[#279ab3]"
                                             : ""
                                     }`}
                                 >
                                     <div>{opt.name}</div>
-                                    <div className="text-xs text-gray-500">
+                                    <div className="text-xs text-[#87919d]">
                                         {opt.description}
                                     </div>
                                 </button>

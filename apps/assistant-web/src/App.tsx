@@ -767,7 +767,7 @@ const App = () => {
                             onRenameSession={handleRenameSession}
                         />
                         <Container
-                            className={`min-w-full flex flex-col h-screen bg-stone-100/80 ${
+                            className={`min-w-full flex flex-col h-screen bg-white/95 ${
                                 !sidebarExpand ? "col-span-2" : ""
                             }`}
                         >

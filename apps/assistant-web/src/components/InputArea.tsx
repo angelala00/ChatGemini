@@ -192,10 +192,10 @@ export const InputArea = forwardRef(
         useImperativeHandle(ref, () => textAreaRef.current!);
 
         return (
-            <div className="sticky bottom-0 z-20 px-4 pb-4 pt-1 bg-gradient-to-t from-stone-100 via-stone-100/92 to-transparent">
-                <div className="input-area-border relative mx-auto flex w-full max-w-[940px] flex-col space-y-3 rounded-[1.75rem] border border-stone-200/90 bg-white/95 px-4 py-3 shadow-[0_16px_40px_rgba(0,0,0,0.08)] backdrop-blur min-h-20 max-h-48">
+            <div className="sticky bottom-0 z-20 px-4 pb-4 pt-1 bg-gradient-to-t from-white via-white/92 to-transparent">
+                <div className="input-area-border relative mx-auto flex w-full max-w-[940px] flex-col space-y-3 rounded-[1.75rem] border border-[#d4dde5]/90 bg-white px-4 py-3 shadow-[0_22px_48px_rgba(23,28,38,0.08)] backdrop-blur min-h-20 max-h-48">
                     {!!attachmentName.length && (
-                        <div className="truncate text-xs text-stone-500">
+                        <div className="truncate text-xs text-[#87919d]">
                             <img className="inline-block size-3 mr-0.5" src={attachmentIcon} alt="" />
                             {attachmentName}
                         </div>
@@ -206,23 +206,23 @@ export const InputArea = forwardRef(
                         autoFocus={true}
                         ref={textAreaRef}
                         placeholder={busy ? "..." : inputPlaceholder}
-                        className="max-h-32 w-full resize-none border-none bg-transparent px-0 py-1 text-sm leading-7 outline-none overflow-y-auto lg:text-base"
+                        className="max-h-32 w-full resize-none border-none bg-transparent px-0 py-1 text-[15px] leading-[1.7] outline-none overflow-y-auto"
                         onInput={({ currentTarget }) => setTextAreaHeight(currentTarget, minHeight, maxHeight)}
                         onKeyDown={handleKeyDown}
                     />
 
                     {/* 按钮区域 - 适配小屏幕 */}
-                    <div className="mt-1 flex min-h-[34px] items-center justify-between gap-3 border-t border-stone-100 pt-1">
+                    <div className="mt-1 flex min-h-[34px] items-center justify-between gap-3 border-t border-[#edf2f6] pt-1">
                         <div className="flex items-center">
                             {showReasoningToggle && (
                                 <button
                                     type="button"
-                                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold leading-none transition-colors ${
                                         reasoningAvailable
                                             ? reasoningEnabled
-                                                ? "border-sky-300 bg-sky-100 text-sky-700 shadow-sm hover:bg-sky-200"
-                                                : "border-stone-300 bg-stone-50 text-stone-700 hover:bg-stone-100"
-                                            : "cursor-not-allowed border-stone-200 bg-stone-100 text-stone-400"
+                                                ? "border-[#b8e3eb] bg-[#eef9fb] text-[#279ab3] shadow-sm hover:bg-[#e4f5f8]"
+                                                : "border-[#d4dde5] bg-[#f8fafb] text-[#66717d] hover:bg-[#f4f7f9]"
+                                            : "cursor-not-allowed border-[#e2e8ee] bg-[#f4f7f9] text-[#a0a9b2]"
                                     }`}
                                     disabled={!reasoningAvailable}
                                     onClick={() => onReasoningChange?.(!(reasoningEnabled ?? false))}
@@ -231,9 +231,9 @@ export const InputArea = forwardRef(
                                         className={`inline-block size-2 rounded-full ${
                                             reasoningAvailable
                                                 ? reasoningEnabled
-                                                    ? "bg-sky-500"
-                                                    : "bg-stone-400"
-                                                : "bg-stone-300"
+                                                    ? "bg-[#48b6cd]"
+                                                    : "bg-[#87919d]"
+                                                : "bg-[#c3ccd4]"
                                         }`}
                                     />
                                     <span>{t("components.InputArea.reasoning_toggle.label")}</span>
@@ -262,7 +262,7 @@ export const InputArea = forwardRef(
                                         }
                                     }} />
                                 <div className="relative group inline-flex">
-                                    <button className="flex h-9 w-9 items-center justify-center rounded-2xl bg-stone-100 p-1.5 transition-colors hover:bg-stone-200"
+                                    <button className="flex h-9 w-9 items-center justify-center rounded-2xl border border-[#e7edf2] bg-white/95 p-1.5 text-[#279ab3] transition-colors hover:bg-[#eef9fb]"
                                         onClick={({ currentTarget }) => {
                                             if (!!attachmentName.length) {
                                                 setAttachmentName("");
@@ -279,7 +279,7 @@ export const InputArea = forwardRef(
                             </div>
                         )}
                         {/* 发送按钮 */}
-                        <button className="flex h-9 w-9 items-center justify-center rounded-2xl bg-sky-100 p-1.5 transition-colors hover:bg-sky-200 disabled:cursor-not-allowed"
+                        <button className="flex h-9 w-9 items-center justify-center rounded-2xl bg-[#eef9fb] p-1.5 text-[#279ab3] transition-colors hover:bg-[#dff3f7] disabled:cursor-not-allowed"
                             onClick={() => {
                                 if (busy) {
                                     onAbort();

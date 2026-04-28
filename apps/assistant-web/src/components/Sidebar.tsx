@@ -36,9 +36,24 @@ interface SidebarProps {
     readonly onRenameSession: (id: string, newTitle: string) => void;
 }
 
-const APP_VERSION = "v1.0.1";
+const APP_VERSION = "v1.0.2";
 
 const releaseHistory = [
+    {
+        version: "v1.0.2",
+        date: "2026.04",
+        type: "patch",
+        zhTitle: "聊天界面视觉基线优化",
+        zhChanges: [
+            "统一聊天主页字体、字号和正文行高。",
+            "调整侧边栏、顶部栏、消息卡片和输入区的浅色视觉层级。",
+        ],
+        enTitle: "Chat UI Visual Baseline",
+        enChanges: [
+            "Unified the chat home font stack, sizing, and body line height.",
+            "Refined the light visual hierarchy for the sidebar, topbar, message cards, and composer.",
+        ],
+    },
     {
         version: "v1.0.1",
         date: "2026.04",
@@ -364,28 +379,28 @@ export const Sidebar = (props: SidebarProps) => {
 
     return (
         <nav
-            className={`bg-slate-900 flex flex-col h-screen overflow-hidden ${
+            className={`flex h-screen flex-col overflow-hidden border-r border-[#d8e0e6]/90 bg-[linear-gradient(180deg,rgba(246,248,250,0.98),rgba(241,244,247,0.98))] text-[#2f3a46] ${
                 expand ? "block" : "hidden"
             }`}
         >
-            <div className="sticky top-0 bg-slate-900">
-                <div className="relative py-4 flex justify-center items-center font-semibold text-gray-100 border-b border-gray-400">
+            <div className="sticky top-0 bg-[#f6f8fa]/98">
+                <div className="relative py-4 flex justify-center items-center font-semibold text-[#2f3a46] border-b border-[#e2e8ee]">
                     <img src={logoIcon} className="w-8 h-8 object-contain"/>
                     <button
                         type="button"
-                        className="group absolute bottom-1 right-2 rounded bg-slate-700/80 px-1.5 py-0.5 text-[10px] leading-none text-slate-200 transition-all hover:bg-slate-600 hover:text-white"
+                        className="group absolute bottom-1 right-2 rounded bg-white/90 px-1.5 py-0.5 text-[10px] leading-none text-[#66717d] shadow-[0_2px_8px_rgba(23,28,38,0.04)] transition-all hover:bg-[#eef9fb] hover:text-[#279ab3]"
                         title={t("components.Sidebar.version_tooltip")}
                         aria-label={t("components.Sidebar.version_tooltip")}
                         onClick={() => setIsVersionHistoryOpen(true)}
                     >
                         {APP_VERSION}
-                        <span className="pointer-events-none absolute right-0 top-full z-20 mt-1 w-max max-w-[160px] rounded bg-slate-950 px-2 py-1 text-[11px] font-normal leading-4 text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+                        <span className="pointer-events-none absolute right-0 top-full z-20 mt-1 w-max max-w-[160px] rounded bg-[#2f3a46] px-2 py-1 text-[11px] font-normal leading-4 text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
                             {t("components.Sidebar.version_tooltip")}
                         </span>
                     </button>
                 </div>
                 <div
-                    className="p-2 mx-3 my-1 py-1 text-sm text-center text-gray-200 hover:bg-slate-600 transition-all rounded-lg cursor-pointer flex items-center justify-start gap-2"
+                    className="p-2 mx-3 my-1 py-1 text-sm text-center text-[#2f3a46] hover:bg-white/90 transition-all rounded-lg cursor-pointer flex items-center justify-start gap-2"
                     onClick={() => {
                         navigate("/")
                     }}
@@ -395,7 +410,7 @@ export const Sidebar = (props: SidebarProps) => {
                 </div>
                 {gptsFeatureAllowed && (
                     <div
-                        className="p-1 mx-3 my-1 py-1 text-sm text-center text-gray-200 hover:bg-slate-600 transition-all rounded-lg cursor-pointer flex items-center justify-start gap-2"
+                        className="p-1 mx-3 my-1 py-1 text-sm text-center text-[#2f3a46] hover:bg-white/90 transition-all rounded-lg cursor-pointer flex items-center justify-start gap-2"
                         onClick={() => {
                             navigate("/gpts/")
                         }}
@@ -414,7 +429,7 @@ export const Sidebar = (props: SidebarProps) => {
                 return (
                     <div
                         key={gid}
-                        className="mx-3 my-1 py-1 text-sm text-center text-gray-200 hover:bg-slate-600 transition-all rounded-lg cursor-pointer flex items-center justify-start gap-2"
+                        className="mx-3 my-1 py-1 text-sm text-center text-[#2f3a46] hover:bg-white/90 transition-all rounded-lg cursor-pointer flex items-center justify-start gap-2"
                         onClick={() => {
                             navigate("/g/"+gid)
                         }}
@@ -439,7 +454,7 @@ export const Sidebar = (props: SidebarProps) => {
                     return (
                         !isEmpty && (
                             <div key={index}>
-                                <h3 className="text-gray-500 text-xs py-1">
+                                <h3 className="text-[#87919d] text-xs py-1">
                                     {currentLabel}
                                 </h3>
                                 {currentSessionsKeys
@@ -466,7 +481,7 @@ export const Sidebar = (props: SidebarProps) => {
                                         return (
                                             <div
                                                 key={_index}
-                                                className="group relative flex rounded-lg items-center justify-between p-2 text-gray-200 hover:bg-slate-600 transition-all space-x-2"
+                                                className="group relative flex rounded-lg items-center justify-between p-2 text-[#66717d] hover:bg-white/90 hover:text-[#2f3a46] transition-all space-x-2"
                                                 onMouseLeave={() =>
                                                     setActiveMenu(null)
                                                 }
@@ -588,7 +603,7 @@ export const Sidebar = (props: SidebarProps) => {
                                         sessionsLimitation && (
                                         <div className="text-center m-2">
                                             <button
-                                                className="font-semibold text-gray-400 hover:text-gray-200 text-sm transition-all"
+                                                className="font-semibold text-[#87919d] hover:text-[#279ab3] text-sm transition-all"
                                                 onClick={() =>
                                                     setSessionsLimitation(
                                                         (state) => state + 5
@@ -609,16 +624,16 @@ export const Sidebar = (props: SidebarProps) => {
             {Object.values(sessionsCategory)
                 .map(({ sessions }) => sessions ?? {})
                 .every((sessions) => !Object.keys(sessions).length) && (
-                <div className="p-2 text-center text-gray-300/50 mb-[calc(50vh-4rem)] flex flex-col gap-4">
+                <div className="p-2 text-center text-[#87919d]/70 mb-[calc(50vh-4rem)] flex flex-col gap-4">
                     <img src={emptyIcon} alt="" className="mx-auto size-10" />
                     {t("components.Sidebar.no_history_chat")}
                 </div>
             )}
             </div>
-            <div className="sticky bottom-0 border-t border-slate-700/80 bg-slate-900/98 px-4 py-3 text-center text-xs">
-                <span className="text-slate-400">技术支持</span>
-                <span className="mx-1.5 text-slate-500">@</span>
-                <span className="font-medium text-slate-100">{globalConfig.supportContact}</span>
+            <div className="sticky bottom-0 border-t border-[#e2e8ee] bg-[#f1f4f7]/98 px-4 py-3 text-center text-xs">
+                <span className="text-[#87919d]">技术支持</span>
+                <span className="mx-1.5 text-[#a0a9b2]">@</span>
+                <span className="font-medium text-[#2f3a46]">{globalConfig.supportContact}</span>
             </div>
             {isVersionHistoryOpen && (
                 <div

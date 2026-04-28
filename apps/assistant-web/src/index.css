@@ -2,6 +2,53 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+    :root {
+        --assist-bg: #f5f8fa;
+        --assist-panel: #fcfdfe;
+        --assist-panel-soft: #f4f7f9;
+        --assist-text: #2f3a46;
+        --assist-text-soft: #66717d;
+        --assist-text-faint: #87919d;
+        --assist-line: #e2e8ee;
+        --assist-line-strong: #d4dde5;
+        --assist-accent: #48b6cd;
+        --assist-accent-soft: #eef9fb;
+        --assist-accent-strong: #279ab3;
+        --assist-shadow-sm: 0 2px 8px rgba(23, 28, 38, 0.04);
+        --assist-shadow-md: 0 12px 30px rgba(23, 28, 38, 0.06);
+    }
+
+    html {
+        font-family: "SF Pro Display", "PingFang SC", "Hiragino Sans GB",
+            "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
+    }
+
+    body {
+        color: var(--assist-text);
+        font-family: inherit;
+        font-size: 15px;
+        line-height: 1.6;
+        letter-spacing: 0;
+        text-rendering: optimizeLegibility;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        background:
+            linear-gradient(180deg, rgba(247, 250, 252, 0.98), rgba(243, 247, 250, 0.98)),
+            radial-gradient(circle at top left, rgba(120, 138, 189, 0.035), transparent 26%),
+            radial-gradient(circle at bottom right, rgba(120, 138, 189, 0.028), transparent 22%),
+            var(--assist-bg);
+    }
+
+    button,
+    input,
+    textarea,
+    select {
+        font: inherit;
+        letter-spacing: 0;
+    }
+}
+
 body {
     overflow-x: hidden;
     overflow-y: scroll;
@@ -25,6 +72,7 @@ body::-webkit-scrollbar {
 }
 .sub-title {
     font-size: 14px;
+    line-height: 1.7;
 }
 
 .sidebarExpand-headerDropdown{

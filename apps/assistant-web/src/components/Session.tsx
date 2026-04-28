@@ -118,7 +118,7 @@ export const Session = (props: SessionProps) => {
             >
                 <div
                     className={`flex size-6 items-center justify-center rounded-full ${
-                        isModel ? "bg-stone-800" : "bg-lime-700"
+                        isModel ? "bg-[#2f3a46]" : "bg-[#279ab3]"
                     }`}
                 >
                     <img
@@ -136,7 +136,7 @@ export const Session = (props: SessionProps) => {
                         alt=""
                     />
                 </div>
-                <span className="ml-2 text-sm font-semibold text-stone-800">
+                <span className="ml-2 text-[14px] font-semibold leading-none text-[#2f3a46]">
                     {isModel
                         ? t("components.Session.role_model")
                         : t("components.Session.role_user")}
@@ -145,15 +145,15 @@ export const Session = (props: SessionProps) => {
             <div
                 className={`${
                     isModel
-                        ? "min-w-0 w-full overflow-hidden rounded-[1.75rem] border border-stone-200/80 bg-white px-7 py-6 shadow-[0_12px_32px_rgba(0,0,0,0.04)]"
-                        : "inline-flex min-w-0 w-fit max-w-[38rem] overflow-hidden rounded-[1.35rem] border border-stone-300/70 bg-stone-200/90 px-5 py-4 text-stone-900 shadow-[0_6px_18px_rgba(28,25,23,0.06)]"
+                        ? "min-w-0 w-full overflow-hidden rounded-[1.75rem] border border-[#e2e8ee]/90 bg-white px-7 py-6 shadow-[0_12px_30px_rgba(23,28,38,0.05)]"
+                        : "inline-flex min-w-0 w-fit max-w-[38rem] overflow-hidden rounded-[1.35rem] border border-[#d4dde5]/90 bg-[#eef9fb] px-5 py-4 text-[#2f3a46] shadow-[0_6px_18px_rgba(23,28,38,0.05)]"
                 }`}
             >
                 {editState.state === SessionEditState.Edit &&
                 index === editState.index ? (
-                    <div className="flex flex-col space-y-2 lg:text-base text-sm">
+                    <div className="flex flex-col space-y-2 text-[15px] leading-[1.7]">
                         <textarea
-                            className="bg-transparent text-gray-800 rounded-lg p-2 overflow-y-scroll resize-none !outline-none"
+                            className="bg-transparent text-[#2f3a46] rounded-lg p-2 overflow-y-scroll resize-none !outline-none"
                             placeholder="..."
                             defaultValue={prompt}
                             ref={textAreaRef}
@@ -202,7 +202,7 @@ export const Session = (props: SessionProps) => {
                 }`}
             >
                 <button
-                    className="flex size-7 items-center justify-center rounded-xl text-stone-500 transition-colors hover:bg-stone-200/70"
+                    className="flex size-7 items-center justify-center rounded-xl text-[#87919d] transition-colors hover:bg-[#edf2f6]"
                     onClick={handleCopy}
                 >
                     <DocumentDuplicateIcon
@@ -214,7 +214,7 @@ export const Session = (props: SessionProps) => {
                 {role === SessionRole.User &&
                     editState.state !== SessionEditState.Edit && (
                         <button
-                            className="flex size-7 items-center justify-center rounded-xl text-stone-500 transition-colors hover:bg-stone-200/70"
+                            className="flex size-7 items-center justify-center rounded-xl text-[#87919d] transition-colors hover:bg-[#edf2f6]"
                             onClick={() =>
                                 onEdit(index, SessionEditState.Edit, "")
                             }
@@ -228,7 +228,7 @@ export const Session = (props: SessionProps) => {
                     )}
                 {role === SessionRole.Model && (
                     <button
-                        className="flex size-7 items-center justify-center rounded-xl text-stone-500 transition-colors hover:bg-stone-200/70"
+                        className="flex size-7 items-center justify-center rounded-xl text-[#87919d] transition-colors hover:bg-[#edf2f6]"
                         onClick={() => onRefresh(index)}
                     >
                         <ArrowPathIcon
@@ -240,7 +240,7 @@ export const Session = (props: SessionProps) => {
                 )}
                 {role === SessionRole.Model && index !== 1 && (
                     <button
-                        className="flex size-7 items-center justify-center rounded-xl text-stone-500 transition-colors hover:bg-stone-200/70"
+                        className="flex size-7 items-center justify-center rounded-xl text-[#87919d] transition-colors hover:bg-[#edf2f6]"
                         onClick={() => onDelete(index)}
                     >
                         <img src={deleteIcon} className="size-4" alt="" />
@@ -249,7 +249,7 @@ export const Session = (props: SessionProps) => {
                 {/* 导出按钮 */}
                 {role === SessionRole.Model && (
                     <button
-                        className="flex size-7 items-center justify-center rounded-xl text-stone-500 transition-colors hover:bg-stone-200/70"
+                        className="flex size-7 items-center justify-center rounded-xl text-[#87919d] transition-colors hover:bg-[#edf2f6]"
                         onClick={() => onExport(index)}
                     >
                         <ArrowRightStartOnRectangleIcon
