@@ -240,6 +240,16 @@ export const Markdown = (props: MarkdownProps) => {
         : t("components.Markdown.thinking_title_pending");
 
     useEffect(() => {
+        if (isThinking) {
+            setIsThinkingExpanded(true);
+            return;
+        }
+        if (thinkingCompleted) {
+            setIsThinkingExpanded(false);
+        }
+    }, [isThinking, thinkingCompleted]);
+
+    useEffect(() => {
         setPythonResult({ result: "", startPos: null, endPos: null });
     }, [t, children]);
 

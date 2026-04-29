@@ -14,7 +14,11 @@ export const Landing = (props: LandingProps) => {
         <div className={`mx-auto flex w-full max-w-[1040px] flex-col items-center justify-center gap-[18px] px-5 py-8 text-center max-[680px]:py-6 ${
             isNewSessionPage ? "min-h-full md:min-h-0 md:pb-4" : "min-h-full"
         }`}>
-            <div className="flex items-center justify-center gap-3.5 max-[680px]:flex-col max-[680px]:gap-4">
+            <div
+                className={`flex items-center justify-center gap-3.5 max-[680px]:flex-col max-[680px]:gap-4 ${
+                    useTemplateTitle ? "flex-col gap-4" : ""
+                }`}
+            >
                 <div
                     className={`grid shrink-0 place-items-center animate-ease-in-out animate-wiggle animate-infinite animate-duration-[3000ms] ${
                         useTemplateTitle ? "size-32 max-[680px]:size-26" : "size-10"
@@ -24,7 +28,7 @@ export const Landing = (props: LandingProps) => {
                         src={logo}
                         alt=""
                         className={`object-contain ${
-                            useTemplateTitle ? "size-32 scale-x-[-1] max-[680px]:size-26" : "size-[34px]"
+                            useTemplateTitle ? "size-32 max-[680px]:size-26" : "size-[34px]"
                         }`}
                     />
                 </div>
