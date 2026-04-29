@@ -146,6 +146,7 @@ const App = () => {
     const [isNoAuthorized, setIsNoAuthorized] = useState(false);
     const [gptsFeatureAllowed, setGptsFeatureAllowed] = useState(false);
     const [gptsPermissionLoaded, setGptsPermissionLoaded] = useState(false);
+    const [voiceLabAllowed, setVoiceLabAllowed] = useState(false);
     
     const pathParts = location.pathname.split("/")
     const mod = pathParts[1];
@@ -529,6 +530,12 @@ const App = () => {
         },
         currentPath,
     );
+    const isVoiceLabPage = !!matchPath(
+        {
+            path: `${routes.voice_lab.prefix}${routes.voice_lab.uri}${routes.voice_lab.suffix}`,
+        },
+        currentPath,
+    );
     const isNewSessionPage =
         currentPath === routes.index.prefix ||
         (!!gid && !id && currentPath === `/g/${gid}`);
@@ -537,6 +544,7 @@ const App = () => {
         if (!hasLogined) {
             setGptsFeatureAllowed(false);
             setGptsPermissionLoaded(false);
+            setVoiceLabAllowed(false);
             return;
         }
         setGptsPermissionLoaded(false);
@@ -549,6 +557,13 @@ const App = () => {
             })
             .finally(() => {
                 setGptsPermissionLoaded(true);
+            });
+        handleRequest('GET', getFullPath('/api/voice-lab/permission'))
+            .then((responseJson) => {
+                setVoiceLabAllowed(Boolean(responseJson.allowed));
+            })
+            .catch(() => {
+                setVoiceLabAllowed(false);
             });
     }, [hasLogined]);
 
@@ -737,8 +752,8 @@ const App = () => {
 
     // console.log("=====22222"+hasLogined)
     return (
-        hasLogined && isTracePage ? (
-            <div className="min-h-screen w-full bg-slate-950 text-slate-100">
+        hasLogined && (isTracePage || isVoiceLabPage) ? (
+            <div className={`min-h-screen w-full ${isTracePage ? "bg-slate-950 text-slate-100" : "bg-white text-[#2f3a46]"}`}>
                 <RouterView
                     routes={routes}
                     suspense={<Skeleton />}
@@ -778,6 +793,7 @@ const App = () => {
                             sessions={sessions}
                             expand={sidebarExpand}
                             gptsFeatureAllowed={gptsFeatureAllowed}
+                            voiceLabAllowed={voiceLabAllowed}
                             currentLocale={currentLocale}
                             onSwitchLocale={handleSwitchLocale}
                             onDeleteSession={handleDeleteSession}

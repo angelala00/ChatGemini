@@ -44,4 +44,5 @@ ALLOW_ORIGINS: List[str] = [
 ] or ["*"]
 GPTS_FEATURE_ENABLED: bool = _parse_bool_env(os.getenv("GPTS_FEATURE_ENABLED"), True)
 GPTS_WHITE_LIST: Set[str] = _parse_list_env(os.getenv("GPTS_WHITE_LIST", ""))
+VOICE_LAB_WHITE_LIST: Set[str] = _parse_list_env(os.getenv("VOICE_LAB_WHITE_LIST", ""))
 TRACE_ENABLED: bool = os.getenv("GPT_TRACE_ENABLED", "false").lower() == "true"

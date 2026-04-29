@@ -9,6 +9,7 @@ import {
     ChevronDownIcon,
     EllipsisHorizontalIcon,
     ClockIcon,
+    MicrophoneIcon,
     PencilSquareIcon,
     PlusCircleIcon,
     TrashIcon,
@@ -30,6 +31,7 @@ interface SidebarProps {
     readonly title: string;
     readonly expand: boolean;
     readonly gptsFeatureAllowed: boolean;
+    readonly voiceLabAllowed: boolean;
     readonly userName: string;
     readonly limitation?: number;
     readonly sessions: Sessions;
@@ -275,6 +277,7 @@ export const Sidebar = (props: SidebarProps) => {
         title,
         expand,
         gptsFeatureAllowed,
+        voiceLabAllowed,
         userName,
         limitation,
         sessions,
@@ -798,6 +801,23 @@ export const Sidebar = (props: SidebarProps) => {
                             <span className="text-[#87919d]">当前版本</span>
                             <span className="font-medium text-[#2f3a46]">{APP_VERSION}</span>
                         </button>
+                        {voiceLabAllowed && (
+                            <button
+                                type="button"
+                                className="inline-flex min-h-9 items-center justify-between gap-2 rounded-[10px] px-2.5 text-left text-[13px] font-normal text-[rgba(56,67,79,0.96)] transition-colors hover:bg-[rgba(229,234,239,0.82)]"
+                                onClick={() => {
+                                    setIsProfileMenuOpen(false);
+                                    navigate("/voice-lab");
+                                    closeMobileSidebar();
+                                }}
+                            >
+                                <span className="inline-flex items-center gap-2 text-[#2f3a46]">
+                                    <MicrophoneIcon className="size-4 text-[#87919d]" strokeWidth={1.8} />
+                                    语音测试
+                                </span>
+                                <span className="text-xs font-medium text-[#87919d]">实验</span>
+                            </button>
+                        )}
                         <div className="inline-flex min-h-9 items-center justify-between gap-2 rounded-[10px] px-2.5 text-[13px] font-normal text-[rgba(56,67,79,0.96)]">
                             <span className="text-[#87919d]">技术支持</span>
                             <span className="min-w-0 truncate font-medium text-[#2f3a46]">

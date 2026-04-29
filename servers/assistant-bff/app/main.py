@@ -10,6 +10,7 @@ from app.routes.file_routes import router as file_router
 from app.routes.gpts_routes import router as gpts_router
 from app.routes.metrics_routes import router as metrics_router
 from app.routes.platform_routes import router as platform_router
+from app.routes.voice_lab_routes import router as voice_lab_router
 from app.metrics import init_metrics_storage
 from app.tracing import init_trace_storage
 from fastapi.middleware.cors import CORSMiddleware
@@ -38,6 +39,7 @@ app.include_router(file_router, prefix="")
 app.include_router(gpts_router, prefix="")
 app.include_router(metrics_router, prefix="")
 app.include_router(platform_router, prefix="")
+app.include_router(voice_lab_router, prefix="")
 
 
 @app.on_event("startup")
