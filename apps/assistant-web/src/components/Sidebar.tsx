@@ -1,17 +1,21 @@
-import exportIcon from "../assets/icons/file-export-solid-white.svg";
-import deleteIcon from "../assets/icons/trash-can-solid.svg";
-import renameIcon from "../assets/icons/file-pen-solid.svg";
 import submitIcon from "../assets/icons/circle-check-solid.svg";
 import emptyIcon from "../assets/icons/folder-open-solid.svg";
-import moreIcon from "../assets/icons/ellipsis-solid.svg";
 import closeIcon from "../assets/icons/xmark-solid.svg";
 import regulationIcon from "../assets/icons/zhidu_logo.svg";
 import wandIcon from "../assets/icons/ds-logo.svg";
 import logoIcon from "../assets/logo.svg";
-import editIcon from "../assets/icons/pen-to-square-solid.svg";
 import appsIcon from "../assets/icons/apps.svg";
-import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import {
+    ChevronDownIcon,
+    EllipsisHorizontalIcon,
+    ClockIcon,
+    PencilSquareIcon,
+    PlusCircleIcon,
+    TrashIcon,
+} from "@heroicons/react/24/outline";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { Sessions } from "../store/sessions";
 import { useTranslation } from "react-i18next";
@@ -26,19 +30,35 @@ interface SidebarProps {
     readonly title: string;
     readonly expand: boolean;
     readonly gptsFeatureAllowed: boolean;
+    readonly userName: string;
     readonly limitation?: number;
     readonly sessions: Sessions;
     readonly locales: Record<string, string>;
     readonly currentLocale: string;
     readonly onDeleteSession: (id: string) => void;
-    readonly onExportSession: (id: string) => void;
     readonly onSwitchLocale: (locale: string) => void;
     readonly onRenameSession: (id: string, newTitle: string) => void;
+    readonly onToggleSidebar: () => void;
 }
 
-const APP_VERSION = "v1.0.2";
+const APP_VERSION = "v1.0.3";
 
 const releaseHistory = [
+    {
+        version: "v1.0.3",
+        date: "2026.04",
+        type: "patch",
+        zhTitle: "聊天界面交互细节优化",
+        zhChanges: [
+            "优化侧边栏会话、用户菜单、模型选择和新建会话页的交互细节。",
+            "新增默认新建会话页 mock logo 展示，并保留助手专属新建页文案。",
+        ],
+        enTitle: "Chat UI Interaction Polish",
+        enChanges: [
+            "Polished sidebar session items, profile menu, model selector, and new chat interactions.",
+            "Added a mock logo treatment for the default new chat page while preserving assistant-specific welcome copy.",
+        ],
+    },
     {
         version: "v1.0.2",
         date: "2026.04",
@@ -255,22 +275,33 @@ export const Sidebar = (props: SidebarProps) => {
         title,
         expand,
         gptsFeatureAllowed,
+        userName,
         limitation,
         sessions,
         locales,
         currentLocale,
         onDeleteSession,
-        onExportSession,
         onSwitchLocale,
         onRenameSession,
+        onToggleSidebar,
     } = props;
     const navigate = useNavigate();
+    const location = useLocation();
     const dispatch = useDispatch();
     const pinnedGpts = useSelector(
         (state: ReduxStoreProps) => state.gpts.pinned
     );
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
+    const [activeMenuPosition, setActiveMenuPosition] = useState<{
+        left: number;
+        top: number;
+    } | null>(null);
     const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false);
+    const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+    const [isHistoryCollapsed, setIsHistoryCollapsed] = useState(false);
+    const profileMenuRef = useRef<HTMLDivElement>(null);
+    const historyLongPressTimerRef = useRef<number | null>(null);
+    const historyLongPressTriggeredRef = useRef(false);
 
     const [renamingChatTitle, setRenamingChatTitle] = useState<{
         id: string;
@@ -279,18 +310,13 @@ export const Sidebar = (props: SidebarProps) => {
     const [sessionsLimitation, setSessionsLimitation] = useState(
         limitation ?? 15
     );
-    const [sessionsCategory, setSessionsCategory] = useState<{
-        [id: string]: {
-            label?: string;
-            sessions?: Sessions;
-        };
-    }>({});
+    const isNewChatActive = location.pathname === "/";
+    const displayUserName = userName || "User";
+    const avatarText = displayUserName.trim().charAt(0).toUpperCase() || "U";
+    const [historySessions, setHistorySessions] = useState<Sessions>({});
 
     // const [pinnedGpts, setPinnedGpts] = useState([]);
-    const getCategorizedSessions = (
-        sessions: Sessions,
-        filter: (value: number, index: number, array: number[]) => boolean
-    ) =>
+    const getSortedSessions = (sessions: Sessions) =>
         Object.keys(sessions)
             .sort((a, b) => {
                 const a_ts = sessions[a][sessions[a].length - 1].timestamp;
@@ -298,7 +324,6 @@ export const Sidebar = (props: SidebarProps) => {
                 return b_ts - a_ts;
             })
             .map((key) => parseInt(key))
-            .filter(filter)
             .map((key) => {
                 return { [key.toString()]: sessions[key] };
             })
@@ -306,21 +331,9 @@ export const Sidebar = (props: SidebarProps) => {
                 return { ...prev, ...curr };
             }, {});
 
-    const isTimestampToday = (ts: number) =>
-        new Date(ts).toLocaleDateString() === new Date().toLocaleDateString();
-
-    const isTimestampYesterday = (ts: number) =>
-        new Date(ts).toLocaleDateString() ===
-        new Date(
-            new Date().setDate(new Date().getDate() - 1)
-        ).toLocaleDateString();
-
-    const isTimestampEarlier = (ts: number) =>
-        new Date(ts).toLocaleDateString() !== new Date().toLocaleDateString() &&
-        new Date(ts).toLocaleDateString() !==
-            new Date(
-                new Date().setDate(new Date().getDate() - 1)
-            ).toLocaleDateString();
+    useEffect(() => {
+        return () => cancelHistoryLongPress();
+    }, []);
 
     useEffect(() => {
         if (!gptsFeatureAllowed) {
@@ -335,27 +348,8 @@ export const Sidebar = (props: SidebarProps) => {
     }, [dispatch, gptsFeatureAllowed]);
         
     useEffect(() => {
-        const today = getCategorizedSessions(sessions, isTimestampToday);
-        const yesterday = getCategorizedSessions(
-            sessions,
-            isTimestampYesterday
-        );
-        const earlier = getCategorizedSessions(sessions, isTimestampEarlier);
-        setSessionsCategory({
-            today: {
-                sessions: today,
-                label: t("components.Sidebar.today_label"),
-            },
-            yesterday: {
-                sessions: yesterday,
-                label: t("components.Sidebar.yesterday_label"),
-            },
-            earlier: {
-                sessions: earlier,
-                label: t("components.Sidebar.earlier_label"),
-            },
-        });
-    }, [t, sessions]);
+        setHistorySessions(getSortedSessions(sessions));
+    }, [sessions]);
 
     useEffect(() => {
         if (!isVersionHistoryOpen) {
@@ -372,55 +366,147 @@ export const Sidebar = (props: SidebarProps) => {
         return () => window.removeEventListener("keydown", handleKeyDown);
     }, [isVersionHistoryOpen]);
 
+    useEffect(() => {
+        if (!isProfileMenuOpen) {
+            return;
+        }
+
+        const handlePointerDown = (event: MouseEvent) => {
+            if (profileMenuRef.current?.contains(event.target as Node)) {
+                return;
+            }
+            setIsProfileMenuOpen(false);
+        };
+
+        window.addEventListener("mousedown", handlePointerDown);
+        return () => window.removeEventListener("mousedown", handlePointerDown);
+    }, [isProfileMenuOpen]);
+
+    useEffect(() => {
+        if (!activeMenu) {
+            return;
+        }
+
+        const handlePointerDown = (event: MouseEvent) => {
+            const target = event.target as HTMLElement;
+            if (target.closest("[data-history-menu-root]")) {
+                return;
+            }
+            setActiveMenu(null);
+            setActiveMenuPosition(null);
+        };
+
+        window.addEventListener("mousedown", handlePointerDown);
+        return () => window.removeEventListener("mousedown", handlePointerDown);
+    }, [activeMenu]);
+
     const sessionExtensions = useSelector(
         (state: ReduxStoreProps) => state.sessionExtensions.sessionExtensions
     )
+    const historySessionKeys = Object.keys(historySessions);
+    const isHistoryEmpty = historySessionKeys.length === 0;
     const isChineseLocale = currentLocale.toLowerCase().startsWith("zh");
-
+    const closeMobileSidebar = () => {
+        if (expand && window.matchMedia("(max-width: 900px)").matches) {
+            onToggleSidebar();
+        }
+    };
+    const cancelHistoryLongPress = () => {
+        if (historyLongPressTimerRef.current !== null) {
+            window.clearTimeout(historyLongPressTimerRef.current);
+            historyLongPressTimerRef.current = null;
+        }
+    };
+    const setHistoryMenuPositionFromRect = (
+        rect: DOMRect,
+        options?: { align?: "trigger" | "left" },
+    ) => {
+        const align = options?.align ?? "trigger";
+        setActiveMenuPosition({
+            left:
+                align === "left"
+                    ? Math.max(14, rect.left)
+                    : Math.min(rect.left + rect.width - 42, window.innerWidth - 168),
+            top: Math.min(rect.bottom + 4, window.innerHeight - 92),
+        });
+    };
     return (
         <nav
-            className={`flex h-screen flex-col overflow-hidden border-r border-[#d8e0e6]/90 bg-[linear-gradient(180deg,rgba(246,248,250,0.98),rgba(241,244,247,0.98))] text-[#2f3a46] ${
-                expand ? "block" : "hidden"
+            className={`flex h-screen w-[272px] min-w-0 flex-col gap-[14px] overflow-hidden border-r border-[#d8e0e6]/90 bg-[linear-gradient(180deg,rgba(246,248,250,0.98),rgba(241,244,247,0.98))] px-[14px] pb-3 pt-[14px] text-[#2f3a46] transition-[transform,opacity] duration-200 ease-[cubic-bezier(0.2,0.8,0.2,1)] max-[1120px]:w-[248px] max-[900px]:fixed max-[900px]:inset-y-0 max-[900px]:left-0 max-[900px]:z-30 max-[900px]:w-[min(82vw,320px)] max-[900px]:shadow-[0_18px_48px_rgba(23,28,38,0.16)] ${
+                expand
+                    ? "translate-x-0 opacity-100"
+                    : "pointer-events-none -translate-x-6 opacity-0 max-[900px]:-translate-x-full"
             }`}
         >
-            <div className="sticky top-0 bg-[#f6f8fa]/98">
-                <div className="relative py-4 flex justify-center items-center font-semibold text-[#2f3a46] border-b border-[#e2e8ee]">
-                    <img src={logoIcon} className="w-8 h-8 object-contain"/>
-                    <button
-                        type="button"
-                        className="group absolute bottom-1 right-2 rounded bg-white/90 px-1.5 py-0.5 text-[10px] leading-none text-[#66717d] shadow-[0_2px_8px_rgba(23,28,38,0.04)] transition-all hover:bg-[#eef9fb] hover:text-[#279ab3]"
-                        title={t("components.Sidebar.version_tooltip")}
-                        aria-label={t("components.Sidebar.version_tooltip")}
-                        onClick={() => setIsVersionHistoryOpen(true)}
-                    >
-                        {APP_VERSION}
-                        <span className="pointer-events-none absolute right-0 top-full z-20 mt-1 w-max max-w-[160px] rounded bg-[#2f3a46] px-2 py-1 text-[11px] font-normal leading-4 text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
-                            {t("components.Sidebar.version_tooltip")}
-                        </span>
-                    </button>
+            <div className="relative flex shrink-0 items-center justify-between px-1 text-[#2f3a46]">
+                <div className="inline-flex min-w-0 items-center gap-2.5">
+                    <span className="grid size-[34px] shrink-0 place-items-center">
+                        <img src={logoIcon} className="size-7 object-contain"/>
+                    </span>
+                    <span className="min-w-0 translate-y-px truncate text-[15px] font-normal tracking-[0] text-[rgba(47,58,70,0.98)]">
+                        {title}
+                    </span>
                 </div>
+                <button
+                    type="button"
+                    className="grid size-[30px] place-items-center rounded-[9px] text-[#87919d] transition-colors hover:bg-white/90 hover:text-[#66717d]"
+                    aria-label="收起侧栏"
+                    onClick={onToggleSidebar}
+                >
+                    <svg
+                        className="size-5"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                    >
+                        <rect x="4" y="5" width="16" height="14" rx="2" />
+                        <path d="M10 5v14" />
+                    </svg>
+                </button>
+            </div>
+            <button
+                type="button"
+                className={`mt-2 flex min-h-12 w-full shrink-0 items-center justify-between gap-3 rounded-[14px] border px-[13px] text-[14px] font-normal text-[rgba(47,58,70,0.98)] transition-all hover:-translate-y-px hover:border-[rgba(194,208,216,0.98)] hover:shadow-[0_7px_16px_rgba(23,28,38,0.032),0_0_0_1px_rgba(133,210,226,0.028)] ${
+                    isNewChatActive
+                        ? "border-[rgba(198,211,221,0.98)] bg-[rgba(252,253,254,0.98)] shadow-[inset_0_0_0_1px_rgba(232,237,242,0.96),0_6px_14px_rgba(23,28,38,0.028)] hover:bg-[rgba(252,253,254,0.98)]"
+                        : "border-[rgba(220,227,233,0.94)] bg-[rgba(251,252,253,0.92)] shadow-[0_5px_14px_rgba(23,28,38,0.025),0_0_0_1px_rgba(133,210,226,0.02)] hover:bg-[rgba(229,234,239,0.82)]"
+                }`}
+                onClick={() => {
+                    navigate("/")
+                    closeMobileSidebar();
+                }}
+            >
+                <span className="inline-flex items-center gap-2.5">
+                    <PlusCircleIcon
+                        className="size-5 text-[rgba(89,180,199,0.92)]"
+                        strokeWidth={1.8}
+                    />
+                    <span>{t("components.Sidebar.new_chat")}</span>
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                    <span className="inline-grid h-6 min-w-6 place-items-center rounded-lg border border-[rgba(214,221,228,0.96)] bg-[rgba(252,253,254,0.98)] px-1.5 text-[11px] font-semibold text-[rgba(110,119,129,0.92)] shadow-[inset_0_-1px_0_rgba(238,242,246,0.9),0_1px_2px_rgba(22,28,37,0.03)]">
+                        ⌘
+                    </span>
+                    <span className="inline-grid h-6 min-w-6 place-items-center rounded-lg border border-[rgba(214,221,228,0.96)] bg-[rgba(252,253,254,0.98)] px-1.5 text-[11px] font-semibold text-[rgba(110,119,129,0.92)] shadow-[inset_0_-1px_0_rgba(238,242,246,0.9),0_1px_2px_rgba(22,28,37,0.03)]">
+                        K
+                    </span>
+                </span>
+            </button>
+            {gptsFeatureAllowed && (
                 <div
-                    className="p-2 mx-3 my-1 py-1 text-sm text-center text-[#2f3a46] hover:bg-white/90 transition-all rounded-lg cursor-pointer flex items-center justify-start gap-2"
+                    className="flex min-h-10 shrink-0 cursor-pointer items-center justify-start gap-2 rounded-[10px] px-1.5 py-1 text-left text-[14px] font-normal text-[#2f3a46] transition-all hover:bg-[rgba(229,234,239,0.82)]"
                     onClick={() => {
-                        navigate("/")
+                        navigate("/gpts/")
                     }}
                 >
-                    <img src={editIcon} className="w-8 h-8 object-contain"/>
-                    {t("components.Sidebar.new_chat")}
+                    <span className="grid size-8 shrink-0 place-items-center">
+                        <img src={appsIcon} className="size-6 object-contain"/>
+                    </span>
+                    {t("components.Sidebar.gpts")}
                 </div>
-                {gptsFeatureAllowed && (
-                    <div
-                        className="p-1 mx-3 my-1 py-1 text-sm text-center text-[#2f3a46] hover:bg-white/90 transition-all rounded-lg cursor-pointer flex items-center justify-start gap-2"
-                        onClick={() => {
-                            navigate("/gpts/")
-                        }}
-                    >
-                        <img src={appsIcon} className="w-8 h-8 object-contain"/>
-                        {t("components.Sidebar.gpts")}
-                    </div>
-                )}
-            </div>
-            <div className="flex-1 overflow-auto min-h-0">
+            )}
+            <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain">
             {gptsFeatureAllowed && pinnedGpts.map(({ gid, name, logo }, index) => {
                 console.log
                 if (gid === "gptassistant") {
@@ -429,44 +515,50 @@ export const Sidebar = (props: SidebarProps) => {
                 return (
                     <div
                         key={gid}
-                        className="mx-3 my-1 py-1 text-sm text-center text-[#2f3a46] hover:bg-white/90 transition-all rounded-lg cursor-pointer flex items-center justify-start gap-2"
+                        className="my-1 flex min-h-10 cursor-pointer items-center justify-start gap-2 rounded-[10px] px-1.5 py-1 text-left text-[14px] font-normal text-[#2f3a46] transition-all hover:bg-[rgba(229,234,239,0.82)]"
                         onClick={() => {
                             navigate("/g/"+gid)
                         }}
                     >
-                        <img
-                            src={logo ? normalizeAssetPath(logo) : regulationIcon}
-                            className="w-9 h-9 object-contain"
-                        />
+                        <span className="grid size-8 shrink-0 place-items-center">
+                            <img
+                                src={logo ? normalizeAssetPath(logo) : regulationIcon}
+                                className="size-8 object-contain"
+                            />
+                        </span>
                         {name}
                     </div>
                 )
             })}
-            <div className="flex flex-col space-y-2 p-2 mb-auto">
-                {Object.keys(sessionsCategory).map((key, index, arr) => {
-                    const currentLabel = sessionsCategory[key].label;
-                    const currentSessions =
-                        sessionsCategory[key].sessions ?? {};
-                    const currentSessionsKeys = Object.keys(currentSessions);
-                    const isEnablePagination = index === arr.length - 1;
-                    const isEmpty = !currentSessionsKeys.length;
-
-                    return (
-                        !isEmpty && (
-                            <div key={index}>
-                                <h3 className="text-[#87919d] text-xs py-1">
-                                    {currentLabel}
-                                </h3>
-                                {currentSessionsKeys
-                                    .slice(
-                                        0,
-                                        isEnablePagination
-                                            ? sessionsLimitation
-                                            : currentSessionsKeys.length
-                                    )
+            <div className="mb-auto flex flex-col py-2">
+                {!isHistoryEmpty && (
+                    <div>
+                        <button
+                            type="button"
+                            className="flex min-h-10 w-full items-center justify-between rounded-[10px] px-1.5 py-1 text-left text-[14px] font-normal tracking-[0] text-[rgba(47,58,70,0.98)] transition-colors hover:bg-[rgba(229,234,239,0.82)]"
+                            aria-expanded={!isHistoryCollapsed}
+                            onClick={() => setIsHistoryCollapsed((state) => !state)}
+                        >
+                            <span className="inline-flex min-w-0 items-center gap-2">
+                                <span className="grid size-8 shrink-0 place-items-center">
+                                    <ClockIcon className="size-5" strokeWidth={1.8} />
+                                </span>
+                                <span>历史会话</span>
+                            </span>
+                            <ChevronDownIcon
+                                className={`size-4 text-[rgba(128,138,148,0.9)] transition-transform ${
+                                    isHistoryCollapsed ? "-rotate-90" : ""
+                                }`}
+                                strokeWidth={1.8}
+                            />
+                        </button>
+                        {!isHistoryCollapsed && (
+                            <div className="grid gap-1 pt-1">
+                                {historySessionKeys
+                                    .slice(0, sessionsLimitation)
                                     .map((id, _index) => {
                                         const currentSession =
-                                            currentSessions[id][0];
+                                            historySessions[id][0];
                                         const currentSessionTitle =
                                             !!currentSession?.title?.length
                                                 ? currentSession.title
@@ -478,35 +570,79 @@ export const Sidebar = (props: SidebarProps) => {
                                         } else {
                                             path = `/chat/${id}`
                                         }
+                                        const isCurrentSessionActive = location.pathname === path;
                                         return (
                                             <div
                                                 key={_index}
-                                                className="group relative flex rounded-lg items-center justify-between p-2 text-[#66717d] hover:bg-white/90 hover:text-[#2f3a46] transition-all space-x-2"
-                                                onMouseLeave={() =>
-                                                    setActiveMenu(null)
-                                                }
+                                                data-history-menu-root
+                                                role="link"
+                                                tabIndex={renamingChatTitle.id === id ? -1 : 0}
+                                                className={`group relative grid min-h-8 cursor-pointer grid-cols-[minmax(0,1fr)_24px] items-center gap-2 rounded-[10px] py-1 pl-3.5 pr-1.5 text-[13px] font-medium text-[rgba(72,84,96,0.98)] transition-all hover:text-[rgba(47,58,70,0.98)] ${
+                                                    activeMenu === id || isCurrentSessionActive ? "bg-white/90 text-[rgba(47,58,70,0.98)] shadow-[inset_0_0_0_1px_rgba(207,217,226,0.92),0_1px_2px_rgba(23,28,38,0.025)] hover:bg-white/90" : "hover:bg-[rgba(229,234,239,0.82)]"
+                                                }`}
+                                                onClick={(event) => {
+                                                    if (renamingChatTitle.id === id) {
+                                                        return;
+                                                    }
+                                                    if (historyLongPressTriggeredRef.current) {
+                                                        event.preventDefault();
+                                                        historyLongPressTriggeredRef.current = false;
+                                                        return;
+                                                    }
+                                                    navigate(path);
+                                                    closeMobileSidebar();
+                                                }}
+                                                onKeyDown={(event) => {
+                                                    if (renamingChatTitle.id === id) {
+                                                        return;
+                                                    }
+                                                    if (event.key !== "Enter" && event.key !== " ") {
+                                                        return;
+                                                    }
+                                                    event.preventDefault();
+                                                    navigate(path);
+                                                    closeMobileSidebar();
+                                                }}
+                                                onTouchStart={(event) => {
+                                                    if (renamingChatTitle.id === id) {
+                                                        return;
+                                                    }
+                                                    cancelHistoryLongPress();
+                                                    const rect = event.currentTarget.getBoundingClientRect();
+                                                    historyLongPressTriggeredRef.current = false;
+                                                    historyLongPressTimerRef.current = window.setTimeout(() => {
+                                                        historyLongPressTriggeredRef.current = true;
+                                                        setHistoryMenuPositionFromRect(rect, { align: "left" });
+                                                        setActiveMenu(id);
+                                                        historyLongPressTimerRef.current = null;
+                                                    }, 480);
+                                                }}
+                                                onTouchMove={cancelHistoryLongPress}
+                                                onTouchCancel={cancelHistoryLongPress}
+                                                onTouchEnd={cancelHistoryLongPress}
                                             >
-                                                <Link
-                                                    className={`flex-1 text-sm text-left truncate ${
+                                                <span
+                                                    className={`min-w-0 truncate text-left ${
                                                         renamingChatTitle.id ===
                                                         id
                                                             ? "hidden"
                                                             : ""
                                                     }`}
-                                                    to={`${path}`}
                                                 >
                                                     {currentSessionTitle}
-                                                </Link>
+                                                </span>
                                                 <input
                                                     defaultValue={
                                                         currentSessionTitle
                                                     }
-                                                    className={`flex-1 w-full bg-transparent text-sm ${
+                                                    className={`min-w-0 bg-transparent text-[13px] ${
                                                         renamingChatTitle.id ===
                                                         id
                                                             ? ""
                                                             : "hidden"
                                                     }`}
+                                                    onClick={(event) => event.stopPropagation()}
+                                                    onKeyDown={(event) => event.stopPropagation()}
                                                     onChange={({ target }) =>
                                                         setRenamingChatTitle(
                                                             (prev) => ({
@@ -518,56 +654,80 @@ export const Sidebar = (props: SidebarProps) => {
                                                 />
                                                 {renamingChatTitle.id !== id && (
                                                     <>
-                                                        <div
-                                                            className={`space-x-2 ${
-                                                                activeMenu === id
-                                                                    ? "flex"
-                                                                    : "hidden"
+                                                        <button
+                                                            type="button"
+                                                            className={`grid size-6 shrink-0 place-items-center rounded-lg text-[rgba(118,129,141,0.88)] opacity-0 transition-colors hover:bg-white/90 hover:text-[rgba(72,84,96,0.94)] group-hover:opacity-100 max-[900px]:hidden ${
+                                                                activeMenu === id ? "bg-white/90 text-[rgba(72,84,96,0.94)] opacity-100" : ""
                                                             }`}
+                                                            aria-label="更多操作"
+                                                            onClick={(event) => {
+                                                                event.preventDefault();
+                                                                event.stopPropagation();
+                                                                const rect = event.currentTarget.getBoundingClientRect();
+                                                                setActiveMenu((state) => {
+                                                                    if (state === id) {
+                                                                        setActiveMenuPosition(null);
+                                                                        return null;
+                                                                    }
+                                                                    setHistoryMenuPositionFromRect(rect);
+                                                                    return id;
+                                                                });
+                                                            }}
                                                         >
-                                                            <img
-                                                                className="cursor-pointer text-xs size-3 hover:scale-125 transition-all"
-                                                                src={renameIcon}
-                                                                alt=""
-                                                                onClick={() => {
-                                                                    setRenamingChatTitle({
-                                                                        id,
-                                                                        title: currentSessionTitle,
-                                                                    });
-                                                                    setActiveMenu(null);
-                                                                }}
+                                                            <EllipsisHorizontalIcon
+                                                                className="size-4"
+                                                                strokeWidth={2}
                                                             />
-                                                            <img
-                                                                className="cursor-pointer text-xs size-3 hover:scale-125 transition-all"
-                                                                src={exportIcon}
-                                                                alt=""
-                                                                onClick={() => {
-                                                                    setActiveMenu(null);
-                                                                    onExportSession(id);
+                                                        </button>
+                                                        {activeMenu === id && activeMenuPosition && createPortal(
+                                                            <div
+                                                                data-history-menu-root
+                                                                className="fixed z-[60] grid w-[156px] gap-px rounded-2xl border border-[rgba(232,236,240,0.98)] bg-[rgba(253,253,254,0.99)] p-1.5 shadow-[0_18px_36px_rgba(23,28,38,0.08),0_2px_8px_rgba(23,28,38,0.035)]"
+                                                                style={{
+                                                                    left: activeMenuPosition.left,
+                                                                    top: activeMenuPosition.top,
                                                                 }}
-                                                            />
-                                                            <img
-                                                                className="cursor-pointer size-3 hover:scale-125 transition-all"
-                                                                src={deleteIcon}
-                                                                alt=""
-                                                                onClick={() => {
-                                                                    setActiveMenu(null);
-                                                                    onDeleteSession(id);
-                                                                }}
-                                                            />
-                                                        </div>
-                                                        <img
-                                                            className={`cursor-pointer size-3 hover:scale-125 transition-all invisible group-hover:visible ${
-                                                                activeMenu === id
-                                                                    ? "hidden"
-                                                                    : ""
-                                                            }`}
-                                                            src={moreIcon}
-                                                            alt=""
-                                                            onClick={() =>
-                                                                setActiveMenu(id)
-                                                            }
-                                                        />
+                                                            >
+                                                                <button
+                                                                    type="button"
+                                                                    className="inline-flex min-h-9 items-center gap-2 rounded-[10px] px-2.5 text-left text-[14px] font-normal text-[rgba(56,67,79,0.96)] transition-colors hover:bg-[rgba(244,247,250,0.96)]"
+                                                                    onClick={(event) => {
+                                                                        event.preventDefault();
+                                                                        event.stopPropagation();
+                                                                        setRenamingChatTitle({
+                                                                            id,
+                                                                            title: currentSessionTitle,
+                                                                        });
+                                                                        setActiveMenu(null);
+                                                                        setActiveMenuPosition(null);
+                                                                    }}
+                                                                >
+                                                                    <PencilSquareIcon
+                                                                        className="size-4"
+                                                                        strokeWidth={1.8}
+                                                                    />
+                                                                    <span>编辑标题</span>
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    className="inline-flex min-h-9 items-center gap-2 rounded-[10px] px-2.5 text-left text-[14px] font-normal text-[rgba(184,72,72,0.96)] transition-colors hover:bg-[rgba(244,247,250,0.96)]"
+                                                                    onClick={(event) => {
+                                                                        event.preventDefault();
+                                                                        event.stopPropagation();
+                                                                        setActiveMenu(null);
+                                                                        setActiveMenuPosition(null);
+                                                                        onDeleteSession(id);
+                                                                    }}
+                                                                >
+                                                                    <TrashIcon
+                                                                        className="size-4"
+                                                                        strokeWidth={1.8}
+                                                                    />
+                                                                    <span>删除</span>
+                                                                </button>
+                                                            </div>,
+                                                            document.body
+                                                        )}
                                                     </>
                                                 )}
                                                 {renamingChatTitle.id === id && (
@@ -598,44 +758,76 @@ export const Sidebar = (props: SidebarProps) => {
                                             </div>
                                         );
                                     })}
-                                {isEnablePagination &&
-                                    currentSessionsKeys.length >
-                                        sessionsLimitation && (
-                                        <div className="text-center m-2">
-                                            <button
-                                                className="font-semibold text-[#87919d] hover:text-[#279ab3] text-sm transition-all"
-                                                onClick={() =>
-                                                    setSessionsLimitation(
-                                                        (state) => state + 5
-                                                    )
-                                                }
-                                            >
-                                                {t(
-                                                    "components.Sidebar.load_more"
-                                                )}
-                                            </button>
-                                        </div>
-                                    )}
+                                {historySessionKeys.length > sessionsLimitation && (
+                                    <div className="m-2 text-center">
+                                        <button
+                                            className="text-sm font-semibold text-[#87919d] transition-all hover:text-[#279ab3]"
+                                            onClick={() =>
+                                                setSessionsLimitation(
+                                                    (state) => state + 5
+                                                )
+                                            }
+                                        >
+                                            {t("components.Sidebar.load_more")}
+                                        </button>
+                                    </div>
+                                )}
                             </div>
-                        )
-                    );
-                })}
+                        )}
+                    </div>
+                )}
             </div>
-            {Object.values(sessionsCategory)
-                .map(({ sessions }) => sessions ?? {})
-                .every((sessions) => !Object.keys(sessions).length) && (
+            {isHistoryEmpty && (
                 <div className="p-2 text-center text-[#87919d]/70 mb-[calc(50vh-4rem)] flex flex-col gap-4">
                     <img src={emptyIcon} alt="" className="mx-auto size-10" />
                     {t("components.Sidebar.no_history_chat")}
                 </div>
             )}
             </div>
-            <div className="sticky bottom-0 border-t border-[#e2e8ee] bg-[#f1f4f7]/98 px-4 py-3 text-center text-xs">
-                <span className="text-[#87919d]">技术支持</span>
-                <span className="mx-1.5 text-[#a0a9b2]">@</span>
-                <span className="font-medium text-[#2f3a46]">{globalConfig.supportContact}</span>
+            <div ref={profileMenuRef} className="relative shrink-0 border-t border-[rgba(220,227,232,0.92)] pt-2.5">
+                {isProfileMenuOpen && (
+                    <div className="absolute -left-[14px] -right-[14px] bottom-[calc(100%+6px)] grid gap-0.5 bg-[linear-gradient(180deg,rgba(246,248,250,0.98),rgba(241,244,247,0.98))] px-[14px] pb-2 pt-2">
+                        <button
+                            type="button"
+                            className="inline-flex min-h-9 items-center justify-between gap-2 rounded-[10px] px-2.5 text-left text-[13px] font-normal text-[rgba(56,67,79,0.96)] transition-colors hover:bg-[rgba(229,234,239,0.82)]"
+                            onClick={() => {
+                                setIsProfileMenuOpen(false);
+                                setIsVersionHistoryOpen(true);
+                            }}
+                        >
+                            <span className="text-[#87919d]">当前版本</span>
+                            <span className="font-medium text-[#2f3a46]">{APP_VERSION}</span>
+                        </button>
+                        <div className="inline-flex min-h-9 items-center justify-between gap-2 rounded-[10px] px-2.5 text-[13px] font-normal text-[rgba(56,67,79,0.96)]">
+                            <span className="text-[#87919d]">技术支持</span>
+                            <span className="min-w-0 truncate font-medium text-[#2f3a46]">
+                                @{globalConfig.supportContact}
+                            </span>
+                        </div>
+                    </div>
+                )}
+                <button
+                    type="button"
+                    className="flex min-h-11 w-full cursor-pointer items-center justify-between gap-[11px] rounded-xl px-2 pl-2.5 text-left"
+                    aria-expanded={isProfileMenuOpen}
+                    aria-label="打开账号菜单"
+                    onClick={() => setIsProfileMenuOpen((state) => !state)}
+                >
+                    <span className="flex min-w-0 items-center gap-[9px]">
+                        <span className="grid size-[30px] shrink-0 place-items-center rounded-full bg-[linear-gradient(180deg,rgba(212,146,114,0.96),rgba(190,124,95,0.96))] text-xs font-semibold text-white">
+                            {avatarText}
+                        </span>
+                        <span className="min-w-0 truncate text-[14px] font-normal text-[rgba(47,58,70,0.98)]">
+                            {displayUserName}
+                        </span>
+                    </span>
+                    <EllipsisHorizontalIcon
+                        className="size-5 shrink-0 text-[#87919d]"
+                        strokeWidth={2}
+                    />
+                </button>
             </div>
-            {isVersionHistoryOpen && (
+            {isVersionHistoryOpen && createPortal(
                 <div
                     className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 px-4"
                     role="dialog"
@@ -710,7 +902,8 @@ export const Sidebar = (props: SidebarProps) => {
                             </div>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </nav>
     );

@@ -33,6 +33,7 @@ const Home = (props: RouterComponentProps) => {
             logo={logo ? normalizeAssetPath(logo) : regulationIcon}
             subTitle={subTitle?subTitle:""}
             samples={randomSamples}
+            isNewSessionPage={true}
             onSelectSample={handleSelectSample}
         />
     );

@@ -278,7 +278,7 @@ export const Markdown = (props: MarkdownProps) => {
             )}
         
             <ReactMarkdown
-                className={`prose min-w-0 max-w-full break-words text-[15px] leading-[1.7] [overflow-wrap:anywhere] prose-p:leading-[1.7] ${
+                className={`prose min-w-0 max-w-full break-words text-[15px] leading-[1.85] text-[rgba(39,49,61,0.98)] subpixel-antialiased [overflow-wrap:anywhere] prose-headings:text-[rgba(39,49,61,0.96)] prose-headings:font-medium prose-p:text-[rgba(39,49,61,0.98)] prose-p:leading-[1.85] prose-li:text-[rgba(39,49,61,0.98)] prose-li:leading-[1.75] prose-strong:text-[rgba(39,49,61,0.98)] ${
                     className ?? ""
                 }`}
                 children={markdownContent}
@@ -319,7 +319,7 @@ export const Markdown = (props: MarkdownProps) => {
                                 return (
                                     <Suspense
                                         fallback={
-                                            <span className="text-gray-500">
+                                            <span className="text-[#66717d]">
                                                 {t(
                                                     "components.Markdown.echarts_rendering"
                                                 )}
@@ -337,7 +337,7 @@ export const Markdown = (props: MarkdownProps) => {
                                 return (
                                     <code
                                         className={
-                                            isIncomplete ? "text-gray-700" : "text-red-700"
+                                            isIncomplete ? "text-[rgba(39,49,61,0.98)]" : "text-red-700"
                                         }
                                     >
                                         {isIncomplete
@@ -361,7 +361,7 @@ export const Markdown = (props: MarkdownProps) => {
                                 />
                                 <div className="flex gap-2">
                                     <button
-                                        className="text-gray-700/100 text-xs hover:opacity-50"
+                                        className="text-xs text-[#66717d] hover:opacity-70"
                                         onClick={({ currentTarget }) =>
                                             handleCopyCode(code, currentTarget)
                                         }
@@ -371,7 +371,7 @@ export const Markdown = (props: MarkdownProps) => {
                                     {!code.includes(TypingEffectPlaceholder) &&
                                         lang === "python" && (
                                             <button
-                                                className="text-gray-700/100 text-xs hover:opacity-50"
+                                                className="text-xs text-[#66717d] hover:opacity-70"
                                                 onClick={({ currentTarget }) =>
                                                     handleRunPython(
                                                         startPos,
@@ -408,7 +408,7 @@ export const Markdown = (props: MarkdownProps) => {
                                             />
                                             <div className="flex gap-2">
                                                 <button
-                                                    className="text-gray-700/100 text-xs hover:opacity-50"
+                                                    className="text-xs text-[#66717d] hover:opacity-70"
                                                     onClick={({ currentTarget }) =>
                                                         handleCopyCode(
                                                             pythonResult.result,
@@ -421,7 +421,7 @@ export const Markdown = (props: MarkdownProps) => {
                                                     )}
                                                 </button>
                                                 <button
-                                                    className="text-gray-700/100 text-xs hover:opacity-50"
+                                                    className="text-xs text-[#66717d] hover:opacity-70"
                                                     onClick={() =>
                                                         setPythonResult({
                                                             result: "",
@@ -439,7 +439,7 @@ export const Markdown = (props: MarkdownProps) => {
                                     )}
                             </>
                         ) : (
-                            <code className="text-gray-700">
+                            <code className="text-[rgba(39,49,61,0.98)]">
                                 {code.replace(/\n$/, "")}
                             </code>
                         );

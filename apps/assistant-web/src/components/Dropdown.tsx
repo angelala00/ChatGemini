@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ModelOption } from "../types/models";
+import { ChevronDownIcon } from "@heroicons/react/24/outline";
 
 
 interface HeaderDropdownProps {
@@ -70,29 +71,22 @@ export const HeaderDropdown = (props: HeaderDropdownProps) => {
                 <button
                     type="button"
                     onClick={() => setOpen(!open)}
-                    className="inline-flex items-center gap-2 rounded-2xl border border-[#d4dde5] bg-white/95 px-4 py-2 text-[#2f3a46] shadow-[0_2px_8px_rgba(23,28,38,0.04)] hover:bg-[#f8fafb]"
+                    className={`inline-flex h-10 items-center gap-2 rounded-[10px] px-3 text-sm font-semibold transition-colors hover:bg-[rgba(246,248,250,0.96)] ${
+                        open ? "text-[#2f3a46]" : "text-[#2f3a46]"
+                    }`}
                 >
-                    <div className="flex items-center gap-1 font-semibold text-sm">
+                    <div className="flex items-center gap-1">
                         {title}{" "}
-                        <span className="font-medium text-[#279ab3]">
+                        <span className="font-semibold text-[#2f3a46]">
                             {selectedOption?.name ?? selected}
                         </span>
                     </div>
-                    <svg
-                        className={`w-4 h-4 transition-transform duration-200 ${
-                            open ? "rotate-180" : ""
+                    <ChevronDownIcon
+                        className={`size-4 text-[rgba(128,138,148,0.9)] transition-transform ${
+                            open ? "" : "-rotate-90"
                         }`}
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                    >
-                        <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M19 9l-7 7-7-7"
-                        />
-                    </svg>
+                        strokeWidth={1.8}
+                    />
                 </button>
             )}
             {defaultModel && open && models && (
@@ -104,7 +98,7 @@ export const HeaderDropdown = (props: HeaderDropdownProps) => {
                                     onClick={() => handleSelect(opt.id)}
                                     className={`w-full text-left px-4 py-2 text-sm text-[#2f3a46] hover:bg-[#f4f7f9] ${
                                         opt.id === selected
-                                            ? "font-semibold !text-[#279ab3]"
+                                            ? "bg-[#f4f7f9] font-semibold"
                                             : ""
                                     }`}
                                 >

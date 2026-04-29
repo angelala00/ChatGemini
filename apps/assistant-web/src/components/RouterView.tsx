@@ -1,6 +1,7 @@
 import { ReactNode, Suspense } from "react";
 import { Route, Routes } from "react-router-dom";
 import { RouterComponentProps, RouterConfigRoutes } from "../config/router";
+import { RouteErrorBoundary } from "./RouteErrorBoundary";
 
 interface RouterViewProps {
     readonly routes: Record<string, RouterConfigRoutes>;
@@ -18,7 +19,11 @@ export const RouterView = (props: RouterViewProps) => {
                     ({ prefix, uri, suffix, element: Element }, index) => (
                         <Route
                             key={index}
-                            element={<Element {...routerProps} />}
+                            element={
+                                <RouteErrorBoundary>
+                                    <Element {...routerProps} />
+                                </RouteErrorBoundary>
+                            }
                             path={`${prefix}${uri}${suffix}`}
                         />
                     )

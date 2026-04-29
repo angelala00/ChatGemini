@@ -119,7 +119,7 @@ const App = () => {
     const [userName, setUserName] = useState("");
     const [uploadInlineData, setUploadInlineData] =
         useState<GenerativeContentBlob>({ data: "", mimeType: "" });
-    const [sidebarExpand, setSidebarExpand] = useState(window.innerWidth > 768);
+    const [sidebarExpand, setSidebarExpand] = useState(window.innerWidth > 900);
 
     const setCurrentLocaleToState = async () =>
         setCurrentLocale(await getCurrentLocale(i18n));
@@ -529,6 +529,9 @@ const App = () => {
         },
         currentPath,
     );
+    const isNewSessionPage =
+        currentPath === routes.index.prefix ||
+        (!!gid && !id && currentPath === `/g/${gid}`);
 
     useEffect(() => {
         if (!hasLogined) {
@@ -567,6 +570,12 @@ const App = () => {
         navigate,
         routes.index.prefix,
     ]);
+
+    useEffect(() => {
+        if (window.matchMedia("(max-width: 900px)").matches) {
+            setSidebarExpand(false);
+        }
+    }, [location.pathname]);
 
     useEffect(() => {
         // console.log("gid change")
@@ -748,33 +757,40 @@ const App = () => {
         ) : (
             <Container
                 className={
-                    !hasLogined ? "flex flex-col items-center justify-center min-h-screen p-10" : ""
+                    !hasLogined
+                        ? "flex flex-col items-center justify-center min-h-screen p-10"
+                        : "h-screen w-full"
                 }
                 toaster={true}
             >
                 {hasLogined ? (
-                    <>
+                    <div
+                        className={`grid h-screen min-w-full overflow-hidden bg-white/95 transition-[grid-template-columns] duration-200 ease-[cubic-bezier(0.2,0.8,0.2,1)] ${
+                            sidebarExpand
+                                ? "grid-cols-[272px_minmax(0,1fr)] max-[1120px]:grid-cols-[248px_minmax(0,1fr)] max-[900px]:grid-cols-[1fr]"
+                                : "grid-cols-[0_minmax(0,1fr)]"
+                        } max-[900px]:grid-cols-[1fr]`}
+                    >
                         <Sidebar
                             title={header}
+                            userName={userName}
                             locales={locales}
                             sessions={sessions}
                             expand={sidebarExpand}
                             gptsFeatureAllowed={gptsFeatureAllowed}
                             currentLocale={currentLocale}
                             onSwitchLocale={handleSwitchLocale}
-                            onExportSession={handleExportSession}
                             onDeleteSession={handleDeleteSession}
                             onRenameSession={handleRenameSession}
+                            onToggleSidebar={() =>
+                                setSidebarExpand((state) => !state)
+                            }
                         />
                         <Container
-                            className={`min-w-full flex flex-col h-screen bg-white/95 ${
-                                !sidebarExpand ? "col-span-2" : ""
-                            }`}
+                            className="col-start-2 flex h-screen min-w-0 flex-col bg-white/95 max-[900px]:col-start-1"
                         >
                             {!isGptsPage && (
                                 <Header
-                                    userName={userName}
-                                    logoutIcon={!!passcodes.length}
                                     sidebarExpand={sidebarExpand}
                                     title={pageName}
                                     models={models}
@@ -782,33 +798,42 @@ const App = () => {
                                     onToggleSidebar={() =>
                                         setSidebarExpand((state) => !state)
                                     }
-                                    onLogout={handleLogout}
                                     onModelChange={handleModelChange}
                                 />
                             )}
                             <div
-                                ref={mainSectionRef}
-                                className={`relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden ${
-                                    isGptsPage ? "h-screen" : ""
-                                }`}
+                                className={
+                                    isNewSessionPage && !isGptsPage
+                                        ? "flex min-h-0 flex-1 flex-col md:justify-center"
+                                        : "contents"
+                                }
                             >
-                                <RouterView
-                                    routes={routes}
-                                    suspense={<Skeleton />}
-                                    routerProps={{
-                                        refs: { mainSectionRef, textAreaRef },
-                                        onAbortUpdate: onAbortUpdate,
-                                        gid: gid,
-                                        title: pageTitle,
-                                        logo: pageLogo,
-                                        subTitle: pageSubTitle,
-                                        samples: pageSamples,
-                                        userName: userName,
-                                    }}
-                                />
-                            </div>
-                            {!isGptsPage && (
-                                <>
+                                <div
+                                    ref={mainSectionRef}
+                                    className={`relative min-h-0 overflow-y-auto overflow-x-hidden ${
+                                        isGptsPage
+                                            ? "h-screen flex-1"
+                                            : isNewSessionPage
+                                                ? "flex-1 md:flex-none md:overflow-visible"
+                                                : "flex-1"
+                                    }`}
+                                >
+                                    <RouterView
+                                        routes={routes}
+                                        suspense={<Skeleton />}
+                                        routerProps={{
+                                            refs: { mainSectionRef, textAreaRef },
+                                            onAbortUpdate: onAbortUpdate,
+                                            gid: gid,
+                                            title: pageTitle,
+                                            logo: pageLogo,
+                                            subTitle: pageSubTitle,
+                                            samples: pageSamples,
+                                            userName: userName,
+                                        }}
+                                    />
+                                </div>
+                                {!isGptsPage && (
                                     <InputArea
                                         minHeight={45}
                                         ref={textAreaRef}
@@ -817,6 +842,7 @@ const App = () => {
                                         showReasoningToggle={showReasoningToggle}
                                         reasoningEnabled={effectiveReasoningEnabled}
                                         reasoningAvailable={reasoningAvailable}
+                                        isNewSessionPage={isNewSessionPage}
                                         allowedFileTypes={resolvedUploadCategories}
                                         key={location.pathname}
                                         onSubmit={handleSubmit}
@@ -824,10 +850,20 @@ const App = () => {
                                         onAbort={handleAbort}
                                         onReasoningChange={handleReasoningChange}
                                     />
-                                </>
-                            )}
+                                )}
+                            </div>
                         </Container>
-                    </>
+                        <button
+                            type="button"
+                            aria-label="关闭历史会话"
+                            className={`fixed inset-0 z-20 hidden bg-[rgba(18,24,32,0.16)] transition-opacity duration-200 ease-[cubic-bezier(0.2,0.8,0.2,1)] max-[900px]:block ${
+                                sidebarExpand
+                                    ? "opacity-100"
+                                    : "pointer-events-none opacity-0"
+                            }`}
+                            onClick={() => setSidebarExpand(false)}
+                        />
+                    </div>
                 ) : (
                     <LoginByOAuth
                         title={header}
