@@ -71,6 +71,7 @@ body::-webkit-scrollbar {
     border-radius: 25px;
 }
 .sub-title {
+    color: #66717d;
     font-size: 14px;
     line-height: 1.7;
 }

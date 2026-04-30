@@ -38,7 +38,7 @@ export const globalConfig = {
             : "大模型AI助手",
         header: !!env["REACT_APP_TITLE_HEADER"]?.length
             ? env["REACT_APP_TITLE_HEADER"]
-            : "Chat",
+            : "企业 AI 助手",
     },
     assistantName: !!env["REACT_APP_ASSISTANT_NAME"]?.length
         ? env["REACT_APP_ASSISTANT_NAME"]

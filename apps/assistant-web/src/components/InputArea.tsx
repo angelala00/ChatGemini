@@ -1,7 +1,5 @@
-import submitIcon from "../assets/icons/paper-plane-solid.svg";
 import ejectionIcon from "../assets/icons/eject-solid.svg";
 import attachmentIcon from "../assets/icons/paperclip-solid.svg";
-import abortIcon from "../assets/icons/stop.svg";
 import {
     ForwardedRef,
     KeyboardEvent,
@@ -32,6 +30,7 @@ interface InputAreaProps {
     readonly showReasoningToggle?: boolean;
     readonly reasoningEnabled?: boolean;
     readonly reasoningAvailable?: boolean;
+    readonly isNewSessionPage?: boolean;
     readonly onSubmit: (prompt: string) => void;
     readonly onUpload: (file: File | null) => void;
     readonly onAbort: () => void;
@@ -49,6 +48,7 @@ export const InputArea = forwardRef(
             showReasoningToggle,
             reasoningEnabled,
             reasoningAvailable,
+            isNewSessionPage,
             onSubmit,
             onUpload,
             onAbort,
@@ -192,8 +192,10 @@ export const InputArea = forwardRef(
         useImperativeHandle(ref, () => textAreaRef.current!);
 
         return (
-            <div className="sticky bottom-0 z-20 px-4 pb-4 pt-1 bg-gradient-to-t from-white via-white/92 to-transparent">
-                <div className="input-area-border relative mx-auto flex w-full max-w-[940px] flex-col space-y-3 rounded-[1.75rem] border border-[#d4dde5]/90 bg-white px-4 py-3 shadow-[0_22px_48px_rgba(23,28,38,0.08)] backdrop-blur min-h-20 max-h-48">
+            <div className={`bottom-0 z-20 bg-gradient-to-t from-white via-white/92 to-transparent px-4 pb-3 pt-1 md:px-[26px] ${
+                isNewSessionPage ? "sticky md:static md:pb-0 md:pt-0" : "sticky"
+            }`}>
+                <div className="input-area-border relative mx-auto flex min-h-[104px] w-full max-w-[882px] flex-col space-y-3 rounded-[22px] border border-[#d4dde5]/90 bg-white px-[18px] pb-3 pt-[18px] shadow-[0_18px_38px_rgba(23,28,38,0.07)] backdrop-blur max-h-48">
                     {!!attachmentName.length && (
                         <div className="truncate text-xs text-[#87919d]">
                             <img className="inline-block size-3 mr-0.5" src={attachmentIcon} alt="" />
@@ -212,7 +214,7 @@ export const InputArea = forwardRef(
                     />
 
                     {/* 按钮区域 - 适配小屏幕 */}
-                    <div className="mt-1 flex min-h-[34px] items-center justify-between gap-3 border-t border-[#edf2f6] pt-1">
+                    <div className="flex min-h-10 items-center justify-between gap-3 border-t border-[#edf2f6] pt-2">
                         <div className="flex items-center">
                             {showReasoningToggle && (
                                 <button
@@ -262,7 +264,7 @@ export const InputArea = forwardRef(
                                         }
                                     }} />
                                 <div className="relative group inline-flex">
-                                    <button className="flex h-9 w-9 items-center justify-center rounded-2xl border border-[#e7edf2] bg-white/95 p-1.5 text-[#279ab3] transition-colors hover:bg-[#eef9fb]"
+                                    <button className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#e7edf2] bg-white/95 p-2 text-[#279ab3] transition-colors hover:bg-[#eef9fb]"
                                         onClick={({ currentTarget }) => {
                                             if (!!attachmentName.length) {
                                                 setAttachmentName("");
@@ -279,7 +281,9 @@ export const InputArea = forwardRef(
                             </div>
                         )}
                         {/* 发送按钮 */}
-                        <button className="flex h-9 w-9 items-center justify-center rounded-2xl bg-[#eef9fb] p-1.5 text-[#279ab3] transition-colors hover:bg-[#dff3f7] disabled:cursor-not-allowed"
+                        <button
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[linear-gradient(180deg,oklch(71%_0.113_201),oklch(63%_0.121_209))] text-white shadow-[0_8px_18px_rgba(63,170,194,0.24)] transition-[transform,box-shadow] hover:-translate-y-px hover:shadow-[0_10px_22px_rgba(63,170,194,0.3)] active:translate-y-0"
+                            aria-label={busy ? "停止生成" : "发送"}
                             onClick={() => {
                                 if (busy) {
                                     onAbort();
@@ -287,9 +291,32 @@ export const InputArea = forwardRef(
                                     handleSubmit();
                                     setAttachmentName("");
                                 }
-                            }}>
-                            <img className={busy ? "hidden" : "size-4"} src={submitIcon} alt="" />
-                            <img className={busy ? "size-4 animate-pulse animate-infinite animate-duration-1000" : "hidden"} src={abortIcon} alt="" />
+                            }}
+                        >
+                            {busy ? (
+                                <svg
+                                    className="size-4 animate-pulse animate-infinite animate-duration-1000"
+                                    viewBox="0 0 24 24"
+                                    fill="currentColor"
+                                    aria-hidden="true"
+                                >
+                                    <path d="M6 6h12v12H6z" />
+                                </svg>
+                            ) : (
+                                <svg
+                                    className="size-5"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    aria-hidden="true"
+                                >
+                                    <path d="M12 19V5" />
+                                    <path d="m6 11 6-6 6 6" />
+                                </svg>
+                            )}
                         </button>
                         </div>
                     </div>

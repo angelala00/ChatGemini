@@ -227,10 +227,28 @@ const Chat = (props: RouterComponentProps) => {
         }
     };
 
+    const normalizeChatHistory = (history: SessionHistory[]) =>
+        history
+            .filter(Boolean)
+            .map((item) => ({
+                ...item,
+                parts:
+                    typeof item.parts === "string"
+                        ? item.parts
+                        : item.parts == null
+                          ? ""
+                          : String(item.parts),
+            }));
+
     useEffect(() => {
         if (id && id in sessions) {
-            setChat(sessions[id]);
-            let sessionTitle = sessions[id][0].title ?? sessions[id][0].parts;
+            const nextChat = normalizeChatHistory(sessions[id]);
+            setChat(
+                nextChat.length
+                    ? nextChat
+                    : [{ role: "model", parts: invalidPlaceholder, timestamp: 0 }],
+            );
+            let sessionTitle = nextChat[0]?.title ?? nextChat[0]?.parts ?? "";
             if (sessionTitle.length > 20) {
                 sessionTitle = `${sessionTitle.substring(0, 20)} ...`;
             }
@@ -282,7 +300,7 @@ const Chat = (props: RouterComponentProps) => {
     }, [attachmentItemsByData, chat]);
 
     return (
-        <Container className="relative mx-auto w-full max-w-[940px] px-4 py-8 md:px-8">
+        <Container className="relative mx-auto w-full max-w-[882px] px-4 py-6 md:px-[26px] md:py-4">
             <ImageView>
                 {chat.map(({ role, parts, attachment }, index) => {
                     const { mimeType, data } = attachment ?? {
@@ -297,18 +315,24 @@ const Chat = (props: RouterComponentProps) => {
                     );
 
                     const typingEffect = `<div class="inline px-1 bg-[#2f3a46] animate-pulse animate-duration-700"></div>`;
+                    let nextParts =
+                        typeof parts === "string"
+                            ? parts
+                            : parts == null
+                              ? ""
+                              : String(parts);
                     if (
                         ai.busy &&
                         role === SessionRole.Model &&
                         index === chat.length - 1
                     ) {
-                        parts += typingEffect;
+                        nextParts += typingEffect;
                     }
                     return (
                         <Session
                             key={index}
                             index={index}
-                            prompt={parts}
+                            prompt={nextParts}
                             editState={editState}
                             role={role as SessionRole}
                             onRefresh={handleRefresh}
@@ -320,8 +344,8 @@ const Chat = (props: RouterComponentProps) => {
                                 <Markdown
                                     className={
                                         role === SessionRole.Model
-                                            ? "prose-slate"
-                                        : "prose-slate prose-headings:text-[#2f3a46] prose-strong:text-[#2f3a46] prose-p:text-[#2f3a46]"
+                                            ? ""
+                                        : "prose-headings:text-[rgba(39,49,61,0.98)] prose-strong:text-[rgba(39,49,61,0.98)] prose-p:text-[rgba(39,49,61,0.98)]"
                                     }
                                 typingEffect={typingEffect}
                                 pythonRuntime={pythonRuntime}
@@ -333,7 +357,7 @@ const Chat = (props: RouterComponentProps) => {
                                         ? window.location.pathname
                                         : basename
                                 }pyodide`}
-                            >{`${parts}${attachmentPostscriptHtml}`}</Markdown>
+                            >{`${nextParts}${attachmentPostscriptHtml}`}</Markdown>
                         </Session>
                     );
                 })}

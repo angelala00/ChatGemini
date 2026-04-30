@@ -1,5 +1,4 @@
 import aiIcon from "../assets/icons/wand-magic-sparkles-solid.svg";
-import userIcon from "../assets/icons/user-regular.svg";
 import deleteIcon from "../assets/icons/trash-solid.svg";
 import { ArrowPathIcon } from "@heroicons/react/24/outline";
 import { DocumentDuplicateIcon } from "@heroicons/react/24/outline";
@@ -102,51 +101,32 @@ export const Session = (props: SessionProps) => {
     };
 
     const isModel = role === SessionRole.Model;
+    const actionButtonClass =
+        "flex size-7 items-center justify-center rounded-[7px] text-[rgba(118,129,141,0.58)] transition-colors hover:bg-[rgba(246,248,250,0.96)] hover:text-[rgba(47,58,70,0.98)]";
 
     return (
         <div
-            className={`mb-6 space-y-3 ${
+            className={`mb-[18px] space-y-2 ${
                 isModel ? "" : "flex flex-col items-end"
             }`}
             onMouseEnter={isModel ? undefined : handleUserActionsEnter}
             onMouseLeave={isModel ? undefined : handleUserActionsLeave}
         >
-            <div
-                className={`flex items-center ${
-                    isModel ? "" : "w-full justify-end"
-                }`}
-            >
-                <div
-                    className={`flex size-6 items-center justify-center rounded-full ${
-                        isModel ? "bg-[#2f3a46]" : "bg-[#279ab3]"
-                    }`}
-                >
-                    <img
-                        className={
-                            role === SessionRole.Model ? "size-3" : "hidden"
-                        }
-                        src={aiIcon}
-                        alt=""
-                    />
-                    <img
-                        className={
-                            role === SessionRole.User ? "size-3" : "hidden"
-                        }
-                        src={userIcon}
-                        alt=""
-                    />
+            {isModel && (
+                <div className="flex items-center">
+                    <div className="flex size-[30px] items-center justify-center rounded-full bg-[#54BED5] shadow-[0_6px_14px_rgba(84,190,213,0.16)]">
+                        <img className="size-3.5" src={aiIcon} alt="" />
+                    </div>
+                    <span className="ml-2 text-[14px] font-semibold leading-none text-[#2f3a46]">
+                        {t("components.Session.role_model")}
+                    </span>
                 </div>
-                <span className="ml-2 text-[14px] font-semibold leading-none text-[#2f3a46]">
-                    {isModel
-                        ? t("components.Session.role_model")
-                        : t("components.Session.role_user")}
-                </span>
-            </div>
+            )}
             <div
                 className={`${
                     isModel
-                        ? "min-w-0 w-full overflow-hidden rounded-[1.75rem] border border-[#e2e8ee]/90 bg-white px-7 py-6 shadow-[0_12px_30px_rgba(23,28,38,0.05)]"
-                        : "inline-flex min-w-0 w-fit max-w-[38rem] overflow-hidden rounded-[1.35rem] border border-[#d4dde5]/90 bg-[#eef9fb] px-5 py-4 text-[#2f3a46] shadow-[0_6px_18px_rgba(23,28,38,0.05)]"
+                        ? "min-w-0 w-full overflow-hidden py-1"
+                        : "inline-flex min-w-0 w-fit max-w-[680px] overflow-hidden rounded-2xl border border-[rgba(233,237,241,0.98)] bg-[linear-gradient(180deg,rgba(246,248,250,0.98),rgba(241,244,247,0.98))] px-4 py-3.5 text-[#2f3a46] leading-[1.85] shadow-[0_4px_12px_rgba(23,28,38,0.02)] md:max-w-[min(72%,680px)]"
                 }`}
             >
                 {editState.state === SessionEditState.Edit &&
@@ -202,19 +182,18 @@ export const Session = (props: SessionProps) => {
                 }`}
             >
                 <button
-                    className="flex size-7 items-center justify-center rounded-xl text-[#87919d] transition-colors hover:bg-[#edf2f6]"
+                    className={actionButtonClass}
                     onClick={handleCopy}
                 >
                     <DocumentDuplicateIcon
                         className="size-[18px]"
                         strokeWidth={2}
-                        color="#737373"
                     />
                 </button>
                 {role === SessionRole.User &&
                     editState.state !== SessionEditState.Edit && (
                         <button
-                            className="flex size-7 items-center justify-center rounded-xl text-[#87919d] transition-colors hover:bg-[#edf2f6]"
+                            className={actionButtonClass}
                             onClick={() =>
                                 onEdit(index, SessionEditState.Edit, "")
                             }
@@ -222,40 +201,37 @@ export const Session = (props: SessionProps) => {
                             <PencilSquareIcon
                                 className="size-[18px]"
                                 strokeWidth={2}
-                                color="#737373"
                             />
                         </button>
                     )}
                 {role === SessionRole.Model && (
                     <button
-                        className="flex size-7 items-center justify-center rounded-xl text-[#87919d] transition-colors hover:bg-[#edf2f6]"
+                        className={actionButtonClass}
                         onClick={() => onRefresh(index)}
                     >
                         <ArrowPathIcon
                             className="size-[18px]"
                             strokeWidth={2}
-                            color="#737373"
                         />
                     </button>
                 )}
                 {role === SessionRole.Model && index !== 1 && (
                     <button
-                        className="flex size-7 items-center justify-center rounded-xl text-[#87919d] transition-colors hover:bg-[#edf2f6]"
+                        className={actionButtonClass}
                         onClick={() => onDelete(index)}
                     >
-                        <img src={deleteIcon} className="size-4" alt="" />
+                        <img src={deleteIcon} className="size-4 opacity-70" alt="" />
                     </button>
                 )}
                 {/* 导出按钮 */}
                 {role === SessionRole.Model && (
                     <button
-                        className="flex size-7 items-center justify-center rounded-xl text-[#87919d] transition-colors hover:bg-[#edf2f6]"
+                        className={actionButtonClass}
                         onClick={() => onExport(index)}
                     >
                         <ArrowRightStartOnRectangleIcon
                             className="size-[18px]"
                             strokeWidth={2}
-                            color="#737373"
                         />
                     </button>
                 )}

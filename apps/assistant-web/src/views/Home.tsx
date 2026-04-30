@@ -4,7 +4,6 @@ import { globalConfig } from "../config/global";
 import { RouterComponentProps } from "../config/router";
 import { setTextAreaHeight } from "../helpers/setTextAreaHeight";
 import { useTranslation } from "react-i18next";
-import logoIcon from "../assets/logo.svg";
 
 const Home = (props: RouterComponentProps) => {
     const { t } = useTranslation();
@@ -27,9 +26,11 @@ const Home = (props: RouterComponentProps) => {
     return (
         <Landing
             title={`我是 ${assistantName},　很高兴见到你！`}
-            logo={logoIcon}
+            logo="/logo_mock.png"
             subTitle="我可以帮你写代码、读文件、写作各种创意内容，请把你的任务交给我吧～"
             samples={randomSamples}
+            isNewSessionPage={true}
+            useTemplateTitle={true}
             onSelectSample={handleSelectSample}
         />
     );
