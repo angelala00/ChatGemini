@@ -7,7 +7,7 @@
 
 用途：
 - 作为 `ChatGemini/apps/assistant-web` 里 `ChatV2 / SessionV2 / InputAreaV2 / TopbarV2` 的右侧对齐基线
-- 后续不再靠肉眼逼近，先按这份清单逐项匹配
+- 后续不再靠肉眼逼近，先按这份清单逐项匹配1
 - 只有旧工程结构或 Markdown 渲染承接不到的地方，再单独判断
 
 边界说明：
