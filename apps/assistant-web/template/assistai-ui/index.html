@@ -1173,6 +1173,122 @@
         transition: border-color 160ms cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
       }
 
+      .composer-upload {
+        display: none;
+        gap: 12px;
+      }
+
+      .composer-upload.is-visible {
+        display: grid;
+      }
+
+      .upload-file-grid {
+        display: flex;
+        flex-wrap: nowrap;
+        gap: 12px;
+        align-items: stretch;
+        overflow-x: auto;
+        overflow-y: hidden;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+      }
+
+      .upload-file-grid::-webkit-scrollbar {
+        display: none;
+      }
+
+      .upload-file-card {
+        position: relative;
+        min-width: 0;
+        flex: 0 0 320px;
+        width: 320px;
+        padding: 12px 42px 12px 12px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        border-radius: 16px;
+        background: rgba(248, 249, 251, 0.98);
+        border: 1px solid rgba(235, 238, 242, 0.98);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92);
+      }
+
+      .upload-file-icon {
+        width: 34px;
+        height: 34px;
+        flex: none;
+        display: grid;
+        place-items: center;
+        border-radius: 10px;
+        color: rgba(255, 255, 255, 0.94);
+        background: linear-gradient(180deg, var(--send-start), var(--send-end));
+        border: 1px solid rgba(171, 220, 228, 0.92);
+        box-shadow: 0 4px 10px rgba(63, 170, 194, 0.1);
+      }
+
+      .upload-file-icon svg {
+        width: 16px;
+        height: 16px;
+      }
+
+      .upload-file-icon.is-pdf {
+        color: rgba(255, 255, 255, 0.94);
+      }
+
+      .upload-file-icon.is-word {
+        color: rgba(255, 255, 255, 0.94);
+      }
+
+      .upload-file-icon.is-sheet {
+        color: rgba(255, 255, 255, 0.94);
+      }
+
+      .upload-file-icon.is-image {
+        color: rgba(255, 255, 255, 0.94);
+      }
+
+      .upload-file-icon.is-generic {
+        color: rgba(255, 255, 255, 0.94);
+      }
+
+      .upload-file-remove {
+        position: absolute;
+        top: 9px;
+        right: 9px;
+        width: 24px;
+        height: 24px;
+        display: grid;
+        place-items: center;
+        border-radius: 8px;
+        color: rgba(118, 129, 141, 0.88);
+        transition: background 160ms cubic-bezier(0.2, 0.8, 0.2, 1), color 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+      }
+
+      .upload-file-remove:hover {
+        background: rgba(238, 242, 246, 0.96);
+        color: var(--text-soft);
+      }
+
+      .upload-file-meta {
+        min-width: 0;
+        display: grid;
+        gap: 4px;
+      }
+
+      .upload-file-name {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        color: var(--text);
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      .upload-file-subtitle {
+        color: var(--text-faint);
+        font-size: 12px;
+        font-weight: 500;
+      }
+
       .composer:focus-within {
         border-color: rgba(189, 223, 230, 0.98);
         box-shadow:
@@ -1588,10 +1704,6 @@
               </svg>
               <span>新建会话</span>
             </span>
-            <span class="new-chat-side">
-              <span class="keycap">⌘</span>
-              <span class="keycap">K</span>
-            </span>
           </button>
 
           <div class="sidebar-scroll">
@@ -1786,10 +1898,14 @@
 
                   <div class="empty-composer-area">
                     <div class="composer">
+                      <div class="composer-upload" aria-live="polite">
+                        <div class="upload-file-grid"></div>
+                      </div>
                       <textarea class="composer-input" rows="2" placeholder="输入你的问题，我可以帮你查资料、写方案、整理内容"></textarea>
+                      <input class="upload-input" type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.md,.ppt,.pptx,image/*" hidden />
                       <div class="composer-bottom">
                         <div class="composer-left">
-                          <button class="round-btn" aria-label="添加">
+                          <button class="round-btn" aria-label="添加" data-action="upload">
                             <svg class="icon" viewBox="0 0 24 24">
                               <path d="M12 5v14"></path>
                               <path d="M5 12h14"></path>
@@ -1827,10 +1943,14 @@
             <div class="composer-wrap">
               <div class="composer-area">
                 <div class="composer">
+                  <div class="composer-upload" aria-live="polite">
+                    <div class="upload-file-grid"></div>
+                  </div>
                   <textarea class="composer-input" rows="2" placeholder="继续提问，例如：帮我把这份说明整理成面向新员工的 FAQ 版本"></textarea>
+                  <input class="upload-input" type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.md,.ppt,.pptx,image/*" hidden />
                   <div class="composer-bottom">
                     <div class="composer-left">
-                      <button class="round-btn" aria-label="添加">
+                      <button class="round-btn" aria-label="添加" data-action="upload">
                         <svg class="icon" viewBox="0 0 24 24">
                           <path d="M12 5v14"></path>
                           <path d="M5 12h14"></path>
@@ -1892,12 +2012,22 @@
       const composerInputs = Array.from(document.querySelectorAll(".composer-input"));
       const sendButtons = Array.from(document.querySelectorAll(".send-btn"));
       const roundButtons = Array.from(document.querySelectorAll(".round-btn"));
+      const composers = Array.from(document.querySelectorAll(".composer"));
       const modelChips = Array.from(document.querySelectorAll(".model-chip"));
       const modelSelects = Array.from(document.querySelectorAll(".model-select"));
       const modelMenus = Array.from(document.querySelectorAll(".model-menu"));
       const modelOptions = Array.from(document.querySelectorAll(".model-option"));
       const promptChips = Array.from(document.querySelectorAll(".prompt-chip"));
       const modelSequence = ["GLM-5.0", "GLM-4.7"];
+      const composerControllers = composers.map((composer) => ({
+        composer,
+        input: composer.querySelector(".composer-input"),
+        uploadArea: composer.querySelector(".composer-upload"),
+        uploadGrid: composer.querySelector(".upload-file-grid"),
+        fileInput: composer.querySelector(".upload-input"),
+        uploadButton: composer.querySelector('[data-action="upload"]'),
+        files: []
+      }));
       const sessionContentMap = {
         "入职 IT 工具使用指南": {
           user:
@@ -2102,6 +2232,145 @@
           .replace(/'/g, "&#39;");
       }
 
+      function formatFileSize(size) {
+        if (!Number.isFinite(size) || size <= 0) return "0KB";
+        if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))}KB`;
+        return `${(size / (1024 * 1024)).toFixed(1)}MB`;
+      }
+
+      function getFilePresentation(file) {
+        const lowerName = (file.name || "").toLowerCase();
+        const extension = lowerName.includes(".") ? lowerName.split(".").pop() : "";
+        const sizeLabel = formatFileSize(file.size);
+        const base = {
+          iconClass: "is-generic",
+          typeLabel: extension ? extension.toUpperCase() : "文件",
+          icon: `
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="8.1" stroke="rgba(255,255,255,0.78)" stroke-width="2.2" fill="none"></circle>
+              <path d="M17.2 7.8A8 8 0 0 1 18.8 12" stroke="rgba(255,255,255,0.32)" stroke-width="2.2" fill="none" stroke-linecap="round"></path>
+              <circle cx="12" cy="12" r="4.2" fill="rgba(255,255,255,0.05)"></circle>
+            </svg>
+          `
+        };
+
+        if (["pdf"].includes(extension)) {
+          return {
+            ...base,
+            iconClass: "is-pdf",
+            typeLabel: "PDF"
+          };
+        }
+
+        if (["doc", "docx"].includes(extension)) {
+          return {
+            ...base,
+            iconClass: "is-word",
+            typeLabel: "Word"
+          };
+        }
+
+        if (["xls", "xlsx", "csv"].includes(extension)) {
+          return {
+            ...base,
+            iconClass: "is-sheet",
+            typeLabel: "表格"
+          };
+        }
+
+        if (file.type?.startsWith("image/") || ["png", "jpg", "jpeg", "webp"].includes(extension)) {
+          return {
+            ...base,
+            iconClass: "is-image",
+            typeLabel: "图片"
+          };
+        }
+
+        return {
+          ...base,
+          typeLabel: extension ? extension.toUpperCase() : "文件",
+          sizeLabel
+        };
+      }
+
+      function renderComposerUploads(controller) {
+        if (!controller.uploadArea || !controller.uploadGrid) return;
+
+        if (!controller.files.length) {
+          controller.uploadArea.classList.remove("is-visible");
+          controller.uploadGrid.style.removeProperty("--upload-file-count");
+          controller.uploadGrid.innerHTML = "";
+          return;
+        }
+
+        controller.uploadArea.classList.add("is-visible");
+        controller.uploadGrid.style.setProperty("--upload-file-count", String(controller.files.length));
+
+        controller.uploadGrid.innerHTML = controller.files
+          .map((file, index) => {
+            const presentation = getFilePresentation(file);
+            const sizeLabel = presentation.sizeLabel || formatFileSize(file.size);
+            return `
+              <div class="upload-file-card">
+                <div class="upload-file-icon ${presentation.iconClass}">
+                  ${presentation.icon}
+                </div>
+                <div class="upload-file-meta">
+                  <div class="upload-file-name">${escapeHtml(file.name)}</div>
+                  <div class="upload-file-subtitle">${presentation.typeLabel} · ${sizeLabel}</div>
+                </div>
+                <button class="upload-file-remove" type="button" data-upload-remove="${index}" aria-label="移除文件">
+                  <svg class="icon icon-sm" viewBox="0 0 24 24">
+                    <path d="M6 6l12 12"></path>
+                    <path d="M18 6 6 18"></path>
+                  </svg>
+                </button>
+              </div>
+            `;
+          })
+          .join("");
+      }
+
+      function resetComposerUploads() {
+        composerControllers.forEach((controller) => {
+          controller.files = [];
+          if (controller.fileInput) controller.fileInput.value = "";
+          renderComposerUploads(controller);
+        });
+      }
+
+      function bindComposerUploads() {
+        composerControllers.forEach((controller) => {
+          controller.uploadButton?.addEventListener("click", () => {
+            controller.fileInput?.click();
+          });
+
+          controller.fileInput?.addEventListener("change", () => {
+            const nextFiles = Array.from(controller.fileInput.files || []);
+            if (!nextFiles.length) return;
+
+            controller.files = nextFiles;
+            renderComposerUploads(controller);
+            showFeedback(`已添加 ${nextFiles.length} 个文件（演示）`);
+          });
+
+          controller.uploadArea?.addEventListener("click", (event) => {
+            const removeButton = event.target.closest("[data-upload-remove]");
+            if (removeButton) {
+              const removeIndex = Number(removeButton.dataset.uploadRemove);
+              controller.files = controller.files.filter((_, index) => index !== removeIndex);
+              if (!controller.files.length && controller.fileInput) {
+                controller.fileInput.value = "";
+              }
+              renderComposerUploads(controller);
+              showFeedback(controller.files.length ? "已更新文件列表（演示）" : "已移除全部文件（演示）");
+              return;
+            }
+
+          });
+        });
+      }
+
       function buildResponseSections(paragraphs) {
         const safeParagraphs = Array.isArray(paragraphs) ? paragraphs.filter(Boolean) : [];
         if (!safeParagraphs.length) return "";
@@ -2204,6 +2473,7 @@
         newChatButton.classList.add("is-active");
         crumbTitle.textContent = "新建会话";
         clearHistoryActive();
+        resetComposerUploads();
         composerInputs.forEach((field) => {
           field.value = "";
         });
@@ -2221,6 +2491,7 @@
         mainLayout.classList.remove("is-empty");
         newChatButton.classList.remove("is-active");
         crumbTitle.textContent = label;
+        resetComposerUploads();
         renderThread(label, { generated, prompt });
 
         if (syncHistory) {
@@ -2276,6 +2547,7 @@
 
         const shortTitle = question.length > 18 ? `${question.slice(0, 18)}...` : question;
         showArticleState(shortTitle, { syncHistory: false, generated: true, prompt: question });
+        resetComposerUploads();
         composerInputs.forEach((field) => {
           field.value = "";
         });
@@ -2418,6 +2690,7 @@
 
       roundButtons.forEach((button) => {
         button.addEventListener("click", () => {
+          if (button.dataset.action === "upload") return;
           const label = button.getAttribute("aria-label");
           const isVoice = label === "语音";
           button.classList.toggle("is-active");
@@ -2471,6 +2744,7 @@
       });
 
       renderThread("入职 IT 工具使用指南");
+      bindComposerUploads();
 
       document.addEventListener("keydown", (event) => {
         if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
