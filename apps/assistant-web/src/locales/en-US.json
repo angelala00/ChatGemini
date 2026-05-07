@@ -108,7 +108,7 @@
                 "illegal_format": "Only {{types}} files are allowed to be uploaded",
                 "type_document": "document",
                 "type_image": "image",
-                "upload_success": "Click the icon again to cancel uploading"
+                "upload_success": "File uploaded. Add more attachments or send directly."
             },
             "reasoning_toggle": {
                 "label": "Reason",

@@ -4,6 +4,7 @@ import rehypeKatex from "rehype-katex";
 import remarkMath from "remark-math";
 import rehypeRaw from "rehype-raw";
 import { lazy, Suspense, useEffect, useState } from "react";
+import { ChevronDownIcon } from "@heroicons/react/24/outline";
 import { Prism } from "react-syntax-highlighter";
 import { setClipboardText } from "../helpers/setClipboardText";
 import { a11yDark as style } from "react-syntax-highlighter/dist/esm/styles/prism";
@@ -23,6 +24,7 @@ import "katex/dist/katex.min.css";
 
 interface MarkdownProps {
     readonly className?: string;
+    readonly variant?: "model" | "user";
     readonly typingEffect: string;
     readonly pythonRepoUrl: string;
     readonly pythonRuntime: PyodideInterface | null;
@@ -53,6 +55,7 @@ export const Markdown = (props: MarkdownProps) => {
     const { t } = useTranslation();
     const {
         className,
+        variant = "model",
         typingEffect,
         pythonRepoUrl,
         pythonRuntime,
@@ -257,16 +260,24 @@ export const Markdown = (props: MarkdownProps) => {
         <div className={`relative ${className ?? ""}`}>
             {/* 如果有 <think> 标签，则显示思考内容 */}
             {thinkingNodes.length > 0 && (
-                <div className="mb-4">
+                <div className={variant === "model" ? "response-meta" : "mb-4"}>
                     <button
                         type="button"
-                        className="thought-toggle"
+                        className={
+                            variant === "model"
+                                ? "thought-toggle thought-toggle-inline"
+                                : "thought-toggle"
+                        }
                         onClick={() => setIsThinkingExpanded(!isThinkingExpanded)}
                     >
                         <span className="thought-toggle-label">{thinkingTitle}</span>
-                        <span className="thought-toggle-caret" aria-hidden="true">
-                            {isThinkingExpanded ? "∨" : ">"}
-                        </span>
+                        <ChevronDownIcon
+                            className={`thought-toggle-icon ${
+                                isThinkingExpanded ? "" : "-rotate-90"
+                            }`}
+                            strokeWidth={1.8}
+                            aria-hidden="true"
+                        />
                     </button>
                     {isThinkingExpanded ? (
                         <div className="thought-thread">
@@ -286,13 +297,14 @@ export const Markdown = (props: MarkdownProps) => {
                     ) : null}
                 </div>
             )}
-        
-            <ReactMarkdown
-                className={`prose min-w-0 max-w-full break-words text-[15px] leading-[1.85] text-[rgba(39,49,61,0.98)] subpixel-antialiased [overflow-wrap:anywhere] prose-headings:text-[rgba(39,49,61,0.96)] prose-headings:font-medium prose-p:text-[rgba(39,49,61,0.98)] prose-p:leading-[1.85] prose-li:text-[rgba(39,49,61,0.98)] prose-li:leading-[1.75] prose-strong:text-[rgba(39,49,61,0.98)] ${
-                    className ?? ""
-                }`}
-                children={markdownContent}
-                components={{
+
+            <div className={variant === "model" ? "response-body" : ""}>
+                <ReactMarkdown
+                    className={`${variant === "model" ? "response-markdown " : ""}prose min-w-0 max-w-full break-words text-[15px] leading-[1.85] text-[rgba(39,49,61,0.98)] subpixel-antialiased [overflow-wrap:anywhere] prose-headings:text-[rgba(39,49,61,0.96)] prose-headings:font-medium prose-p:text-[rgba(39,49,61,0.98)] prose-p:leading-[1.85] prose-li:text-[rgba(39,49,61,0.98)] prose-li:leading-[1.75] prose-strong:text-[rgba(39,49,61,0.98)] ${
+                        className ?? ""
+                    }`}
+                    children={markdownContent}
+                    components={{
                     // 对回复（Markdown）中的超链接进行处理：
                     // 如果是相对地址（`/api`开头），则为调用后端的 API 链接，故用 getFullPath 添加上后端的 API 域名
                     a: ({ node, ...props }) => (
@@ -460,11 +472,12 @@ export const Markdown = (props: MarkdownProps) => {
                             {...props}
                         />
                     ),
-                }}
-                urlTransform={(url) => url}
-                rehypePlugins={[rehypeKatex, rehypeRaw]}
-                remarkPlugins={[remarkGfm, remarkMath]}
-            />
+                    }}
+                    urlTransform={(url) => url}
+                    rehypePlugins={[rehypeKatex, rehypeRaw]}
+                    remarkPlugins={[remarkGfm, remarkMath]}
+                />
+            </div>
         </div>
     );
 };

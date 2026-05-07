@@ -321,6 +321,7 @@ const App = () => {
     );
     const showReasoningToggle = r_gid === "gptassistant" && !!models?.length;
     const reasoningAvailable = !!resolvedModelOption?.supportsReasoning;
+    //const reasoningAvailable = false
     const effectiveReasoningEnabled = reasoningAvailable && selectedReasoningEnabled;
     const resolvedUploadCategories = resolvedModelOption?.uploadFileTypes;
     function encodeBase64(text: string) {
@@ -342,33 +343,31 @@ const App = () => {
         abortFn?.()
         dispatch(updateAI({ ...ai, busy: false }));
     };
-    const handleUpload = async (file: File | null) => {
-        if (file) {
-            try {
-                const formData = new FormData();
-                formData.append('file', file);
-                const targetModelId = resolveModelId() || 'auto';
-                formData.append('model_id', targetModelId);
-                const uploadResponseJson = await handleRequest('POST', getFullPath('/api/upload'), formData);
-                // 处理响应数据
-                console.log('上传成功:', uploadResponseJson);
-                const fileId = uploadResponseJson.file_id;
-                // const originalFilename = uploadResponseJson.original_filename;
-                // const extractResponseJson = await handleRequest('GET', getFullPath('/api/extract_text_from_file/' + fileId));
-                // 处理响应数据
-                // console.log('提取成功:', extractResponseJson);
-                // const extractedText = extractResponseJson.text;
-                // setUploadInlineData({ data: encodeBase64(extractedText), mimeType: file.type });
-                setUploadInlineData(prev => ({ data: prev.data + fileId + ",", mimeType: file.type }));
-                // console.log("===" + uploadInlineData.data + fileId + ",")
-            } catch (error) {
-                console.error('上传错误:', error);
-                // setUploadInlineData({ data: "", mimeType: "" });
-            }
-        } else {
-            // 清空的时候走的这个逻辑
-            setUploadInlineData({ data: "", mimeType: "" });
+    const handleUpload = async (file: File) => {
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            const targetModelId = resolveModelId() || 'auto';
+            formData.append('model_id', targetModelId);
+            const uploadResponseJson = await handleRequest('POST', getFullPath('/api/upload'), formData);
+            console.log('上传成功:', uploadResponseJson);
+            return {
+                fileId: uploadResponseJson.file_id as string,
+                mimeType: file.type,
+            };
+        } catch (error) {
+            console.error('上传错误:', error);
+            return null;
         }
+    };
+
+    const handleAttachmentsChange = (
+        items: Array<{ readonly fileId: string; readonly mimeType: string }>
+    ) => {
+        setUploadInlineData({
+            data: items.map(({ fileId }) => fileId).join(",") + (items.length > 0 ? "," : ""),
+            mimeType: items.length > 0 ? items[items.length - 1].mimeType : "",
+        });
     };
 
     const handleSubmit = async (prompt: string) => {
@@ -539,6 +538,7 @@ const App = () => {
     const isNewSessionPage =
         currentPath === routes.index.prefix ||
         (!!gid && !id && currentPath === `/g/${gid}`);
+    const isDefaultNewSessionPage = isNewSessionPage && !gid;
 
     useEffect(() => {
         if (!hasLogined) {
@@ -820,7 +820,11 @@ const App = () => {
                             <div
                                 className={
                                     isNewSessionPage && !isGptsPage
-                                        ? "flex min-h-0 flex-1 flex-col md:justify-center"
+                                        ? `flex min-h-0 flex-1 flex-col justify-center gap-3 pb-2 md:gap-4 md:pb-0 ${
+                                            isDefaultNewSessionPage
+                                                ? "relative -top-10 md:-top-12"
+                                                : ""
+                                        }`
                                         : "contents"
                                 }
                             >
@@ -830,7 +834,7 @@ const App = () => {
                                         isGptsPage
                                             ? "h-screen flex-1"
                                             : isNewSessionPage
-                                                ? "flex-1 md:flex-none md:overflow-visible"
+                                                ? "flex-none overflow-visible"
                                                 : "flex-1"
                                     }`}
                                 >
@@ -863,6 +867,7 @@ const App = () => {
                                         key={location.pathname}
                                         onSubmit={handleSubmit}
                                         onUpload={handleUpload}
+                                        onAttachmentsChange={handleAttachmentsChange}
                                         onAbort={handleAbort}
                                         onReasoningChange={handleReasoningChange}
                                     />

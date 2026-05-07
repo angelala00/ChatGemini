@@ -317,6 +317,18 @@ export const Sidebar = (props: SidebarProps) => {
     const displayUserName = userName || "User";
     const avatarText = displayUserName.trim().charAt(0).toUpperCase() || "U";
     const [historySessions, setHistorySessions] = useState<Sessions>({});
+    const visiblePinnedGpts = pinnedGpts.filter(({ gid }) => gid !== "gptassistant");
+    const assistantSectionOffset = visiblePinnedGpts.length > 0
+        ? "-mt-2"
+        : gptsFeatureAllowed
+          ? "-mt-2"
+          : "";
+    const historySectionSpacing =
+        visiblePinnedGpts.length > 0
+            ? "mt-2.5 pt-2.5"
+            : gptsFeatureAllowed
+              ? "mt-0.5 pt-2"
+              : "mt-2 pt-2.5";
 
     // const [pinnedGpts, setPinnedGpts] = useState([]);
     const getSortedSessions = (sessions: Sessions) =>
@@ -441,18 +453,18 @@ export const Sidebar = (props: SidebarProps) => {
                     : "pointer-events-none -translate-x-6 opacity-0 max-[900px]:-translate-x-full"
             }`}
         >
-            <div className="relative flex shrink-0 items-center justify-between px-1 text-[#2f3a46]">
-                <div className="inline-flex min-w-0 items-center gap-2.5">
-                    <span className="grid size-[34px] shrink-0 place-items-center">
-                        <img src={logoIcon} className="size-7 object-contain"/>
+            <div className="relative flex shrink-0 items-center justify-between pl-0 pr-0 text-[#2f3a46]">
+                <div className="inline-flex min-w-0 items-center gap-2">
+                    <span className="grid size-[32px] shrink-0 place-items-center">
+                        <img src={logoIcon} className="size-[32px] object-contain" />
                     </span>
-                    <span className="min-w-0 translate-y-px truncate text-[15px] font-normal tracking-[0] text-[rgba(47,58,70,0.98)]">
+                    <span className="min-w-0 translate-y-px truncate text-[18px] font-semibold tracking-[0] text-[rgba(47,58,70,0.82)]">
                         {title}
                     </span>
                 </div>
                 <button
                     type="button"
-                    className="grid size-[30px] place-items-center rounded-[9px] text-[#87919d] transition-colors hover:bg-white/90 hover:text-[#66717d]"
+                    className="mr-[-6px] grid size-[30px] place-items-center rounded-[9px] text-[#87919d] transition-colors hover:bg-white/90 hover:text-[#66717d]"
                     aria-label="收起侧栏"
                     onClick={onToggleSidebar}
                 >
@@ -470,7 +482,7 @@ export const Sidebar = (props: SidebarProps) => {
             </div>
             <button
                 type="button"
-                className={`mt-2 flex min-h-12 w-full shrink-0 items-center justify-between gap-3 rounded-[14px] border px-[13px] text-[14px] font-normal text-[rgba(47,58,70,0.98)] transition-all hover:-translate-y-px hover:border-[rgba(194,208,216,0.98)] hover:shadow-[0_7px_16px_rgba(23,28,38,0.032),0_0_0_1px_rgba(133,210,226,0.028)] ${
+                className={`mt-1.5 flex min-h-10 w-full shrink-0 items-center justify-between gap-3 rounded-[14px] border pl-0 pr-[13px] text-[14px] font-normal text-[rgba(47,58,70,0.98)] transition-all hover:-translate-y-px hover:border-[rgba(194,208,216,0.98)] hover:shadow-[0_7px_16px_rgba(23,28,38,0.032),0_0_0_1px_rgba(133,210,226,0.028)] ${
                     isNewChatActive
                         ? "border-[rgba(198,211,221,0.98)] bg-[rgba(252,253,254,0.98)] shadow-[inset_0_0_0_1px_rgba(232,237,242,0.96),0_6px_14px_rgba(23,28,38,0.028)] hover:bg-[rgba(252,253,254,0.98)]"
                         : "border-[rgba(220,227,233,0.94)] bg-[rgba(251,252,253,0.92)] shadow-[0_5px_14px_rgba(23,28,38,0.025),0_0_0_1px_rgba(133,210,226,0.02)] hover:bg-[rgba(229,234,239,0.82)]"
@@ -480,71 +492,72 @@ export const Sidebar = (props: SidebarProps) => {
                     closeMobileSidebar();
                 }}
             >
-                <span className="inline-flex items-center gap-2.5">
-                    <PlusCircleIcon
-                        className="size-5 text-[rgba(89,180,199,0.92)]"
-                        strokeWidth={1.8}
-                    />
+                <span className="inline-flex items-center gap-1">
+                    <span className="grid size-8 shrink-0 place-items-center">
+                        <PlusCircleIcon
+                            className="size-5 text-[rgba(89,180,199,0.92)]"
+                            strokeWidth={1.8}
+                        />
+                    </span>
                     <span>{t("components.Sidebar.new_chat")}</span>
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                    <span className="inline-grid h-6 min-w-6 place-items-center rounded-lg border border-[rgba(214,221,228,0.96)] bg-[rgba(252,253,254,0.98)] px-1.5 text-[11px] font-semibold text-[rgba(110,119,129,0.92)] shadow-[inset_0_-1px_0_rgba(238,242,246,0.9),0_1px_2px_rgba(22,28,37,0.03)]">
-                        ⌘
-                    </span>
-                    <span className="inline-grid h-6 min-w-6 place-items-center rounded-lg border border-[rgba(214,221,228,0.96)] bg-[rgba(252,253,254,0.98)] px-1.5 text-[11px] font-semibold text-[rgba(110,119,129,0.92)] shadow-[inset_0_-1px_0_rgba(238,242,246,0.9),0_1px_2px_rgba(22,28,37,0.03)]">
-                        K
-                    </span>
                 </span>
             </button>
             {gptsFeatureAllowed && (
                 <div
-                    className="flex min-h-10 shrink-0 cursor-pointer items-center justify-start gap-2 rounded-[10px] px-1.5 py-1 text-left text-[14px] font-normal text-[#2f3a46] transition-all hover:bg-[rgba(229,234,239,0.82)]"
+                    className="-mt-2 flex min-h-[34px] shrink-0 cursor-pointer items-center justify-start rounded-[10px] px-0 py-0 text-left text-[14px] font-normal text-[#2f3a46] transition-all hover:bg-[rgba(229,234,239,0.82)]"
                     onClick={() => {
                         navigate("/gpts/")
                     }}
                 >
-                    <span className="grid size-8 shrink-0 place-items-center">
-                        <img src={appsIcon} className="size-6 object-contain"/>
+                    <span className="inline-flex items-center gap-1">
+                        <span className="grid size-8 shrink-0 place-items-center">
+                            <img src={appsIcon} className="size-[22px] object-contain" />
+                        </span>
+                        {t("components.Sidebar.gpts")}
                     </span>
-                    {t("components.Sidebar.gpts")}
                 </div>
             )}
-            <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain">
-            {gptsFeatureAllowed && pinnedGpts.map(({ gid, name, logo }, index) => {
-                console.log
-                if (gid === "gptassistant") {
-                    return
-                }
+            <div
+                className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain ${assistantSectionOffset}`}
+            >
+            {gptsFeatureAllowed && visiblePinnedGpts.map(({ gid, name, logo }, index) => {
                 return (
                     <div
                         key={gid}
-                        className="my-1 flex min-h-10 cursor-pointer items-center justify-start gap-2 rounded-[10px] px-1.5 py-1 text-left text-[14px] font-normal text-[#2f3a46] transition-all hover:bg-[rgba(229,234,239,0.82)]"
+                        className={`${index === 0 ? "mt-0 mb-0" : "my-0"} flex min-h-[34px] cursor-pointer items-center justify-start rounded-[10px] px-0 py-0 text-left text-[14px] font-normal text-[#2f3a46] transition-all hover:bg-[rgba(229,234,239,0.82)]`}
                         onClick={() => {
                             navigate("/g/"+gid)
                         }}
                     >
-                        <span className="grid size-8 shrink-0 place-items-center">
-                            <img
-                                src={logo ? normalizeAssetPath(logo) : regulationIcon}
-                                className="size-8 object-contain"
-                            />
+                        <span className="inline-flex items-center gap-1">
+                            <span className="grid size-8 shrink-0 place-items-center">
+                                <img
+                                    src={logo ? normalizeAssetPath(logo) : regulationIcon}
+                                    className="size-[22px] object-contain"
+                                />
+                            </span>
+                            {name}
                         </span>
-                        {name}
                     </div>
                 )
             })}
-            <div className="mb-auto flex flex-col py-2">
+            <div
+                className={`mb-auto flex flex-col border-t border-[rgba(214,221,228,0.42)] ${historySectionSpacing}`}
+            >
                 {!isHistoryEmpty && (
                     <div>
                         <button
                             type="button"
-                            className="flex min-h-10 w-full items-center justify-between rounded-[10px] px-1.5 py-1 text-left text-[14px] font-normal tracking-[0] text-[rgba(47,58,70,0.98)] transition-colors hover:bg-[rgba(229,234,239,0.82)]"
+                            className="flex min-h-9 w-full items-center justify-between rounded-[10px] px-0 py-0.5 text-left text-[14px] font-normal tracking-[0] text-[rgba(47,58,70,0.98)] transition-colors hover:bg-[rgba(229,234,239,0.82)]"
                             aria-expanded={!isHistoryCollapsed}
                             onClick={() => setIsHistoryCollapsed((state) => !state)}
                         >
-                            <span className="inline-flex min-w-0 items-center gap-2">
+                            <span className="inline-flex min-w-0 items-center gap-1">
                                 <span className="grid size-8 shrink-0 place-items-center">
-                                    <ClockIcon className="size-5" strokeWidth={1.8} />
+                                    <ClockIcon
+                                        className="size-5 text-[rgba(89,180,199,0.92)]"
+                                        strokeWidth={1.8}
+                                    />
                                 </span>
                                 <span>历史会话</span>
                             </span>
@@ -556,7 +569,7 @@ export const Sidebar = (props: SidebarProps) => {
                             />
                         </button>
                         {!isHistoryCollapsed && (
-                            <div className="grid gap-1 pt-1">
+                            <div className="grid gap-[2px] pt-0.5">
                                 {historySessionKeys
                                     .slice(0, sessionsLimitation)
                                     .map((id, _index) => {
@@ -580,7 +593,7 @@ export const Sidebar = (props: SidebarProps) => {
                                                 data-history-menu-root
                                                 role="link"
                                                 tabIndex={renamingChatTitle.id === id ? -1 : 0}
-                                                className={`group relative grid min-h-8 cursor-pointer grid-cols-[minmax(0,1fr)_24px] items-center gap-2 rounded-[10px] py-1 pl-3.5 pr-1.5 text-[13px] font-medium text-[rgba(72,84,96,0.98)] transition-all hover:text-[rgba(47,58,70,0.98)] ${
+                                                className={`group relative grid min-h-8 cursor-pointer grid-cols-[minmax(0,1fr)_24px] items-center gap-2 rounded-[10px] py-[3px] pl-[8px] pr-1.5 text-[13px] font-medium text-[rgba(72,84,96,0.98)] transition-all hover:text-[rgba(47,58,70,0.98)] ${
                                                     activeMenu === id || isCurrentSessionActive ? "bg-white/90 text-[rgba(47,58,70,0.98)] shadow-[inset_0_0_0_1px_rgba(207,217,226,0.92),0_1px_2px_rgba(23,28,38,0.025)] hover:bg-white/90" : "hover:bg-[rgba(229,234,239,0.82)]"
                                                 }`}
                                                 onClick={(event) => {
@@ -787,7 +800,10 @@ export const Sidebar = (props: SidebarProps) => {
                 </div>
             )}
             </div>
-            <div ref={profileMenuRef} className="relative shrink-0 border-t border-[rgba(220,227,232,0.92)] pt-2.5">
+            <div
+                ref={profileMenuRef}
+                className="relative -mx-[14px] shrink-0 border-t border-[#d8e0e6]/95 px-[14px] pt-2.5"
+            >
                 {isProfileMenuOpen && (
                     <div className="absolute -left-[14px] -right-[14px] bottom-[calc(100%+6px)] grid gap-0.5 bg-[linear-gradient(180deg,rgba(246,248,250,0.98),rgba(241,244,247,0.98))] px-[14px] pb-2 pt-2">
                         <button
@@ -828,7 +844,7 @@ export const Sidebar = (props: SidebarProps) => {
                 )}
                 <button
                     type="button"
-                    className="flex min-h-11 w-full cursor-pointer items-center justify-between gap-[11px] rounded-xl px-2 pl-2.5 text-left"
+                    className="mx-1 flex min-h-11 w-[calc(100%-8px)] cursor-pointer items-center justify-between gap-[11px] rounded-xl px-1.5 pl-2 text-left"
                     aria-expanded={isProfileMenuOpen}
                     aria-label="打开账号菜单"
                     onClick={() => setIsProfileMenuOpen((state) => !state)}

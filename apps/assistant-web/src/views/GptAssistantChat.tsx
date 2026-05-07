@@ -26,6 +26,7 @@ import { globalConfig } from "../config/global";
 import { useChatReadingScroll } from "../hooks/useChatReadingScroll";
 import { ArrowDownIcon } from "@heroicons/react/24/solid";
 import { buildAttachmentPostscriptHtml } from "../helpers/buildAttachmentPostscriptHtml";
+import { HistoryAttachmentStrip } from "../components/HistoryAttachmentStrip";
 
 
 const GptAssistantChat = (props: RouterComponentProps) => {
@@ -57,6 +58,7 @@ const GptAssistantChat = (props: RouterComponentProps) => {
         containerRef: mainSectionRef,
         sessionKey: id ?? "",
         updateKey: `${chat.length}:${chat[chat.length - 1]?.parts.length ?? 0}:${ai.busy}`,
+        busy: ai.busy,
     });
 
     const handlePythonRuntimeCreated = (pyodide: PyodideInterface) => setPythonRuntime(pyodide);
@@ -252,10 +254,24 @@ const GptAssistantChat = (props: RouterComponentProps) => {
         };
     }, [attachmentItemsByData, chat]);
 
+    useEffect(() => {
+        if (ai.busy) {
+            jumpToLatest("auto");
+        }
+    }, [ai.busy, jumpToLatest]);
+
     return (
-        <Container className="relative mx-auto w-full max-w-[882px] px-4 py-6 md:px-[26px] md:py-4">
+        <Container className="relative mx-auto w-full max-w-[882px] px-4 pb-2 pt-6 md:px-[26px] md:pb-1 md:pt-4">
             <ImageView>
                 {chat.map(({ role, parts, attachment }, index) => {
+                    const previousRole =
+                        index > 0
+                            ? (chat[index - 1].role as SessionRole)
+                            : undefined;
+                    const nextRole =
+                        index < chat.length - 1
+                            ? (chat[index + 1].role as SessionRole)
+                            : undefined;
                     const { mimeType, data } = attachment ?? { mimeType: "", data: "" };
                     const attachmentItems =
                         attachmentItemsByData[data] ?? getAttachmentViewItems(data);
@@ -263,6 +279,11 @@ const GptAssistantChat = (props: RouterComponentProps) => {
                         attachmentItems,
                         mimeType,
                     );
+                    const isUser = role === SessionRole.User;
+                    const attachmentHeader =
+                        isUser && attachmentItems.length > 0 ? (
+                            <HistoryAttachmentStrip items={attachmentItems} />
+                        ) : undefined;
 
                     const typingEffect = `<div class="inline px-1 bg-[#2f3a46] animate-pulse animate-duration-700"></div>`;
                     let nextParts =
@@ -281,13 +302,19 @@ const GptAssistantChat = (props: RouterComponentProps) => {
                             prompt={nextParts}
                             editState={editState}
                             role={role as SessionRole}
+                            previousRole={previousRole}
+                            nextRole={nextRole}
                             onRefresh={handleRefresh}
                             onDelete={handleDelete}
                             onEdit={handleEdit}
                             onExport={handleExport}
-                            postscript={attachmentPostscriptHtml}
+                            postscript={isUser ? "" : attachmentPostscriptHtml}
+                            header={attachmentHeader}
                         >
                             <Markdown
+                                variant={
+                                    role === SessionRole.Model ? "model" : "user"
+                                }
                                 className={
                                     role === SessionRole.Model
                                         ? ""
@@ -301,11 +328,15 @@ const GptAssistantChat = (props: RouterComponentProps) => {
                                         ? window.location.pathname
                                         : routerConfig.basename
                                 }pyodide`}
-                            >{`${nextParts}${attachmentPostscriptHtml}`}</Markdown>
+                            >
+                                {isUser
+                                    ? nextParts
+                                    : `${nextParts}${attachmentPostscriptHtml}`}
+                            </Markdown>
                         </Session>
                     );
                 })}
-                <div className="h-2.5" />
+                <div className="h-0.5" />
             </ImageView>
             {showJumpToLatest && (
                 <div className="sticky bottom-5 z-10 flex justify-end">

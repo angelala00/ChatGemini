@@ -1,9 +1,10 @@
-import { RefObject, useEffect, useRef, useState } from "react";
+import { RefObject, useCallback, useEffect, useRef, useState } from "react";
 
 interface UseChatReadingScrollProps {
     readonly containerRef?: RefObject<HTMLElement>;
     readonly sessionKey: string;
     readonly updateKey: string;
+    readonly busy?: boolean;
 }
 
 const LEAVE_BOTTOM_THRESHOLD = 12;
@@ -15,15 +16,28 @@ const isNearBottom = (element: HTMLElement) => {
 };
 
 export const useChatReadingScroll = (props: UseChatReadingScrollProps) => {
-    const { containerRef, sessionKey, updateKey } = props;
+    const { containerRef, sessionKey, updateKey, busy = false } = props;
     const [showJumpToLatest, setShowJumpToLatest] = useState(false);
     const followLatestRef = useRef(true);
     const rafRef = useRef<number | null>(null);
+    const timeoutRef = useRef<number | null>(null);
+    const intervalRef = useRef<number | null>(null);
 
-    const cancelScheduledScroll = () => {
+    const cancelPendingScroll = () => {
         if (rafRef.current !== null) {
             window.cancelAnimationFrame(rafRef.current);
             rafRef.current = null;
+        }
+        if (timeoutRef.current !== null) {
+            window.clearTimeout(timeoutRef.current);
+            timeoutRef.current = null;
+        }
+    };
+
+    const cancelFollowInterval = () => {
+        if (intervalRef.current !== null) {
+            window.clearInterval(intervalRef.current);
+            intervalRef.current = null;
         }
     };
 
@@ -37,16 +51,19 @@ export const useChatReadingScroll = (props: UseChatReadingScrollProps) => {
         setShowJumpToLatest(!nearBottom);
     };
 
-    const jumpToLatest = (behavior: ScrollBehavior = "smooth") => {
-        const element = containerRef?.current;
-        if (!element) {
-            return;
-        }
-        cancelScheduledScroll();
-        followLatestRef.current = true;
-        setShowJumpToLatest(false);
-        element.scrollTo({ top: element.scrollHeight, behavior });
-    };
+    const jumpToLatest = useCallback(
+        (behavior: ScrollBehavior = "smooth") => {
+            const element = containerRef?.current;
+            if (!element) {
+                return;
+            }
+            cancelPendingScroll();
+            followLatestRef.current = true;
+            setShowJumpToLatest(false);
+            element.scrollTo({ top: element.scrollHeight, behavior });
+        },
+        [containerRef],
+    );
 
     useEffect(() => {
         const element = containerRef?.current;
@@ -60,11 +77,11 @@ export const useChatReadingScroll = (props: UseChatReadingScrollProps) => {
     }, [containerRef]);
 
     useEffect(() => {
-        cancelScheduledScroll();
+        cancelPendingScroll();
         rafRef.current = window.requestAnimationFrame(() => {
             jumpToLatest("auto");
         });
-        return cancelScheduledScroll;
+        return cancelPendingScroll;
     }, [sessionKey]);
 
     useEffect(() => {
@@ -72,12 +89,34 @@ export const useChatReadingScroll = (props: UseChatReadingScrollProps) => {
             setShowJumpToLatest(true);
             return;
         }
-        cancelScheduledScroll();
+        cancelPendingScroll();
         rafRef.current = window.requestAnimationFrame(() => {
             jumpToLatest("auto");
+            timeoutRef.current = window.setTimeout(() => {
+                jumpToLatest("auto");
+            }, 32);
         });
-        return cancelScheduledScroll;
-    }, [updateKey]);
+        return cancelPendingScroll;
+    }, [jumpToLatest, updateKey]);
+
+    useEffect(() => {
+        if (!busy || !followLatestRef.current) {
+            cancelFollowInterval();
+            return;
+        }
+
+        intervalRef.current = window.setInterval(() => {
+            if (!followLatestRef.current) {
+                cancelFollowInterval();
+                return;
+            }
+            jumpToLatest("auto");
+        }, 80);
+
+        return () => {
+            cancelFollowInterval();
+        };
+    }, [busy, jumpToLatest]);
 
     return {
         showJumpToLatest,

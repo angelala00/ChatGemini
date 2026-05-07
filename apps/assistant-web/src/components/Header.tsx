@@ -24,8 +24,8 @@ export const Header = (props: HeaderProps) => {
         onModelChange,
     } = props;
     return (
-        <header className="sticky top-0 z-10 flex min-h-[62px] items-center justify-between gap-4 border-b border-[#e7edf2]/90 bg-white/80 px-[26px] text-[#2f3a46] backdrop-blur supports-[backdrop-filter]:bg-white/75 max-[900px]:px-4">
-            <div className="flex min-w-0 items-center gap-2.5">
+        <header className="sticky top-0 z-10 flex min-h-[54px] items-center gap-4 border-b border-[#e7edf2]/90 bg-white/80 px-[26px] text-[#2f3a46] backdrop-blur supports-[backdrop-filter]:bg-white/75 max-[900px]:px-4">
+            <div className="flex min-w-0 items-center gap-1.5">
                 <button
                     className={`grid size-8 place-items-center rounded-[9px] border border-[#e9edf1]/90 bg-white/70 text-[#66717d] transition-colors hover:bg-white hover:text-[#2f3a46] ${
                         sidebarExpand ? "hidden max-[900px]:inline-grid" : "inline-grid"
@@ -48,8 +48,6 @@ export const Header = (props: HeaderProps) => {
                     />
                 </div>
             </div>
-            {/* <h1 className="font-semibold text-lg">GPT助手</h1> */}
-            <div />
         </header>
     );
 };

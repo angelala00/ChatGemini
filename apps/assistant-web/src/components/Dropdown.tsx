@@ -61,7 +61,7 @@ export const HeaderDropdown = (props: HeaderDropdownProps) => {
     }, [open]);
 
     return (
-        <div className="relative inline-block text-left" ref={dropdownRef}>
+        <div className="relative -ml-4 inline-block text-left" ref={dropdownRef}>
             {!defaultModel && (
                 <div className="flex items-center gap-1 font-semibold text-sm">
                     {title}
@@ -71,16 +71,13 @@ export const HeaderDropdown = (props: HeaderDropdownProps) => {
                 <button
                     type="button"
                     onClick={() => setOpen(!open)}
-                    className={`inline-flex h-10 items-center gap-2 rounded-[10px] px-3 text-sm font-semibold transition-colors hover:bg-[rgba(246,248,250,0.96)] ${
+                    className={`inline-flex h-10 items-center gap-2 rounded-[10px] px-2.5 text-sm font-semibold transition-colors hover:bg-[rgba(246,248,250,0.96)] ${
                         open ? "text-[#2f3a46]" : "text-[#2f3a46]"
                     }`}
                 >
-                    <div className="flex items-center gap-1">
-                        {title}{" "}
-                        <span className="font-semibold text-[#2f3a46]">
-                            {selectedOption?.name ?? selected}
-                        </span>
-                    </div>
+                    <span className="font-semibold text-[#2f3a46]">
+                        {selectedOption?.name ?? selected}
+                    </span>
                     <ChevronDownIcon
                         className={`size-4 text-[rgba(128,138,148,0.9)] transition-transform ${
                             open ? "" : "-rotate-90"
@@ -90,7 +87,7 @@ export const HeaderDropdown = (props: HeaderDropdownProps) => {
                 </button>
             )}
             {defaultModel && open && models && (
-                <div className="absolute mt-2 w-80 rounded-md bg-white shadow-lg ring-1 ring-[#d4dde5] z-10">
+                <div className="absolute mt-2 w-[18rem] rounded-md bg-white shadow-lg ring-1 ring-[#d4dde5] z-10">
                     <ul className="py-1">
                         {models.map((opt) => (
                             <li key={opt.id}>
