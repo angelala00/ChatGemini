@@ -12,6 +12,7 @@ python-multipart
 aiofiles
 openpyxl
 python-docx
+python-pptx
 pypdf
 itsdangerous
 tzdata

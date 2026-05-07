@@ -26,7 +26,7 @@ UPLOAD_FOLDER = f"{model_config.FILE_BASE}/gptassistant/uploads"
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
-DOCUMENT_EXTENSIONS = {"txt", "pdf", "doc", "docx", "xlsx"}
+DOCUMENT_EXTENSIONS = {"txt", "md", "csv", "pdf", "doc", "docx", "xlsx", "pptx"}
 IMAGE_EXTENSIONS = {"jpg", "jpeg", "png"}
 
 MODEL_UPLOAD_RULES = {
@@ -242,7 +242,7 @@ def classify_file_kind(file_path: str, file_extension: str | None = None) -> str
     normalized_extension = _normalize_file_extension(file_extension)
     if os.path.exists(file_path) and is_image_file(file_path):
         return "image"
-    if normalized_extension in {".txt", ".pdf", ".doc", ".docx", ".xlsx"}:
+    if normalized_extension in {".txt", ".md", ".csv", ".pdf", ".doc", ".docx", ".xlsx", ".pptx"}:
         return "document"
     return "unknown"
 
