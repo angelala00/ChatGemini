@@ -43,9 +43,24 @@ interface SidebarProps {
     readonly onToggleSidebar: () => void;
 }
 
-const APP_VERSION = "v1.0.3";
+const APP_VERSION = "v1.1.0";
 
 const releaseHistory = [
+    {
+        version: "v1.1.0",
+        date: "2026.05",
+        type: "minor",
+        zhTitle: "附件格式扩展",
+        zhChanges: [
+            "主 AI 助手新增 Markdown、CSV 和 PPTX 文件上传支持。",
+            "上传后的 Markdown、CSV 和 PPTX 附件可参与文档文本提取和对话分析。",
+        ],
+        enTitle: "Attachment Format Expansion",
+        enChanges: [
+            "Added Markdown, CSV, and PPTX upload support to the main AI assistant.",
+            "Markdown, CSV, and PPTX attachments can now be extracted as text for chat analysis.",
+        ],
+    },
     {
         version: "v1.0.3",
         date: "2026.04",

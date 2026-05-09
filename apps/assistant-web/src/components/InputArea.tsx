@@ -14,7 +14,7 @@ import { isMobileDevice } from "../helpers/isMobileDevice";
 import { UploadCategory } from "../types/models";
 
 const CATEGORY_EXTENSION_MAP: Record<UploadCategory, string[]> = {
-    document: ["txt", "pdf", "doc", "docx", "xlsx"],
+    document: ["txt", "md", "csv", "pdf", "doc", "docx", "xlsx", "pptx"],
     image: ["jpg", "jpeg", "png"],
 };
 

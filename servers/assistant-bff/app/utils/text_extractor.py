@@ -1,9 +1,11 @@
+import csv
 import os
 from io import BytesIO
 from typing import Any, Callable, Dict, Optional
 
 from docx import Document
 from openpyxl import load_workbook
+from pptx import Presentation
 from pypdf import PdfReader
 
 try:  # textract is optional; gracefully degrade when it is not installed
@@ -15,6 +17,17 @@ except ModuleNotFoundError:
 def _process_txt(file_path: str, **_: Any) -> str:
     with open(file_path, "r", encoding="utf-8", errors="ignore") as infile:
         return infile.read()
+
+
+def _process_csv(file_path: str, **_: Any) -> str:
+    rows = []
+    with open(file_path, "r", encoding="utf-8-sig", errors="ignore", newline="") as infile:
+        reader = csv.reader(infile)
+        for row in reader:
+            normalized = " ".join(cell.strip() for cell in row).rstrip()
+            if normalized:
+                rows.append(normalized)
+    return "\n".join(rows)
 
 
 def _process_pdf(
@@ -83,11 +96,53 @@ def _process_xlsx(
     return "\n\n".join(chunk for chunk in sheet_chunks if chunk)
 
 
+def _shape_text(shape: Any) -> list[str]:
+    chunks = []
+    if getattr(shape, "has_text_frame", False):
+        text = shape.text.strip()
+        if text:
+            chunks.append(text)
+    if getattr(shape, "has_table", False):
+        table = shape.table
+        for row in table.rows:
+            cells = [cell.text.strip() for cell in row.cells]
+            normalized = " ".join(cell for cell in cells if cell).rstrip()
+            if normalized:
+                chunks.append(normalized)
+    return chunks
+
+
+def _process_pptx(file_path: str, **_: Any) -> str:
+    presentation = Presentation(file_path)
+    slide_chunks = []
+    for index, slide in enumerate(presentation.slides, start=1):
+        chunks = [f"[Slide {index}]"]
+        for shape in slide.shapes:
+            chunks.extend(_shape_text(shape))
+
+        notes_slide = getattr(slide, "notes_slide", None)
+        if notes_slide:
+            notes = []
+            for shape in notes_slide.shapes:
+                notes.extend(_shape_text(shape))
+            if notes:
+                chunks.append("[Notes]")
+                chunks.extend(notes)
+
+        slide_text = "\n".join(chunk for chunk in chunks if chunk).rstrip()
+        if slide_text != f"[Slide {index}]":
+            slide_chunks.append(slide_text)
+    return "\n\n".join(slide_chunks)
+
+
 _EXTRACTORS: Dict[str, Callable[..., str]] = {
     ".txt": _process_txt,
+    ".md": _process_txt,
+    ".csv": _process_csv,
     ".pdf": _process_pdf,
     ".docx": _process_docx,
     ".xlsx": _process_xlsx,
+    ".pptx": _process_pptx,
 }
 
 
