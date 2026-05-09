@@ -18,6 +18,7 @@ interface GptsItem {
     readonly owner?: string;
     readonly usage_count?: number;
     readonly pinned_user_count?: number;
+    readonly is_required_pinned?: boolean;
 }
 
 interface SectionProps {
@@ -77,9 +78,17 @@ const Section = ({ title, items, onToggle }: SectionProps) => {
                         </div>
                     </div>
                     <button
-                        className="absolute top-2 right-2 p-1 rounded hover:bg-gray-200 cursor-pointer"
+                        className={`absolute top-2 right-2 p-1 rounded ${
+                            item.is_required_pinned
+                                ? "cursor-not-allowed opacity-60"
+                                : "hover:bg-gray-200 cursor-pointer"
+                        }`}
+                        disabled={item.is_required_pinned}
                         onClick={(e) => {
                             e.stopPropagation();
+                            if (item.is_required_pinned) {
+                                return;
+                            }
                             onToggle(item.gid, item.is_pinned);
                         }}
                         aria-label={

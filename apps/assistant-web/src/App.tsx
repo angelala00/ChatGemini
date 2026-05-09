@@ -110,6 +110,9 @@ const App = () => {
         (state: ReduxStoreProps) => state.sessionExtensions.sessionExtensions
     )
     const ai = useSelector((state: ReduxStoreProps) => state.ai.ai);
+    const pinnedGpts = useSelector(
+        (state: ReduxStoreProps) => state.gpts.pinned
+    );
     const mainSectionRef = useRef<HTMLDivElement>(null);
     const textAreaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -161,6 +164,14 @@ const App = () => {
     }
     // console.log("====id:" + id + " ====gid:" + gid)
     let r_gid = gid?gid:"gptassistant"
+    const isRequiredPinnedGpt = gid === "regulationassistant";
+    const isPinnedGpt = pinnedGpts.some((item) => item.gid === gid);
+    const canOpenCurrentGpt =
+        !gid ||
+        gid === "gptassistant" ||
+        gptsFeatureAllowed ||
+        isRequiredPinnedGpt ||
+        isPinnedGpt;
 
 
     const handleExportSession = async (id: string) => {
@@ -572,7 +583,7 @@ const App = () => {
             hasLogined &&
             gptsPermissionLoaded &&
             !gptsFeatureAllowed &&
-            (isGptsPage || (!!gid && gid !== "gptassistant"))
+            isGptsPage
         ) {
             navigate(routes.index.prefix, { replace: true });
         }
@@ -595,10 +606,7 @@ const App = () => {
     useEffect(() => {
         // console.log("gid change")
         if (hasLogined) {
-            if (gid && gid !== "gptassistant" && !gptsPermissionLoaded) {
-                return;
-            }
-            if (gid && gid !== "gptassistant" && !gptsFeatureAllowed) {
+            if (gid && gid !== "gptassistant" && !canOpenCurrentGpt && !gptsPermissionLoaded) {
                 return;
             }
             fetch(getFullPath('/api/gpts/detail/' + r_gid), {
@@ -661,7 +669,7 @@ const App = () => {
                 }
             });
         }
-    }, [gptsFeatureAllowed, gptsPermissionLoaded, hasLogined, gid]);
+    }, [canOpenCurrentGpt, gptsPermissionLoaded, hasLogined, gid]);
 
     useEffect(() => {
         if (!models || models.length === 0) {

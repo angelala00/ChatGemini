@@ -3,7 +3,8 @@ import { createSlice } from "@reduxjs/toolkit";
 export interface PinnedGpt {
     readonly gid: string;
     readonly name: string;
-    readonly logo: string;
+    readonly logo?: string;
+    readonly is_required_pinned?: boolean;
 }
 
 export type PinnedGpts = PinnedGpt[];

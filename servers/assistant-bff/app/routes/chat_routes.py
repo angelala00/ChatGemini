@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from app.auth.auth_routes import get_current_user
-from .gpts_routes import auth_ok, ensure_gpts_feature_allowed, filter_models_for_user, gpts
+from .gpts_routes import auth_ok, ensure_gpt_access_allowed, filter_models_for_user, gpts
 from app.gpts.model_metadata import resolve_model_configs
 from .file_routes import extract_text_from_file_ids
 from app.logger import gpt_logger
@@ -299,8 +299,7 @@ async def chat_with_gpts(request: QueryRequest, gid: str, user: dict = Depends(g
     cid = request.conversation_id
     if gid not in gpts:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "gid not found")
-    if gid != "gptassistant":
-        ensure_gpts_feature_allowed(user)
+    ensure_gpt_access_allowed(user, gid)
     assistant_config = gpts[gid]
     if not auth_ok(assistant_config, user["email"], user.get("sub")):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "No Authorized")

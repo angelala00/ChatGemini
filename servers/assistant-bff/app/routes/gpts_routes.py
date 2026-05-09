@@ -16,6 +16,7 @@ LIMIT_PINNED = 8
 MAX_SAMPLES = 5
 
 GPTS_WHITE_LIST = model_config.GPTS_WHITE_LIST
+REQUIRED_PINNED_GPTS = ("regulationassistant",)
 
 
 def is_gpts_feature_allowed(user: dict) -> bool:
@@ -28,6 +29,49 @@ def is_gpts_feature_allowed(user: dict) -> bool:
 
 def ensure_gpts_feature_allowed(user: dict) -> None:
     if not is_gpts_feature_allowed(user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "GPTS feature not enabled")
+
+
+def is_required_pinned_gid(gid: str) -> bool:
+    return gid in REQUIRED_PINNED_GPTS
+
+
+def ensure_required_pinned_gpts(conn, user_id: str) -> None:
+    for gid in REQUIRED_PINNED_GPTS:
+        conn.execute(
+            """INSERT OR IGNORE INTO user_gpts_state(user_id, gpts_id, pinned_at)
+                 VALUES(?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))""",
+            (user_id, gid),
+        )
+
+
+def is_gpt_pinned_for_user(user_id: str, gid: str) -> bool:
+    conn = get_db()
+    try:
+        if is_required_pinned_gid(gid):
+            ensure_required_pinned_gpts(conn, user_id)
+        row = conn.execute(
+            "SELECT 1 FROM user_gpts_state WHERE user_id=? AND gpts_id=?",
+            (user_id, gid),
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
+def can_access_gpt(user: dict, gid: str) -> bool:
+    if gid == "gptassistant":
+        return True
+    if is_gpts_feature_allowed(user):
+        return True
+    user_id = user.get("sub")
+    if not user_id:
+        return False
+    return is_gpt_pinned_for_user(user_id, gid)
+
+
+def ensure_gpt_access_allowed(user: dict, gid: str) -> None:
+    if not can_access_gpt(user, gid):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "GPTS feature not enabled")
 
 
@@ -82,7 +126,8 @@ async def get_gpts(user: dict = Depends(get_current_user)):
         conn.close()
 
     gpts_list = [{"gid": key, **{k: v for k, v in value.items() if k not in {"system_prompt", "model_name", "auth"}},
-                  "is_pinned": key in pinned_ids} for key, value in fetch_gpts().items() if
+                  "is_pinned": key in pinned_ids or is_required_pinned_gid(key),
+                  "is_required_pinned": is_required_pinned_gid(key)} for key, value in fetch_gpts().items() if
                  auth_ok(value, user['email'], user['sub']) and key != 'gptassistant']
     return gpts_list
 
@@ -92,6 +137,8 @@ async def toggle_pin(gid: str, request: Request, user: dict = Depends(get_curren
     ensure_gpts_feature_allowed(user)
     body = await request.json()
     is_pinned = bool(body.get("is_pinned"))
+    if is_required_pinned_gid(gid) and not is_pinned:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "required pinned GPTS cannot be unpinned")
     refresh_gpts()
     if gid not in gpts:
         raise HTTPException(404, "GPTS not found or not visible")
@@ -120,8 +167,6 @@ async def toggle_pin(gid: str, request: Request, user: dict = Depends(get_curren
 
 # Version configuration
 CONFIG_VERSION = "v0.10.0"
-# GPTS that should be automatically pinned for new versions
-DEFAULT_PIN_GPTS = "regulationassistant"
 
 
 def parse_version(v: str) -> Tuple[int, ...]:
@@ -135,7 +180,6 @@ def parse_version(v: str) -> Tuple[int, ...]:
 
 @router.get("/gpts/pined")
 async def gpts_pined(user: dict = Depends(get_current_user)):
-    ensure_gpts_feature_allowed(user)
     gpt_logger.info(f"path=gpts_pined user={user['email']} at={time.strftime('%Y-%m-%d %H:%M:%S')}")
     refresh_gpts()
     conn = get_db()
@@ -149,38 +193,43 @@ async def gpts_pined(user: dict = Depends(get_current_user)):
         if cfg:
             need_init = parse_version(cfg["version"]) < parse_version(CONFIG_VERSION)
         if need_init:
-            conn.execute(
-                """INSERT OR IGNORE INTO user_gpts_state(user_id, gpts_id, pinned_at)
-                     VALUES(?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))""",
-                (user_id, DEFAULT_PIN_GPTS),
-            )
+            ensure_required_pinned_gpts(conn, user_id)
             conn.execute(
                 """INSERT INTO user_config_version(user_id, version)
                      VALUES(?, ?)
                      ON CONFLICT(user_id) DO UPDATE SET version=excluded.version""",
                 (user_id, CONFIG_VERSION),
             )
+        ensure_required_pinned_gpts(conn, user_id)
         rows = conn.execute(
             """SELECT gpts_id, pinned_at
                FROM user_gpts_state
                WHERE user_id=?
-               ORDER BY pinned_at ASC
-               LIMIT ?""",
-            (user['sub'], LIMIT_PINNED),
+               ORDER BY pinned_at ASC""",
+            (user['sub'],),
         ).fetchall()
     finally:
         conn.close()
 
     pinned = []
-    for r in rows:
+    required_gids = set(REQUIRED_PINNED_GPTS)
+    for index, r in enumerate(rows):
         gid = r["gpts_id"]
         g = gpts.get(gid)
         if g and auth_ok(g, user['email'], user['sub']):
+            item = {
+                "gid": gid,
+                "name": g["name"],
+                "is_required_pinned": is_required_pinned_gid(gid),
+                "_order": index,
+            }
             if "logo" in g:
-                pinned.append({"gid": gid, "name": g["name"], "logo": g["logo"]})
-            else:
-                pinned.append({"gid": gid, "name": g["name"]})
-    return pinned
+                item["logo"] = g["logo"]
+            pinned.append(item)
+    pinned.sort(key=lambda item: (0 if item["gid"] in required_gids else 1, item["_order"]))
+    for item in pinned:
+        item.pop("_order", None)
+    return pinned[:LIMIT_PINNED]
 
 
 @router.get("/gpts/created")
@@ -207,8 +256,7 @@ async def get_gpts_detail(gid: str, user: dict = Depends(get_current_user)):
     refresh_gpts()
     if gid not in gpts:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "gid not found")
-    if gid != "gptassistant":
-        ensure_gpts_feature_allowed(user)
+    ensure_gpt_access_allowed(user, gid)
 
     gpt_item = gpts[gid]
     if not auth_ok(gpt_item, user['email'], user['sub']):

@@ -43,9 +43,22 @@ interface SidebarProps {
     readonly onToggleSidebar: () => void;
 }
 
-const APP_VERSION = "v1.1.0";
+const APP_VERSION = "v1.1.1";
 
 const releaseHistory = [
+    {
+        version: "v1.1.1",
+        date: "2026.05",
+        type: "patch",
+        zhTitle: "助手入口显示修复",
+        zhChanges: [
+            "修复部分用户侧边栏不显示制度问答助手入口的问题。",
+        ],
+        enTitle: "Assistant Entry Display Fix",
+        enChanges: [
+            "Fixed an issue where the regulation assistant entry was missing from the sidebar for some users.",
+        ],
+    },
     {
         version: "v1.1.0",
         date: "2026.05",
@@ -366,16 +379,12 @@ export const Sidebar = (props: SidebarProps) => {
     }, []);
 
     useEffect(() => {
-        if (!gptsFeatureAllowed) {
-            dispatch(updatePinnedGpts([]));
-            return;
-        }
         handleRequest('GET', getFullPath('/api/gpts/pined') ).then(response_json => {
             // console.log("1111:"+response_json)
             // setPinnedGpts(response_json)
             dispatch(updatePinnedGpts(response_json ?? []));
         }).catch(() => dispatch(updatePinnedGpts([])));
-    }, [dispatch, gptsFeatureAllowed]);
+    }, [dispatch]);
         
     useEffect(() => {
         setHistorySessions(getSortedSessions(sessions));
@@ -535,7 +544,7 @@ export const Sidebar = (props: SidebarProps) => {
             <div
                 className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain ${assistantSectionOffset}`}
             >
-            {gptsFeatureAllowed && visiblePinnedGpts.map(({ gid, name, logo }, index) => {
+            {visiblePinnedGpts.map(({ gid, name, logo }, index) => {
                 return (
                     <div
                         key={gid}
