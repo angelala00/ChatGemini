@@ -41,6 +41,7 @@ register_gpt({
         "auth": {
             "type": "all"
         },
+        "required_pinned": True,
         "sort": 1,
         "models": [
             {

@@ -131,6 +131,7 @@ class GPTSPinnedAccessTests(unittest.IsolatedAsyncioTestCase):
         self.regulation_config = {
             "name": "制度问答助手",
             "auth": {"type": "all"},
+            "required_pinned": True,
         }
 
     def tearDown(self) -> None:
@@ -184,6 +185,19 @@ class GPTSPinnedAccessTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(gpts_routes, "GPTS_WHITE_LIST", {"allowed@example.com"}):
             self.assertTrue(gpts_routes.can_access_gpt(self.user, "custom-gpt"))
             self.assertFalse(gpts_routes.can_access_gpt(self.user, "not-pinned"))
+
+    async def test_pinned_endpoint_accepts_user_without_sub(self):
+        user = {"email": "email-only@example.com"}
+        with patch.object(gpts_routes, "GPTS_WHITE_LIST", {"allowed@example.com"}), \
+             patch.object(gpts_routes, "refresh_gpts", lambda: None), \
+             patch.dict(
+                 gpts_routes.gpts,
+                 {"ssglf": self.regulation_config},
+                 clear=True,
+             ):
+            pinned = await gpts_routes.gpts_pined(user)
+
+        self.assertEqual(pinned[0]["gid"], "ssglf")
 
 
 if __name__ == "__main__":

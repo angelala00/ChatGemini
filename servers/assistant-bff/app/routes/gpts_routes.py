@@ -16,7 +16,6 @@ LIMIT_PINNED = 8
 MAX_SAMPLES = 5
 
 GPTS_WHITE_LIST = model_config.GPTS_WHITE_LIST
-REQUIRED_PINNED_GPTS = ("regulationassistant",)
 
 
 def is_gpts_feature_allowed(user: dict) -> bool:
@@ -33,11 +32,20 @@ def ensure_gpts_feature_allowed(user: dict) -> None:
 
 
 def is_required_pinned_gid(gid: str) -> bool:
-    return gid in REQUIRED_PINNED_GPTS
+    gpt = gpts.get(gid)
+    return bool(gpt and gpt.get("required_pinned"))
+
+
+def get_required_pinned_gids() -> tuple[str, ...]:
+    return tuple(
+        gid
+        for gid, gpt in gpts.items()
+        if isinstance(gpt, dict) and gpt.get("required_pinned")
+    )
 
 
 def ensure_required_pinned_gpts(conn, user_id: str) -> None:
-    for gid in REQUIRED_PINNED_GPTS:
+    for gid in get_required_pinned_gids():
         conn.execute(
             """INSERT OR IGNORE INTO user_gpts_state(user_id, gpts_id, pinned_at)
                  VALUES(?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))""",
@@ -68,6 +76,14 @@ def can_access_gpt(user: dict, gid: str) -> bool:
     if not user_id:
         return False
     return is_gpt_pinned_for_user(user_id, gid)
+
+
+def get_user_identity(user: dict) -> tuple[str, str]:
+    user_id = user.get("sub") or user.get("email")
+    user_email = user.get("email") or user_id
+    if not user_id or not user_email:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "No Authorized")
+    return user_id, user_email
 
 
 def ensure_gpt_access_allowed(user: dict, gid: str) -> None:
@@ -180,10 +196,10 @@ def parse_version(v: str) -> Tuple[int, ...]:
 
 @router.get("/gpts/pined")
 async def gpts_pined(user: dict = Depends(get_current_user)):
-    gpt_logger.info(f"path=gpts_pined user={user['email']} at={time.strftime('%Y-%m-%d %H:%M:%S')}")
+    user_id, user_email = get_user_identity(user)
+    gpt_logger.info(f"path=gpts_pined user={user_email} at={time.strftime('%Y-%m-%d %H:%M:%S')}")
     refresh_gpts()
     conn = get_db()
-    user_id = user['sub']
     try:
         cfg = conn.execute(
             "SELECT version FROM user_config_version WHERE user_id=?",
@@ -206,20 +222,20 @@ async def gpts_pined(user: dict = Depends(get_current_user)):
                FROM user_gpts_state
                WHERE user_id=?
                ORDER BY pinned_at ASC""",
-            (user['sub'],),
+            (user_id,),
         ).fetchall()
     finally:
         conn.close()
 
     pinned = []
-    required_gids = set(REQUIRED_PINNED_GPTS)
+    required_gids = set(get_required_pinned_gids())
     for index, r in enumerate(rows):
         gid = r["gpts_id"]
         g = gpts.get(gid)
-        if g and auth_ok(g, user['email'], user['sub']):
+        if g and auth_ok(g, user_email, user_id):
             item = {
                 "gid": gid,
-                "name": g["name"],
+                "name": g.get("name") or g.get("title") or gid,
                 "is_required_pinned": is_required_pinned_gid(gid),
                 "_order": index,
             }
