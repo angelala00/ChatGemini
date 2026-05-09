@@ -593,7 +593,7 @@ export const Sidebar = (props: SidebarProps) => {
                                                 data-history-menu-root
                                                 role="link"
                                                 tabIndex={renamingChatTitle.id === id ? -1 : 0}
-                                                className={`group relative grid min-h-8 cursor-pointer grid-cols-[minmax(0,1fr)_24px] items-center gap-2 rounded-[10px] py-[3px] pl-[8px] pr-1.5 text-[13px] font-medium text-[rgba(72,84,96,0.98)] transition-all hover:text-[rgba(47,58,70,0.98)] ${
+                                                className={`group relative grid min-h-8 cursor-pointer grid-cols-[minmax(0,1fr)_24px] items-center gap-2 rounded-[10px] py-[3px] pl-[12px] pr-1.5 text-[13px] font-medium text-[rgba(72,84,96,0.98)] transition-all hover:text-[rgba(47,58,70,0.98)] ${
                                                     activeMenu === id || isCurrentSessionActive ? "bg-white/90 text-[rgba(47,58,70,0.98)] shadow-[inset_0_0_0_1px_rgba(207,217,226,0.92),0_1px_2px_rgba(23,28,38,0.025)] hover:bg-white/90" : "hover:bg-[rgba(229,234,239,0.82)]"
                                                 }`}
                                                 onClick={(event) => {

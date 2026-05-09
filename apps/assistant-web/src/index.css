@@ -280,7 +280,7 @@ body::-webkit-scrollbar {
 }
 
 .thought-node.complete::before {
-    background: #4a90e2;
+    background: var(--assist-accent);
     color: #ffffff;
     content: "✓";
     display: flex;

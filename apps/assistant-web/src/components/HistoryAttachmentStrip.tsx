@@ -38,7 +38,7 @@ export const HistoryAttachmentStrip = (props: HistoryAttachmentStripProps) => {
     }
 
     return (
-        <div className="flex w-full max-w-[680px] flex-col gap-2.5 md:max-w-[min(72%,680px)]">
+        <div className="ml-auto flex w-full max-w-[680px] flex-col items-end gap-2.5 md:max-w-[min(72%,680px)]">
             {items.map((item) => {
                 const filename = item.filename || "未命名文件";
                 const { kindLabel, iconLabel } = resolveAttachmentPresentation(
@@ -52,16 +52,16 @@ export const HistoryAttachmentStrip = (props: HistoryAttachmentStripProps) => {
                         target="_blank"
                         rel="noreferrer"
                         title={filename}
-                        className="group flex items-center gap-3 rounded-[16px] border border-[rgba(231,236,240,0.98)] bg-white px-4 py-3 text-left shadow-[0_8px_20px_rgba(23,28,38,0.03)] transition-colors hover:bg-[rgba(250,252,253,0.98)]"
+                        className="group flex w-[288px] flex-none items-center gap-2.5 rounded-[13px] border border-[rgba(236,239,242,0.98)] bg-[rgba(247,249,251,0.98)] px-3 py-2.5 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.94)] transition-colors hover:bg-[rgba(250,252,253,0.98)]"
                     >
-                        <div className="grid size-11 shrink-0 place-items-center rounded-[12px] bg-[rgba(243,246,248,0.98)] text-[14px] font-semibold text-[#66717d]">
+                        <div className="grid size-8 shrink-0 place-items-center rounded-[10px] border border-[rgba(171,220,228,0.92)] bg-[linear-gradient(180deg,oklch(71%_0.113_201),oklch(63%_0.121_209))] text-[14px] font-semibold text-white shadow-[0_4px_10px_rgba(63,170,194,0.1)]">
                             {iconLabel}
                         </div>
                         <div className="min-w-0">
-                            <div className="truncate text-[14px] font-semibold leading-5 text-[#2f3a46]">
+                            <div className="truncate text-[13px] font-semibold leading-5 text-[#2f3a46]">
                                 {filename}
                             </div>
-                            <div className="pt-0.5 text-[12px] leading-4 text-[#87919d]">
+                            <div className="truncate pt-0.5 text-[11px] leading-4 text-[#87919d]">
                                 {kindLabel}
                             </div>
                         </div>
