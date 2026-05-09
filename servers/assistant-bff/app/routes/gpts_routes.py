@@ -164,10 +164,12 @@ async def toggle_pin(gid: str, request: Request, user: dict = Depends(get_curren
     try:
         if is_pinned:
             conn.execute(
+                "DELETE FROM user_gpts_state WHERE user_id=? AND gpts_id=?",
+                (user['sub'], gid),
+            )
+            conn.execute(
                 """INSERT INTO user_gpts_state(user_id, gpts_id, pinned_at)
-                   VALUES(?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-                   ON CONFLICT(user_id, gpts_id) DO UPDATE SET
-                     pinned_at=excluded.pinned_at""",
+                   VALUES(?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))""",
                 (user['sub'], gid),
             )
         else:
@@ -211,9 +213,8 @@ async def gpts_pined(user: dict = Depends(get_current_user)):
         if need_init:
             ensure_required_pinned_gpts(conn, user_id)
             conn.execute(
-                """INSERT INTO user_config_version(user_id, version)
-                     VALUES(?, ?)
-                     ON CONFLICT(user_id) DO UPDATE SET version=excluded.version""",
+                """INSERT OR REPLACE INTO user_config_version(user_id, version)
+                     VALUES(?, ?)""",
                 (user_id, CONFIG_VERSION),
             )
         ensure_required_pinned_gpts(conn, user_id)
