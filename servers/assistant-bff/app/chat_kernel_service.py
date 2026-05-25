@@ -692,6 +692,7 @@ async def chat_with_kernel_gptassistant(
         usage_tracker.set_model(model.id)
     if trace_recorder:
         trace_recorder.update(selected_model=model.id)
+    supports_attachment_tools = bool(model_config.get("supports_tool_calling", True))
 
     trimmed_history = _trim_history_to_recent_turns(
         history=_load_history(conversation_id),
@@ -721,6 +722,7 @@ async def chat_with_kernel_gptassistant(
                 "history_summary": trimmed_history.summary,
                 "reasoning_enabled": requested_reasoning_enabled,
                 "model": model.id,
+                "supports_attachment_tools": supports_attachment_tools,
             },
         )
 
@@ -756,6 +758,26 @@ async def chat_with_kernel_gptassistant(
         True,
         _log_preview([tool.name for tool in base_tools]),
     )
+    if file_ids:
+        gpt_logger.info(
+            "attachment_tooling_diagnostic conversation_id=%s response_id=%s model=%s supports_tool_calling=%s supports_native_image_input=%s attachment_count=%s tool_count=%s tools=%s",
+            conversation_id,
+            response_id,
+            model.id,
+            supports_attachment_tools,
+            model.supports_input("image"),
+            len(_available_file_ids(file_ids)),
+            len(base_tools),
+            _log_preview([tool.name for tool in base_tools]),
+        )
+        if not supports_attachment_tools and base_tools:
+            gpt_logger.warning(
+                "attachment_tooling_capability_mismatch conversation_id=%s response_id=%s model=%s supports_tool_calling=%s but tool_first_flow_active=true",
+                conversation_id,
+                response_id,
+                model.id,
+                supports_attachment_tools,
+            )
 
     try:
         if trace_recorder:
