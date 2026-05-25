@@ -80,6 +80,16 @@ REGULATION_TOOL_DEFINITIONS: list[ToolDefinition] = [
 ]
 
 
+def _log_preview(value: Any, *, limit: int = 1200) -> str:
+    try:
+        text = json.dumps(value, ensure_ascii=False, default=str)
+    except Exception:
+        text = repr(value)
+    if len(text) > limit:
+        return f"{text[:limit]}...(truncated)"
+    return text
+
+
 def _history_key(conversation_id: str) -> str:
     return f"{KERNEL_HISTORY_PREFIX}{conversation_id}"
 
@@ -401,7 +411,26 @@ async def _execute_regulation_tool_calls(
             if usage_tracker is not None:
                 usage_tracker.mark_tool(block.name)
             validated_arguments = validate_tool_call(tools, block)
+            gpt_logger.info(
+                "regulation_tool_call_validated conversation_id=%s response_id=%s turn=%s tool_call_id=%s tool_name=%s validated_arguments=%s",
+                conversation_id,
+                response_id,
+                turn_index,
+                block.id,
+                block.name,
+                _log_preview(validated_arguments),
+            )
             result_text, details = await _execute_regulation_tool(block.name, validated_arguments)
+            gpt_logger.info(
+                "regulation_tool_call_succeeded conversation_id=%s response_id=%s turn=%s tool_call_id=%s tool_name=%s details=%s text_len=%s",
+                conversation_id,
+                response_id,
+                turn_index,
+                block.id,
+                block.name,
+                _log_preview(details),
+                len(result_text or ""),
+            )
             results.append(
                 ToolResultMessage(
                     tool_call_id=block.id,
@@ -535,6 +564,16 @@ async def chat_with_kernel_regulation(
     try:
         for turn in range(MAX_TOOL_CONTINUATION_TURNS):
             turn_index = turn + 1
+            gpt_logger.info(
+                "regulation_kernel_turn_start gid=%s conversation_id=%s response_id=%s turn=%s max_turns=%s message_count=%s tools=%s",
+                gid,
+                conversation_id,
+                response_id,
+                turn_index,
+                MAX_TOOL_CONTINUATION_TURNS,
+                len(context.messages),
+                _log_preview([tool.name for tool in context.tools]),
+            )
             if trace_recorder:
                 trace_recorder.log(
                     "model.request",
@@ -575,6 +614,17 @@ async def chat_with_kernel_regulation(
                     )
 
             final_message = await kernel_stream.result()
+            gpt_logger.info(
+                "regulation_kernel_turn_result gid=%s conversation_id=%s response_id=%s turn=%s stop_reason=%s tool_call_count=%s usage=%s error_message=%s",
+                gid,
+                conversation_id,
+                response_id,
+                turn_index,
+                final_message.stop_reason,
+                len(_tool_call_blocks(final_message)),
+                _log_preview(asdict(final_message.usage)),
+                final_message.error_message,
+            )
             current_messages.append(final_message)
             if final_message.stop_reason in {"error", "aborted"}:
                 raise RuntimeError(
@@ -611,6 +661,18 @@ async def chat_with_kernel_regulation(
                         conversation_id,
                         f"<step><summary>工具调用结果</summary>{_render_tool_result_message(tool_result)}</step>\n",
                     )
+            for tool_result in tool_results:
+                gpt_logger.info(
+                    "regulation_tool_result_appended gid=%s conversation_id=%s response_id=%s turn=%s tool_call_id=%s tool_name=%s is_error=%s details=%s",
+                    gid,
+                    conversation_id,
+                    response_id,
+                    turn_index,
+                    tool_result.tool_call_id,
+                    tool_result.tool_name,
+                    tool_result.is_error,
+                    _log_preview(tool_result.details),
+                )
             current_messages.extend(tool_results)
             context.messages = list(current_messages)
         else:
@@ -621,6 +683,13 @@ async def chat_with_kernel_regulation(
             yield _legacy_sse("message", conversation_id, "</think>\n\n")
 
         _save_history(conversation_id, current_messages)
+        gpt_logger.info(
+            "regulation_kernel_complete gid=%s conversation_id=%s response_id=%s stop_reason=%s",
+            gid,
+            conversation_id,
+            response_id,
+            final_message.stop_reason if final_message is not None else "unknown",
+        )
         finalize_tracker("success", message=final_message)
         finalize_trace(
             "success",
@@ -630,6 +699,14 @@ async def chat_with_kernel_regulation(
         )
         yield _legacy_sse("message_end", conversation_id, "")
     except Exception as exc:
+        gpt_logger.exception(
+            "regulation_kernel_failed gid=%s conversation_id=%s response_id=%s model=%s error=%s",
+            gid,
+            conversation_id,
+            response_id,
+            model.id,
+            str(exc),
+        )
         if reasoning_open:
             yield _legacy_sse("message", conversation_id, "</think>\n\n")
         finalize_tracker("error", error=str(exc), message=final_message)
