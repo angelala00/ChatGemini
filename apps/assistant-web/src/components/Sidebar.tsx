@@ -60,7 +60,7 @@ const releaseHistory = [
             "补充 PPT/PPTX 历史附件的类型标识，避免统一显示为普通文件。",
             "按文件类型细化附件图标配色，提升 Word、Excel、PDF、PPT 等文档的识别度。",
             "输入区在未填写正文时禁用发送按钮，减少无效点击和误触发提示。",
-            "修复制度问答助手 chat_with_kernel_regulation 缺少 trace_recorder 参数，避免请求启动时报错。",
+            "修复制度问答助手无法正常发起提问的问题，提升问答稳定性。",
         ],
         enTitle: "Attachment Interaction Fixes",
         enChanges: [
@@ -72,7 +72,7 @@ const releaseHistory = [
             "Added explicit PPT/PPTX labeling for history attachments instead of showing them as generic files.",
             "Refined attachment icon colors by file type to improve recognition for Word, Excel, PDF, PPT, and similar documents.",
             "Disabled the composer send button until message text is entered to reduce no-op clicks and avoid unnecessary warnings.",
-            "Fixed the regulation assistant backend so chat_with_kernel_regulation accepts trace_recorder and no longer fails at request startup.",
+            "Fixed an issue that could prevent the regulation assistant from starting a request successfully, improving answer stability.",
         ],
     },
     {
