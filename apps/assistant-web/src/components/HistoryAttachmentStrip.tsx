@@ -10,24 +10,88 @@ const resolveAttachmentPresentation = (filename?: string) => {
         : "";
 
     if (["doc", "docx"].includes(extension)) {
-        return { kindLabel: "Word", iconLabel: "W" };
+        return {
+            kindLabel: "Word",
+            iconLabel: "W",
+            iconClassName:
+                "border-[rgba(174,198,255,0.96)] bg-[linear-gradient(180deg,#5D8FFF,#2F6BE6)] shadow-[0_4px_10px_rgba(47,107,230,0.18)]",
+        };
     }
-    if (["xls", "xlsx"].includes(extension)) {
-        return { kindLabel: "Excel", iconLabel: "X" };
+    if (["xls", "xlsx", "csv"].includes(extension)) {
+        return {
+            kindLabel: extension === "csv" ? "CSV" : "Excel",
+            iconLabel: extension === "csv" ? "C" : "X",
+            iconClassName:
+                "border-[rgba(174,223,191,0.96)] bg-[linear-gradient(180deg,#58B874,#23844A)] shadow-[0_4px_10px_rgba(35,132,74,0.18)]",
+        };
     }
     if (extension === "pdf") {
-        return { kindLabel: "PDF", iconLabel: "P" };
+        return {
+            kindLabel: "PDF",
+            iconLabel: "P",
+            iconClassName:
+                "border-[rgba(248,186,186,0.96)] bg-[linear-gradient(180deg,#F27777,#D84545)] shadow-[0_4px_10px_rgba(216,69,69,0.18)]",
+        };
     }
     if (extension === "py") {
-        return { kindLabel: "Python", iconLabel: "P" };
+        return {
+            kindLabel: "Python",
+            iconLabel: "P",
+            iconClassName:
+                "border-[rgba(189,207,247,0.96)] bg-[linear-gradient(180deg,#6D96F2,#3E6EDB)] shadow-[0_4px_10px_rgba(62,110,219,0.17)]",
+        };
+    }
+    if (extension === "txt") {
+        return {
+            kindLabel: "Text",
+            iconLabel: "T",
+            iconClassName:
+                "border-[rgba(203,210,222,0.96)] bg-[linear-gradient(180deg,#8D97A8,#667184)] shadow-[0_4px_10px_rgba(102,113,132,0.16)]",
+        };
     }
     if (["md", "markdown"].includes(extension)) {
-        return { kindLabel: "Markdown", iconLabel: "M" };
+        return {
+            kindLabel: "Markdown",
+            iconLabel: "M",
+            iconClassName:
+                "border-[rgba(203,210,222,0.96)] bg-[linear-gradient(180deg,#8D97A8,#667184)] shadow-[0_4px_10px_rgba(102,113,132,0.16)]",
+        };
+    }
+    if (["ppt", "pptx"].includes(extension)) {
+        return {
+            kindLabel: "PPT",
+            iconLabel: "P",
+            iconClassName:
+                "border-[rgba(248,205,173,0.96)] bg-[linear-gradient(180deg,#F4A261,#E26A2D)] shadow-[0_4px_10px_rgba(226,106,45,0.18)]",
+        };
     }
     if (["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"].includes(extension)) {
-        return { kindLabel: "Image", iconLabel: "I" };
+        return {
+            kindLabel: "Image",
+            iconLabel: "I",
+            iconClassName:
+                "border-[rgba(171,220,228,0.92)] bg-[linear-gradient(180deg,oklch(71%_0.113_201),oklch(63%_0.121_209))] shadow-[0_4px_10px_rgba(63,170,194,0.1)]",
+        };
     }
-    return { kindLabel: "文件", iconLabel: "F" };
+    return {
+        kindLabel: "文件",
+        iconLabel: "F",
+        iconClassName:
+            "border-[rgba(191,214,218,0.92)] bg-[linear-gradient(180deg,#75C8D2,#43A9C1)] shadow-[0_4px_10px_rgba(67,169,193,0.12)]",
+    };
+};
+
+const attachmentIconBaseClassName =
+    "grid size-8 shrink-0 place-items-center rounded-[10px] border text-[14px] font-semibold text-white";
+
+const attachmentIconClassName = (toneClassName: string) =>
+    `${attachmentIconBaseClassName} ${toneClassName}`;
+
+const isImageAttachment = (filename?: string) => {
+    const extension = filename?.includes(".")
+        ? filename.split(".").pop()?.toLowerCase() ?? ""
+        : "";
+    return ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"].includes(extension);
 };
 
 export const HistoryAttachmentStrip = (props: HistoryAttachmentStripProps) => {
@@ -38,12 +102,30 @@ export const HistoryAttachmentStrip = (props: HistoryAttachmentStripProps) => {
     }
 
     return (
-        <div className="ml-auto flex w-full max-w-[680px] flex-col items-end gap-2.5 md:max-w-[min(72%,680px)]">
+        <div className="ml-auto flex w-full max-w-[680px] flex-wrap justify-end gap-2.5 md:max-w-[min(72%,680px)]">
             {items.map((item) => {
                 const filename = item.filename || "未命名文件";
-                const { kindLabel, iconLabel } = resolveAttachmentPresentation(
+                const { kindLabel, iconLabel, iconClassName } = resolveAttachmentPresentation(
                     item.filename,
                 );
+
+                if (isImageAttachment(item.filename)) {
+                    return (
+                        <a
+                            key={item.fileId}
+                            data-image-view="gallery"
+                            href={item.href}
+                            title={filename}
+                            className="group overflow-hidden rounded-[18px] border border-[rgba(236,239,242,0.98)] bg-[rgba(247,249,251,0.98)] shadow-[inset_0_1px_0_rgba(255,255,255,0.94)] transition-transform hover:-translate-y-px"
+                        >
+                            <img
+                                src={item.href}
+                                alt={filename}
+                                className="block h-[108px] w-[108px] object-cover"
+                            />
+                        </a>
+                    );
+                }
 
                 return (
                     <a
@@ -54,7 +136,7 @@ export const HistoryAttachmentStrip = (props: HistoryAttachmentStripProps) => {
                         title={filename}
                         className="group flex w-[288px] flex-none items-center gap-2.5 rounded-[13px] border border-[rgba(236,239,242,0.98)] bg-[rgba(247,249,251,0.98)] px-3 py-2.5 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.94)] transition-colors hover:bg-[rgba(250,252,253,0.98)]"
                     >
-                        <div className="grid size-8 shrink-0 place-items-center rounded-[10px] border border-[rgba(171,220,228,0.92)] bg-[linear-gradient(180deg,oklch(71%_0.113_201),oklch(63%_0.121_209))] text-[14px] font-semibold text-white shadow-[0_4px_10px_rgba(63,170,194,0.1)]">
+                        <div className={attachmentIconClassName(iconClassName)}>
                             {iconLabel}
                         </div>
                         <div className="min-w-0">

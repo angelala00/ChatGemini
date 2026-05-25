@@ -29,7 +29,7 @@ interface InputAreaProps {
     readonly reasoningEnabled?: boolean;
     readonly reasoningAvailable?: boolean;
     readonly isNewSessionPage?: boolean;
-    readonly onSubmit: (prompt: string) => void;
+    readonly onSubmit: (prompt: string) => Promise<boolean> | boolean;
     readonly onUpload: (file: File) => Promise<{
         readonly fileId: string;
         readonly mimeType: string;
@@ -48,10 +48,25 @@ interface AttachmentCardItem {
     readonly fileId: string;
     readonly mimeType: string;
     readonly name: string;
+    readonly previewUrl?: string;
     readonly sizeLabel: string;
     readonly kindLabel: string;
     readonly iconLabel: string;
+    readonly iconClassName: string;
 }
+
+type AttachmentPresentation = Pick<
+    AttachmentCardItem,
+    "sizeLabel" | "kindLabel" | "iconLabel" | "iconClassName"
+>;
+
+const revokePreviewUrls = (items: AttachmentCardItem[]) => {
+    items.forEach((item) => {
+        if (item.previewUrl) {
+            URL.revokeObjectURL(item.previewUrl);
+        }
+    });
+};
 
 const formatAttachmentSize = (size: number) => {
     if (!Number.isFinite(size) || size <= 0) {
@@ -66,25 +81,88 @@ const formatAttachmentSize = (size: number) => {
     return `${(size / (1024 * 1024)).toFixed(1)}MB`;
 };
 
-const resolveAttachmentPresentation = (file: File): Omit<AttachmentCardItem, "id" | "name"> => {
+const resolveAttachmentPresentation = (file: File): AttachmentPresentation => {
     const extension = file.name.includes(".")
         ? file.name.split(".").pop()?.toLowerCase() ?? ""
         : "";
 
     if (["doc", "docx"].includes(extension)) {
-        return { sizeLabel: formatAttachmentSize(file.size), kindLabel: "Word", iconLabel: "W" };
+        return {
+            sizeLabel: formatAttachmentSize(file.size),
+            kindLabel: "Word",
+            iconLabel: "W",
+            iconClassName:
+                "border-[rgba(174,198,255,0.96)] bg-[linear-gradient(180deg,#5D8FFF,#2F6BE6)] shadow-[0_4px_10px_rgba(47,107,230,0.18)]",
+        };
     }
-    if (["xls", "xlsx"].includes(extension)) {
-        return { sizeLabel: formatAttachmentSize(file.size), kindLabel: "Excel", iconLabel: "X" };
+    if (["xls", "xlsx", "csv"].includes(extension)) {
+        return {
+            sizeLabel: formatAttachmentSize(file.size),
+            kindLabel: extension === "csv" ? "CSV" : "Excel",
+            iconLabel: extension === "csv" ? "C" : "X",
+            iconClassName:
+                "border-[rgba(174,223,191,0.96)] bg-[linear-gradient(180deg,#58B874,#23844A)] shadow-[0_4px_10px_rgba(35,132,74,0.18)]",
+        };
     }
     if (extension === "pdf") {
-        return { sizeLabel: formatAttachmentSize(file.size), kindLabel: "PDF", iconLabel: "P" };
+        return {
+            sizeLabel: formatAttachmentSize(file.size),
+            kindLabel: "PDF",
+            iconLabel: "P",
+            iconClassName:
+                "border-[rgba(248,186,186,0.96)] bg-[linear-gradient(180deg,#F27777,#D84545)] shadow-[0_4px_10px_rgba(216,69,69,0.18)]",
+        };
+    }
+    if (["ppt", "pptx"].includes(extension)) {
+        return {
+            sizeLabel: formatAttachmentSize(file.size),
+            kindLabel: "PPT",
+            iconLabel: "P",
+            iconClassName:
+                "border-[rgba(248,205,173,0.96)] bg-[linear-gradient(180deg,#F4A261,#E26A2D)] shadow-[0_4px_10px_rgba(226,106,45,0.18)]",
+        };
+    }
+    if (["md", "markdown"].includes(extension)) {
+        return {
+            sizeLabel: formatAttachmentSize(file.size),
+            kindLabel: "Markdown",
+            iconLabel: "M",
+            iconClassName:
+                "border-[rgba(203,210,222,0.96)] bg-[linear-gradient(180deg,#8D97A8,#667184)] shadow-[0_4px_10px_rgba(102,113,132,0.16)]",
+        };
+    }
+    if (extension === "txt") {
+        return {
+            sizeLabel: formatAttachmentSize(file.size),
+            kindLabel: "Text",
+            iconLabel: "T",
+            iconClassName:
+                "border-[rgba(203,210,222,0.96)] bg-[linear-gradient(180deg,#8D97A8,#667184)] shadow-[0_4px_10px_rgba(102,113,132,0.16)]",
+        };
     }
     if (["jpg", "jpeg", "png"].includes(extension)) {
-        return { sizeLabel: formatAttachmentSize(file.size), kindLabel: "Image", iconLabel: "I" };
+        return {
+            sizeLabel: formatAttachmentSize(file.size),
+            kindLabel: "Image",
+            iconLabel: "I",
+            iconClassName:
+                "border-[rgba(171,220,228,0.92)] bg-[linear-gradient(180deg,oklch(71%_0.113_201),oklch(63%_0.121_209))] shadow-[0_4px_10px_rgba(63,170,194,0.1)]",
+        };
     }
-    return { sizeLabel: formatAttachmentSize(file.size), kindLabel: "File", iconLabel: "F" };
+    return {
+        sizeLabel: formatAttachmentSize(file.size),
+        kindLabel: "File",
+        iconLabel: "F",
+        iconClassName:
+            "border-[rgba(191,214,218,0.92)] bg-[linear-gradient(180deg,#75C8D2,#43A9C1)] shadow-[0_4px_10px_rgba(67,169,193,0.12)]",
+    };
 };
+
+const attachmentIconBaseClassName =
+    "grid size-8 shrink-0 place-items-center rounded-[10px] border text-[14px] font-semibold text-white";
+
+const attachmentIconClassName = (toneClassName: string) =>
+    `${attachmentIconBaseClassName} ${toneClassName}`;
 
 export const InputArea = forwardRef(
     (props: InputAreaProps, ref: ForwardedRef<HTMLTextAreaElement>) => {
@@ -108,8 +186,10 @@ export const InputArea = forwardRef(
 
         const fileInputRef = useRef<HTMLInputElement>(null);
         const textAreaRef = useRef<HTMLTextAreaElement>(null);
+        const attachmentItemsRef = useRef<AttachmentCardItem[]>([]);
         const [inputPlaceholder, setInputPlaceholder] = useState("");
         const [attachmentItems, setAttachmentItems] = useState<AttachmentCardItem[]>([]);
+        const [promptValue, setPromptValue] = useState("");
 
         const activeUploadCategories = (allowedFileTypes && allowedFileTypes.length > 0
             ? Array.from(new Set(allowedFileTypes))
@@ -132,12 +212,22 @@ export const InputArea = forwardRef(
         const fileInputAccept = Array.from(allowedExtensions)
             .map((ext) => `.${ext}`)
             .join(",");
+        const canSubmit = !!promptValue.trim().length;
 
-        const handleSubmit = () => {
+        const handleSubmit = async () => {
             const { current } = textAreaRef;
-            onSubmit(current!.value);
+            if (!current) {
+                return false;
+            }
+            const accepted = await onSubmit(current.value);
+            if (!accepted) {
+                return false;
+            }
             current!.value = "";
+            setPromptValue("");
             setTextAreaHeight(current, minHeight, maxHeight);
+            updateAttachmentItems(() => []);
+            return true;
         };
 
         const updateAttachmentItems = (
@@ -145,9 +235,12 @@ export const InputArea = forwardRef(
         ) => {
             setAttachmentItems((prev) => {
                 const next = updater(prev);
+                const nextIds = new Set(next.map((item) => item.id));
+                revokePreviewUrls(prev.filter((item) => item.previewUrl && !nextIds.has(item.id)));
                 onAttachmentsChange(
                     next.map(({ fileId, mimeType }) => ({ fileId, mimeType }))
                 );
+                attachmentItemsRef.current = next;
                 return next;
             });
         };
@@ -235,8 +328,7 @@ export const InputArea = forwardRef(
                 !isMobileDevice()
             ) {
                 e.preventDefault();
-                handleSubmit();
-                updateAttachmentItems(() => []);
+                void handleSubmit();
             }
         };
 
@@ -249,6 +341,16 @@ export const InputArea = forwardRef(
             return () =>
                 window.removeEventListener("resize", setPlaceholderByWidth);
         }, [t]);
+
+        useEffect(() => {
+            attachmentItemsRef.current = attachmentItems;
+        }, [attachmentItems]);
+
+        useEffect(() => {
+            return () => {
+                revokePreviewUrls(attachmentItemsRef.current);
+            };
+        }, []);
 
         useImperativeHandle(ref, () => textAreaRef.current!);
 
@@ -268,46 +370,83 @@ export const InputArea = forwardRef(
                             <div className="overflow-x-auto overflow-y-hidden pb-0.5 scrollbar-hide">
                                 <div className="flex min-w-max gap-2.5">
                                 {attachmentItems.map((item) => (
-                                    <div
-                                        key={item.id}
-                                        className="group relative flex w-[260px] flex-none items-center gap-2.5 rounded-[13px] border border-[rgba(236,239,242,0.98)] bg-[rgba(247,249,251,0.98)] px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.94)]"
-                                    >
-                                        <button
-                                            type="button"
-                                            className="pointer-events-none absolute right-0.5 top-0.5 inline-flex size-4.5 items-center justify-center rounded-full bg-[rgba(20,24,30,0.82)] text-white opacity-0 transition-[opacity,background-color] group-hover:pointer-events-auto group-hover:opacity-100 hover:bg-[rgba(20,24,30,0.94)] focus:pointer-events-auto focus:opacity-100"
-                                            aria-label={`删除附件 ${item.name}`}
-                                            onClick={() =>
-                                                updateAttachmentItems((prev) =>
-                                                    prev.filter((attachment) => attachment.id !== item.id)
-                                                )
-                                            }
+                                    item.previewUrl ? (
+                                        <div
+                                            key={item.id}
+                                            className="group relative h-[58px] w-[58px] flex-none overflow-hidden rounded-[13px] border border-[rgba(236,239,242,0.98)] bg-[rgba(247,249,251,0.98)] shadow-[inset_0_1px_0_rgba(255,255,255,0.94)]"
                                         >
-                                            <svg
-                                                className="size-2.5"
-                                                viewBox="0 0 24 24"
-                                                fill="none"
-                                                stroke="currentColor"
-                                                strokeWidth="2.2"
-                                                strokeLinecap="round"
-                                                strokeLinejoin="round"
-                                                aria-hidden="true"
+                                            <button
+                                                type="button"
+                                                className="absolute right-1 top-1 z-10 inline-flex size-5 items-center justify-center rounded-full bg-[rgba(20,24,30,0.82)] text-white opacity-0 transition-[opacity,background-color] group-hover:opacity-100 hover:bg-[rgba(20,24,30,0.94)] focus:opacity-100"
+                                                aria-label={`删除附件 ${item.name}`}
+                                                onClick={() =>
+                                                    updateAttachmentItems((prev) =>
+                                                        prev.filter((attachment) => attachment.id !== item.id)
+                                                    )
+                                                }
                                             >
-                                                <path d="M6 6 18 18" />
-                                                <path d="M18 6 6 18" />
-                                            </svg>
-                                        </button>
-                                        <div className="grid size-8 shrink-0 place-items-center rounded-[10px] border border-[rgba(171,220,228,0.92)] bg-[linear-gradient(180deg,oklch(71%_0.113_201),oklch(63%_0.121_209))] text-[14px] font-semibold text-white shadow-[0_4px_10px_rgba(63,170,194,0.1)]">
-                                            {item.iconLabel}
+                                                <svg
+                                                    className="size-2.5"
+                                                    viewBox="0 0 24 24"
+                                                    fill="none"
+                                                    stroke="currentColor"
+                                                    strokeWidth="2.2"
+                                                    strokeLinecap="round"
+                                                    strokeLinejoin="round"
+                                                    aria-hidden="true"
+                                                >
+                                                    <path d="M6 6 18 18" />
+                                                    <path d="M18 6 6 18" />
+                                                </svg>
+                                            </button>
+                                            <img
+                                                src={item.previewUrl}
+                                                alt={item.name}
+                                                className="h-full w-full object-cover"
+                                            />
                                         </div>
-                                        <div className="min-w-0">
-                                            <div className="truncate text-[13px] font-semibold leading-5 text-[#2f3a46]">
-                                                {item.name}
+                                    ) : (
+                                        <div
+                                            key={item.id}
+                                            className="group relative flex w-[260px] flex-none items-center gap-2.5 rounded-[13px] border border-[rgba(236,239,242,0.98)] bg-[rgba(247,249,251,0.98)] px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.94)]"
+                                        >
+                                            <button
+                                                type="button"
+                                                className="pointer-events-none absolute right-0.5 top-0.5 inline-flex size-4.5 items-center justify-center rounded-full bg-[rgba(20,24,30,0.82)] text-white opacity-0 transition-[opacity,background-color] group-hover:pointer-events-auto group-hover:opacity-100 hover:bg-[rgba(20,24,30,0.94)] focus:pointer-events-auto focus:opacity-100"
+                                                aria-label={`删除附件 ${item.name}`}
+                                                onClick={() =>
+                                                    updateAttachmentItems((prev) =>
+                                                        prev.filter((attachment) => attachment.id !== item.id)
+                                                    )
+                                                }
+                                            >
+                                                <svg
+                                                    className="size-2.5"
+                                                    viewBox="0 0 24 24"
+                                                    fill="none"
+                                                    stroke="currentColor"
+                                                    strokeWidth="2.2"
+                                                    strokeLinecap="round"
+                                                    strokeLinejoin="round"
+                                                    aria-hidden="true"
+                                                >
+                                                    <path d="M6 6 18 18" />
+                                                    <path d="M18 6 6 18" />
+                                                </svg>
+                                            </button>
+                                            <div className={attachmentIconClassName(item.iconClassName)}>
+                                                {item.iconLabel}
                                             </div>
-                                            <div className="truncate pt-0.5 text-[11px] leading-4 text-[#87919d]">
-                                                {item.kindLabel}{item.sizeLabel ? ` · ${item.sizeLabel}` : ""}
+                                            <div className="min-w-0">
+                                                <div className="truncate text-[13px] font-semibold leading-5 text-[#2f3a46]">
+                                                    {item.name}
+                                                </div>
+                                                <div className="truncate pt-0.5 text-[11px] leading-4 text-[#87919d]">
+                                                    {item.kindLabel}{item.sizeLabel ? ` · ${item.sizeLabel}` : ""}
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
+                                    )
                                 ))}
                                 </div>
                             </div>
@@ -321,7 +460,10 @@ export const InputArea = forwardRef(
                             ref={textAreaRef}
                             placeholder={busy ? "..." : inputPlaceholder}
                             className="min-h-9 max-h-32 w-full flex-1 resize-none overflow-y-auto border-none bg-transparent px-0 py-1.5 text-[15px] leading-[1.7] text-[#2f3a46] outline-none placeholder:text-[rgba(118,129,141,0.9)]"
-                            onInput={({ currentTarget }) => setTextAreaHeight(currentTarget, minHeight, maxHeight)}
+                            onInput={({ currentTarget }) => {
+                                setPromptValue(currentTarget.value);
+                                setTextAreaHeight(currentTarget, minHeight, maxHeight);
+                            }}
                             onKeyDown={handleKeyDown}
                         />
                     </div>
@@ -346,11 +488,15 @@ export const InputArea = forwardRef(
                                                         const presentation = resolveAttachmentPresentation(file);
                                                         const uploaded = await onUpload(file);
                                                         if (uploaded) {
+                                                            const previewUrl = uploaded.mimeType.startsWith("image/")
+                                                                ? URL.createObjectURL(file)
+                                                                : undefined;
                                                             nextItems.push({
                                                                 id: `${uploaded.fileId}-${file.name}-${file.lastModified}`,
                                                                 fileId: uploaded.fileId,
                                                                 mimeType: uploaded.mimeType,
                                                                 name: file.name,
+                                                                previewUrl,
                                                                 ...presentation,
                                                             });
                                                         }
@@ -423,14 +569,19 @@ export const InputArea = forwardRef(
                             )}
                             {/* 发送按钮 */}
                             <button
-                                className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[linear-gradient(180deg,oklch(71%_0.113_201),oklch(63%_0.121_209))] text-white shadow-[0_10px_20px_rgba(63,170,194,0.24)] transition-[transform,box-shadow] hover:-translate-y-px hover:shadow-[0_12px_24px_rgba(63,170,194,0.3)] active:translate-y-0"
+                                type="button"
+                                className={`inline-flex h-10 w-10 items-center justify-center rounded-full text-white transition-[transform,box-shadow,background-color] ${
+                                    busy || canSubmit
+                                        ? "bg-[linear-gradient(180deg,oklch(71%_0.113_201),oklch(63%_0.121_209))] shadow-[0_10px_20px_rgba(63,170,194,0.24)] hover:-translate-y-px hover:shadow-[0_12px_24px_rgba(63,170,194,0.3)] active:translate-y-0"
+                                        : "cursor-not-allowed bg-[linear-gradient(180deg,#d4dde5,#b4c0cc)] shadow-none"
+                                }`}
                                 aria-label={busy ? "停止生成" : "发送"}
+                                disabled={!busy && !canSubmit}
                                 onClick={() => {
                                     if (busy) {
                                         onAbort();
                                     } else {
-                                        handleSubmit();
-                                        updateAttachmentItems(() => []);
+                                        void handleSubmit();
                                     }
                                 }}
                             >

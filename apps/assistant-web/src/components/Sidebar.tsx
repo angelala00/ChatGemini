@@ -43,9 +43,36 @@ interface SidebarProps {
     readonly onToggleSidebar: () => void;
 }
 
-const APP_VERSION = "v1.1.1";
+const APP_VERSION = "v1.1.2";
 
 const releaseHistory = [
+    {
+        version: "v1.1.2",
+        date: "2026.05",
+        type: "patch",
+        zhTitle: "附件交互修复",
+        zhChanges: [
+            "修复空文本被前端拦截时仍清空已上传附件的问题。",
+            "调整输入区提交逻辑，仅在真正进入发送流程后清空输入和附件。",
+            "上传图片后，输入区待发送附件恢复为缩略图展示。",
+            "将输入区图片缩略图调整为更紧凑的正方形裁切，保持与其它附件卡片一致的高度节奏。",
+            "恢复历史聊天记录中图片附件的缩略图展示和点击预览。",
+            "补充 PPT/PPTX 历史附件的类型标识，避免统一显示为普通文件。",
+            "按文件类型细化附件图标配色，提升 Word、Excel、PDF、PPT 等文档的识别度。",
+            "输入区在未填写正文时禁用发送按钮，减少无效点击和误触发提示。",
+        ],
+        enTitle: "Attachment Interaction Fixes",
+        enChanges: [
+            "Fixed an issue where uploaded attachments were cleared when empty-text sends were blocked on the client.",
+            "Updated composer submission so text and attachments are cleared only after a send is actually accepted.",
+            "Restored thumbnail previews for pending image attachments in the composer after upload.",
+            "Adjusted composer image thumbnails to a tighter square crop while keeping their height aligned with other attachment cards.",
+            "Restored thumbnail display and click-to-preview behavior for image attachments in chat history.",
+            "Added explicit PPT/PPTX labeling for history attachments instead of showing them as generic files.",
+            "Refined attachment icon colors by file type to improve recognition for Word, Excel, PDF, PPT, and similar documents.",
+            "Disabled the composer send button until message text is entered to reduce no-op clicks and avoid unnecessary warnings.",
+        ],
+    },
     {
         version: "v1.1.1",
         date: "2026.05",

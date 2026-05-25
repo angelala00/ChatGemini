@@ -384,7 +384,7 @@ const App = () => {
     const handleSubmit = async (prompt: string) => {
         if (!prompt.trim().length) {
             sendUserAlert(t("App.handleSubmit.invalid_message"), true);
-            return;
+            return false;
         }
         id = id || Date.now().toString();
         // const { prefix, uri, suffix } = routes.chat;
@@ -396,7 +396,7 @@ const App = () => {
         const sessionDate = new Date(parseInt(id));
         if (isNaN(sessionDate.getTime()) || sessionDate.getFullYear() < 2020) {
             sendUserAlert(t("App.handleSubmit.invalid_session"), true);
-            return;
+            return false;
         }
         const modelPlaceholder = t("App.handleSubmit.model_placeholder");
         const currentSessionHistory = id in sessions ? sessions[id] : [];
@@ -407,7 +407,7 @@ const App = () => {
 
         if (!selectedModelId && requiresExplicitModel) {
             sendUserAlert(t("App.handleSubmit.invalid_session"), true);
-            return;
+            return false;
         }
 
         if (pendingManualModel && pendingManualModel === selectedModelId) {
@@ -518,6 +518,7 @@ const App = () => {
             }
         }
         setUploadInlineData({ data: "", mimeType: "" });
+        return true;
     };
 
     const currentPath = location.pathname;
