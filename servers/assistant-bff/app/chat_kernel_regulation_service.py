@@ -30,6 +30,7 @@ from app.llm_kernel import (
 )
 from app.logger import gpt_logger
 from app.metrics.events import UsageEventTracker
+from app.tracing import ChatTraceRecorder
 
 
 KERNEL_HISTORY_PREFIX = "llm_kernel:regulationassistant:"
@@ -444,6 +445,7 @@ async def chat_with_kernel_regulation(
     reasoning_enabled: bool = False,
     usage_tracker: Optional[UsageEventTracker] = None,
     show_reasoning: bool = False,
+    trace_recorder: Optional[ChatTraceRecorder] = None,
 ) -> AsyncGenerator[str, None]:
     _ensure_openai_compat_provider()
 
@@ -451,6 +453,7 @@ async def chat_with_kernel_regulation(
     response_id = f"resp_{uuid.uuid4().hex[:12]}"
     sequence = 0
     tracker_finalized = False
+    trace_finalized = False
     model = _kernel_model_from_config(model_config, reasoning_enabled)
     requested_reasoning_enabled = bool(model.reasoning and reasoning_enabled)
 
@@ -476,8 +479,22 @@ async def chat_with_kernel_regulation(
         )
         tracker_finalized = True
 
+    def finalize_trace(status: str, *, error: Optional[str] = None, response_preview: Optional[str] = None) -> None:
+        nonlocal trace_finalized
+        if trace_recorder is None or trace_finalized:
+            return
+        trace_recorder.finalize(
+            status=status,
+            error=error,
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+            response_preview=response_preview,
+        )
+        trace_finalized = True
+
     if usage_tracker:
         usage_tracker.set_model(model.id)
+    if trace_recorder:
+        trace_recorder.update(selected_model=model.id)
 
     history = _load_history(conversation_id)
     user_message = UserMessage(content=query, timestamp=int(time.time() * 1000))
@@ -502,10 +519,33 @@ async def chat_with_kernel_regulation(
         requested_reasoning_enabled,
         [tool.name for tool in context.tools],
     )
+    if trace_recorder:
+        trace_recorder.log(
+            "request.prepared",
+            {
+                "conversation_id": conversation_id,
+                "query": query,
+                "system_prompt": system_prompt,
+                "model": model.id,
+                "reasoning_enabled": requested_reasoning_enabled,
+                "tools": [tool.name for tool in context.tools],
+            },
+        )
 
     try:
         for turn in range(MAX_TOOL_CONTINUATION_TURNS):
             turn_index = turn + 1
+            if trace_recorder:
+                trace_recorder.log(
+                    "model.request",
+                    {
+                        "conversation_id": conversation_id,
+                        "response_id": response_id,
+                        "turn": turn_index,
+                        "model": model.id,
+                        "reasoning_enabled": requested_reasoning_enabled,
+                    },
+                )
             kernel_stream = stream(model, context, options)
 
             async for event in kernel_stream:
@@ -582,11 +622,18 @@ async def chat_with_kernel_regulation(
 
         _save_history(conversation_id, current_messages)
         finalize_tracker("success", message=final_message)
+        finalize_trace(
+            "success",
+            response_preview="".join(
+                block.text for block in final_message.content if isinstance(block, TextContent)
+            ) if final_message is not None else None,
+        )
         yield _legacy_sse("message_end", conversation_id, "")
     except Exception as exc:
         if reasoning_open:
             yield _legacy_sse("message", conversation_id, "</think>\n\n")
         finalize_tracker("error", error=str(exc), message=final_message)
+        finalize_trace("error", error=str(exc))
         mapped_error = map_chat_v2_error(str(exc))
         yield _legacy_sse("message", conversation_id, mapped_error.user_message)
         yield _legacy_sse("message_end", conversation_id, "")
