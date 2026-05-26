@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import {
     DiagnosticsParsedToolCall,
     DiagnosticsRequestGroup,
@@ -214,9 +216,42 @@ const DiagnosticsPage = ({
     maskToken,
     formatDateTime,
     handleCopyDiagnosticsPayload,
-}: DiagnosticsPageProps) => (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-8">
-        <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+}: DiagnosticsPageProps) => {
+    const [expandedRawSseByKey, setExpandedRawSseByKey] = useState<Record<string, boolean>>({});
+
+    const renderRawSseBlock = (key: string, rawPayloadText: string, hintText: string) => {
+        const isExpanded = Boolean(expandedRawSseByKey[key]);
+        return (
+            <div className="rounded-xl border border-slate-200 bg-white">
+                <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                    <div className="text-xs text-slate-500">{hintText}</div>
+                    <button
+                        type="button"
+                        className="inline-flex min-w-[116px] justify-center rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800"
+                        onClick={() =>
+                            setExpandedRawSseByKey((prev) => ({
+                                ...prev,
+                                [key]: !prev[key],
+                            }))
+                        }
+                    >
+                        {isExpanded ? "收起原始 SSE" : "查看原始 SSE"}
+                    </button>
+                </div>
+                {isExpanded && (
+                    <div className="border-t border-slate-200 px-4 py-4">
+                        <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap break-all text-xs leading-6 text-slate-700">
+                            {rawPayloadText}
+                        </pre>
+                    </div>
+                )}
+            </div>
+        );
+    };
+
+    return (
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-8">
+            <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                     <h2 className="text-xl font-semibold text-slate-900">诊断日志</h2>
@@ -422,23 +457,12 @@ const DiagnosticsPage = ({
                                                                         {outputDisplayItem.payloadText}
                                                                     </pre>
                                                                 )}
-                                                                {outputDisplayItem.rawPayloadText && (
-                                                                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
-                                                                        <div className="text-xs text-slate-500">
-                                                                            需要排查流式分片或事件顺序时，可查看原始 SSE。
-                                                                        </div>
-                                                                        <details className="group">
-                                                                            <summary className="cursor-pointer rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800">
-                                                                                查看原始 SSE
-                                                                            </summary>
-                                                                            <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
-                                                                                <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap break-all text-xs leading-6 text-slate-700">
-                                                                                    {outputDisplayItem.rawPayloadText}
-                                                                                </pre>
-                                                                            </div>
-                                                                        </details>
-                                                                    </div>
-                                                                )}
+                                                                {outputDisplayItem.rawPayloadText &&
+                                                                    renderRawSseBlock(
+                                                                        `${outputDisplayItem.key}:raw-sse`,
+                                                                        outputDisplayItem.rawPayloadText,
+                                                                        "需要排查流式分片或事件顺序时，可查看原始 SSE。",
+                                                                    )}
                                                             </div>
                                                         )}
                                                         <div className="divide-y divide-slate-200">
@@ -499,17 +523,11 @@ const DiagnosticsPage = ({
                                                                                     {item.payloadText}
                                                                                 </pre>
                                                                             )}
-                                                                            {item.rawPayloadText && (
-                                                                                    <details className="rounded-xl border border-slate-200 bg-white">
-                                                                                        <summary className="cursor-pointer px-4 py-3 text-xs font-medium text-slate-600">
-                                                                                            查看原始 SSE
-                                                                                        </summary>
-                                                                                        <div className="border-t border-slate-200 px-4 py-4">
-                                                                                            <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap break-all text-xs leading-6 text-slate-700">
-                                                                                                {item.rawPayloadText}
-                                                                                            </pre>
-                                                                                        </div>
-                                                                                    </details>
+                                                                            {item.rawPayloadText &&
+                                                                                renderRawSseBlock(
+                                                                                    `${item.key}:raw-sse`,
+                                                                                    item.rawPayloadText,
+                                                                                    "查看当前日志对应的原始 SSE。",
                                                                                 )}
                                                                         </div>
                                                                     )}
@@ -527,8 +545,9 @@ const DiagnosticsPage = ({
                     )}
                 </div>
             )}
+            </div>
         </div>
-    </div>
-);
+    );
+};
 
 export default DiagnosticsPage;
