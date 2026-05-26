@@ -86,6 +86,26 @@ export interface TokenDiagnosticsLogEntry {
     gateway_request_id?: string | null;
     request_id?: string | null;
     status?: number | null;
+    input_tokens?: number | null;
+    input_message_tokens?: number | null;
+    input_image_tokens?: number | null;
+    input_tool_schema_tokens?: number | null;
+    input_json_overhead_tokens?: number | null;
+    input_tool_call_tokens?: number | null;
+    output_tokens?: number | null;
+    output_message_tokens?: number | null;
+    output_reasoning_tokens?: number | null;
+    output_tool_call_tokens?: number | null;
+    total_tokens?: number | null;
+    backend_input_tokens?: number | null;
+    backend_output_tokens?: number | null;
+    backend_total_tokens?: number | null;
+    stream?: boolean | null;
+    translated?: boolean | null;
+    upstream_content_type?: string | null;
+    payload_mode?: string | null;
+    raw_payload?: unknown;
+    display_payload?: unknown;
     payload?: unknown;
 }
 
@@ -99,10 +119,23 @@ export interface TokenDiagnosticsLogsResponse {
 
 export type DiagnosticsEntryRole = "input" | "output" | "other";
 
+export interface DiagnosticsParsedToolCall {
+    key: string;
+    source: "openai" | "anthropic";
+    index?: number | null;
+    callId?: string | null;
+    name?: string | null;
+    type?: string | null;
+    argumentsText: string;
+}
+
 export interface DiagnosticsRequestEntry {
     key: string;
     role: DiagnosticsEntryRole;
     payloadText: string;
+    rawPayloadText?: string | null;
+    copyPayloadText: string;
+    parsedToolCalls: DiagnosticsParsedToolCall[];
     entry: TokenDiagnosticsLogEntry;
 }
 

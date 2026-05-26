@@ -14,6 +14,7 @@ import ModelMarketPage from "./platform/ModelMarketPage";
 import {
     ConsoleSideMenu,
     DiagnosticsEntryRole,
+    DiagnosticsParsedToolCall,
     DiagnosticsRequestEntry,
     DiagnosticsRequestGroup,
     DocsPage,
@@ -160,6 +161,230 @@ const Platform = (props: RouterComponentProps) => {
             return String(payload);
         }
     };
+    const normalizeToolArguments = (value: unknown) => {
+        if (value === null || value === undefined) {
+            return "";
+        }
+        if (typeof value === "string") {
+            return value;
+        }
+        if (Array.isArray(value) && value.length === 0) {
+            return "";
+        }
+        if (
+            typeof value === "object" &&
+            value &&
+            !Array.isArray(value) &&
+            Object.keys(value as Record<string, unknown>).length === 0
+        ) {
+            return "";
+        }
+        try {
+            return JSON.stringify(value);
+        } catch {
+            return String(value);
+        }
+    };
+    const mergeToolArguments = (current: string, incoming: string) => {
+        if (!incoming) {
+            return current;
+        }
+        if (!current) {
+            return incoming;
+        }
+        if (incoming === current) {
+            return current;
+        }
+        if (incoming.startsWith(current)) {
+            return incoming;
+        }
+        if (current.startsWith(incoming)) {
+            return current;
+        }
+        return `${current}${incoming}`;
+    };
+    const parseDiagnosticsSsePayloads = (rawPayload: unknown) => {
+        if (typeof rawPayload !== "string" || !rawPayload.trim()) {
+            return [];
+        }
+        const payloads: Record<string, unknown>[] = [];
+        for (const eventBlock of rawPayload.split(/\n\n+/)) {
+            const trimmedBlock = eventBlock.trim();
+            if (!trimmedBlock) {
+                continue;
+            }
+            const dataLines = trimmedBlock
+                .split("\n")
+                .map((line) => line.trim())
+                .filter((line) => line.startsWith("data:"))
+                .map((line) => line.slice(5).trim());
+            if (dataLines.length === 0) {
+                continue;
+            }
+            const payloadText = dataLines.join("\n").trim();
+            if (!payloadText || payloadText === "[DONE]") {
+                continue;
+            }
+            try {
+                const parsed = JSON.parse(payloadText);
+                if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+                    payloads.push(parsed as Record<string, unknown>);
+                }
+            } catch {
+                continue;
+            }
+        }
+        return payloads;
+    };
+    const parseDiagnosticsToolCalls = (rawPayload: unknown): DiagnosticsParsedToolCall[] => {
+        const payloads = parseDiagnosticsSsePayloads(rawPayload);
+        const calls = new Map<
+            string,
+            {
+                key: string;
+                source: "openai" | "anthropic";
+                index?: number | null;
+                callId?: string | null;
+                name?: string | null;
+                type?: string | null;
+                argumentsText: string;
+            }
+        >();
+        const upsertCall = (
+            key: string,
+            source: "openai" | "anthropic",
+            patch: Partial<DiagnosticsParsedToolCall> & { argumentsText?: string },
+        ) => {
+            const current = calls.get(key) ?? {
+                key,
+                source,
+                index: null,
+                callId: null,
+                name: null,
+                type: null,
+                argumentsText: "",
+            };
+            current.source = source;
+            if (patch.index !== undefined) {
+                current.index = patch.index ?? null;
+            }
+            if (patch.callId !== undefined) {
+                current.callId = patch.callId ?? null;
+            }
+            if (patch.name !== undefined) {
+                current.name = patch.name ?? null;
+            }
+            if (patch.type !== undefined) {
+                current.type = patch.type ?? null;
+            }
+            if (patch.argumentsText) {
+                current.argumentsText = mergeToolArguments(current.argumentsText, patch.argumentsText);
+            }
+            calls.set(key, current);
+        };
+        const collectOpenAiToolCall = (toolCall: unknown, fallbackKey: string) => {
+            if (!toolCall || typeof toolCall !== "object") {
+                return;
+            }
+            const tool = toolCall as Record<string, unknown>;
+            const index = typeof tool.index === "number" ? tool.index : null;
+            const callId = typeof tool.id === "string" && tool.id ? tool.id : null;
+            const functionPayload =
+                tool.function && typeof tool.function === "object"
+                    ? (tool.function as Record<string, unknown>)
+                    : null;
+            const key = callId || (index !== null ? `openai:${index}` : fallbackKey);
+            upsertCall(key, "openai", {
+                index,
+                callId,
+                type: typeof tool.type === "string" ? tool.type : "function",
+                name: typeof functionPayload?.name === "string" ? functionPayload.name : null,
+                argumentsText: normalizeToolArguments(functionPayload?.arguments ?? tool.arguments),
+            });
+        };
+        const collectOpenAiFunctionCall = (functionCall: unknown, fallbackKey: string) => {
+            if (!functionCall || typeof functionCall !== "object") {
+                return;
+            }
+            const functionPayload = functionCall as Record<string, unknown>;
+            upsertCall(fallbackKey, "openai", {
+                type: "function",
+                name: typeof functionPayload.name === "string" ? functionPayload.name : null,
+                argumentsText: normalizeToolArguments(functionPayload.arguments),
+            });
+        };
+
+        payloads.forEach((payload, payloadIndex) => {
+            const choices = Array.isArray(payload.choices) ? payload.choices : [];
+            choices.forEach((choice, choiceIndex) => {
+                if (!choice || typeof choice !== "object") {
+                    return;
+                }
+                const choicePayload = choice as Record<string, unknown>;
+                const containers = [choicePayload, choicePayload.delta, choicePayload.message];
+                containers.forEach((container, containerIndex) => {
+                    if (!container || typeof container !== "object") {
+                        return;
+                    }
+                    const objectContainer = container as Record<string, unknown>;
+                    const toolCalls = Array.isArray(objectContainer.tool_calls) ? objectContainer.tool_calls : [];
+                    toolCalls.forEach((toolCall, toolIndex) =>
+                        collectOpenAiToolCall(
+                            toolCall,
+                            `openai:${payloadIndex}:${choiceIndex}:${containerIndex}:${toolIndex}`,
+                        ),
+                    );
+                    if (objectContainer.function_call) {
+                        collectOpenAiFunctionCall(
+                            objectContainer.function_call,
+                            `openai:function:${payloadIndex}:${choiceIndex}:${containerIndex}`,
+                        );
+                    }
+                });
+            });
+
+            const payloadType = typeof payload.type === "string" ? payload.type : "";
+            const eventIndex = typeof payload.index === "number" ? payload.index : null;
+            if (payloadType === "content_block_start") {
+                const contentBlock =
+                    payload.content_block && typeof payload.content_block === "object"
+                        ? (payload.content_block as Record<string, unknown>)
+                        : null;
+                if (contentBlock?.type === "tool_use") {
+                    const key =
+                        (typeof contentBlock.id === "string" && contentBlock.id) ||
+                        (eventIndex !== null ? `anthropic:${eventIndex}` : `anthropic:start:${payloadIndex}`);
+                    upsertCall(key, "anthropic", {
+                        index: eventIndex,
+                        callId: typeof contentBlock.id === "string" ? contentBlock.id : null,
+                        type: "tool_use",
+                        name: typeof contentBlock.name === "string" ? contentBlock.name : null,
+                        argumentsText: normalizeToolArguments(contentBlock.input),
+                    });
+                }
+            }
+            if (payloadType === "content_block_delta") {
+                const delta =
+                    payload.delta && typeof payload.delta === "object"
+                        ? (payload.delta as Record<string, unknown>)
+                        : null;
+                if (delta?.type === "input_json_delta") {
+                    const key = eventIndex !== null ? `anthropic:${eventIndex}` : `anthropic:delta:${payloadIndex}`;
+                    upsertCall(key, "anthropic", {
+                        index: eventIndex,
+                        type: "tool_use",
+                        argumentsText:
+                            typeof delta.partial_json === "string" ? delta.partial_json : "",
+                    });
+                }
+            }
+        });
+
+        return Array.from(calls.values()).map((toolCall) => ({
+            ...toolCall,
+            argumentsText: formatDiagnosticsPayload(toolCall.argumentsText),
+        }));
+    };
     const getDiagnosticsEntryRole = (event: string): DiagnosticsEntryRole => {
         const normalized = event.trim().toLowerCase();
         if (
@@ -250,10 +475,25 @@ const Platform = (props: RouterComponentProps) => {
 
         for (const [index, entry] of (diagnosticsLogs?.entries ?? []).entries()) {
             const gatewayRequestId = entry.gateway_request_id?.trim() || null;
+            const rawPayloadSource =
+                entry.raw_payload ??
+                (entry.payload_mode === "raw_sse" && entry.payload !== undefined ? entry.payload : null);
+            const parsedToolCalls = parseDiagnosticsToolCalls(rawPayloadSource);
+            const displayPayloadSource =
+                entry.display_payload ??
+                (entry.payload_mode === "raw_sse" && parsedToolCalls.length > 0 ? null : entry.payload);
+            const payloadText = formatDiagnosticsPayload(displayPayloadSource);
+            const rawPayloadText =
+                rawPayloadSource === null || rawPayloadSource === undefined
+                    ? null
+                    : formatDiagnosticsPayload(rawPayloadSource);
             const item: DiagnosticsRequestEntry = {
                 key: `${entry.timestamp}-${entry.event}-${gatewayRequestId ?? entry.request_id ?? index}`,
                 role: getDiagnosticsEntryRole(entry.event),
-                payloadText: formatDiagnosticsPayload(entry.payload),
+                payloadText,
+                rawPayloadText,
+                copyPayloadText: payloadText || rawPayloadText || "",
+                parsedToolCalls,
                 entry,
             };
 

@@ -1,6 +1,8 @@
 import {
+    DiagnosticsParsedToolCall,
     DiagnosticsRequestGroup,
     GatewayUserTokenInfo,
+    TokenDiagnosticsLogEntry,
     TokenDiagnosticsLogsResponse,
 } from "./types";
 
@@ -26,6 +28,125 @@ interface DiagnosticsPageProps {
     formatDateTime: (value?: string | null) => string;
     handleCopyDiagnosticsPayload: (key: string, payload: string) => void;
 }
+
+type TokenStatItem = {
+    label: string;
+    value: number;
+};
+
+const hasTokenValue = (value?: number | null): value is number =>
+    typeof value === "number" && Number.isFinite(value);
+
+const formatTokenValue = (value: number) => value.toLocaleString();
+
+const resolveGroupTokenValue = (
+    group: DiagnosticsRequestGroup,
+    fieldName: "input_tokens" | "output_tokens",
+    preferredRole: "input" | "output",
+) => {
+    const preferredEntry = group.entries.find(
+        (item) => item.role === preferredRole && hasTokenValue(item.entry[fieldName]),
+    );
+    if (preferredEntry) {
+        return preferredEntry.entry[fieldName] as number;
+    }
+    const fallbackEntry = group.entries.find((item) => hasTokenValue(item.entry[fieldName]));
+    return fallbackEntry ? (fallbackEntry.entry[fieldName] as number) : null;
+};
+
+const buildTokenStats = (
+    entry: TokenDiagnosticsLogEntry,
+    items: Array<[label: string, value: number | null | undefined]>,
+) =>
+    items.reduce<TokenStatItem[]>((result, [label, value]) => {
+        if (hasTokenValue(value)) {
+            result.push({ label, value });
+        }
+        return result;
+    }, []);
+
+const getEntryTokenStats = (entry: TokenDiagnosticsLogEntry) => ({
+    summaryStats: buildTokenStats(entry, [
+        ["输入", entry.input_tokens],
+        ["输出", entry.output_tokens],
+        ["总计", entry.total_tokens],
+    ]),
+    inputStats: buildTokenStats(entry, [
+        ["消息", entry.input_message_tokens],
+        ["图片", entry.input_image_tokens],
+        ["工具 Schema", entry.input_tool_schema_tokens],
+        ["JSON 开销", entry.input_json_overhead_tokens],
+        ["工具调用", entry.input_tool_call_tokens],
+    ]),
+    outputStats: buildTokenStats(entry, [
+        ["消息", entry.output_message_tokens],
+        ["Reasoning", entry.output_reasoning_tokens],
+        ["工具调用", entry.output_tool_call_tokens],
+    ]),
+    backendStats: buildTokenStats(entry, [
+        ["输入", entry.backend_input_tokens],
+        ["输出", entry.backend_output_tokens],
+        ["总计", entry.backend_total_tokens],
+    ]),
+});
+
+const renderTokenChips = (stats: TokenStatItem[], tone: "slate" | "emerald" | "sky" | "amber" = "slate") => {
+    if (stats.length === 0) {
+        return null;
+    }
+
+    const toneClassName = {
+        slate: "border-slate-200 bg-white text-slate-700",
+        emerald: "border-emerald-200 bg-emerald-50 text-emerald-700",
+        sky: "border-sky-200 bg-sky-50 text-sky-700",
+        amber: "border-amber-200 bg-amber-50 text-amber-700",
+    }[tone];
+
+    return (
+        <div className="flex flex-wrap gap-2">
+            {stats.map((stat) => (
+                <span
+                    key={stat.label}
+                    className={`rounded-full border px-2.5 py-1 text-[11px] font-medium ${toneClassName}`}
+                >
+                    {stat.label} {formatTokenValue(stat.value)}
+                </span>
+            ))}
+        </div>
+    );
+};
+
+const renderToolCallCards = (toolCalls: DiagnosticsParsedToolCall[]) => {
+    if (toolCalls.length === 0) {
+        return null;
+    }
+
+    return (
+        <div className="space-y-3">
+            {toolCalls.map((toolCall) => (
+                <div
+                    key={toolCall.key}
+                    className="rounded-xl border border-violet-200 bg-violet-50/70 px-4 py-3"
+                >
+                    <div className="flex flex-wrap items-center gap-2 text-[11px] text-violet-700">
+                        <span className="rounded-full border border-violet-200 bg-white px-2 py-0.5 font-semibold">
+                            Tool Use
+                        </span>
+                        {toolCall.name && <span className="font-medium text-violet-900">{toolCall.name}</span>}
+                        {toolCall.callId && <span>ID {toolCall.callId}</span>}
+                        {typeof toolCall.index === "number" && <span>Index {toolCall.index}</span>}
+                        <span>{toolCall.source === "anthropic" ? "Anthropic SSE" : "OpenAI SSE"}</span>
+                    </div>
+                    {toolCall.argumentsText && (
+                        <pre className="mt-3 max-h-[260px] overflow-auto whitespace-pre-wrap break-all rounded-lg bg-white px-3 py-3 text-xs leading-6 text-slate-700">
+                            {toolCall.argumentsText}
+                        </pre>
+                    )}
+                </div>
+            ))}
+        </div>
+    );
+};
 
 const DiagnosticsPage = ({
     apiKeyLoading,
@@ -143,6 +264,8 @@ const DiagnosticsPage = ({
                         <div className="space-y-3">
                             {groupedDiagnosticsLogs.map((group) => {
                                 const isExpanded = Boolean(expandedDiagnosticsGroups[group.key]);
+                                const groupInputTokens = resolveGroupTokenValue(group, "input_tokens", "input");
+                                const groupOutputTokens = resolveGroupTokenValue(group, "output_tokens", "output");
                                 const inputEntries = group.entries.filter((item) => item.role === "input");
                                 const outputEntries = group.entries.filter((item) => item.role === "output");
                                 const otherEntries = group.entries.filter((item) => item.role === "other");
@@ -181,6 +304,13 @@ const DiagnosticsPage = ({
                                                 {typeof group.summary.status === "number" && (
                                                     <span>状态 {group.summary.status}</span>
                                                 )}
+                                                {(hasTokenValue(groupInputTokens) || hasTokenValue(groupOutputTokens)) && (
+                                                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 font-medium text-slate-700">
+                                                        输入 {hasTokenValue(groupInputTokens) ? formatTokenValue(groupInputTokens) : "-"}
+                                                        {" · "}
+                                                        输出 {hasTokenValue(groupOutputTokens) ? formatTokenValue(groupOutputTokens) : "-"}
+                                                    </span>
+                                                )}
                                                 <span>{group.entries.length} 条日志</span>
                                             </div>
                                             <span className="text-xs font-medium text-slate-600">
@@ -198,7 +328,15 @@ const DiagnosticsPage = ({
                                                             {section.title}
                                                         </div>
                                                         <div className="divide-y divide-slate-200">
-                                                            {section.items.map((item) => (
+                                                            {section.items.map((item) => {
+                                                                const { summaryStats, inputStats, outputStats, backendStats } =
+                                                                    getEntryTokenStats(item.entry);
+                                                                const hasTokenStats =
+                                                                    summaryStats.length > 0 ||
+                                                                    inputStats.length > 0 ||
+                                                                    outputStats.length > 0 ||
+                                                                    backendStats.length > 0;
+                                                                return (
                                                                 <div key={item.key}>
                                                                     <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-xs text-slate-500">
                                                                         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -216,28 +354,90 @@ const DiagnosticsPage = ({
                                                                             {item.entry.request_id && (
                                                                                 <span>请求 {item.entry.request_id}</span>
                                                                             )}
+                                                                            {item.entry.payload_mode && (
+                                                                                <span>{item.entry.payload_mode}</span>
+                                                                            )}
+                                                                            {item.entry.upstream_content_type && (
+                                                                                <span>{item.entry.upstream_content_type}</span>
+                                                                            )}
                                                                         </div>
-                                                                        <button
-                                                                            type="button"
-                                                                            className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-600 transition hover:border-slate-300 hover:text-slate-800"
-                                                                            onClick={(event) => {
-                                                                                event.stopPropagation();
-                                                                                handleCopyDiagnosticsPayload(
-                                                                                    item.key,
-                                                                                    item.payloadText,
-                                                                                );
-                                                                            }}
-                                                                        >
-                                                                            {copiedDiagnosticsPayload === item.key
-                                                                                ? "已复制"
-                                                                                : "复制"}
-                                                                        </button>
+                                                                        {item.copyPayloadText && (
+                                                                            <button
+                                                                                type="button"
+                                                                                className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-600 transition hover:border-slate-300 hover:text-slate-800"
+                                                                                onClick={(event) => {
+                                                                                    event.stopPropagation();
+                                                                                    handleCopyDiagnosticsPayload(
+                                                                                        item.key,
+                                                                                        item.copyPayloadText,
+                                                                                    );
+                                                                                }}
+                                                                            >
+                                                                                {copiedDiagnosticsPayload === item.key
+                                                                                    ? "已复制"
+                                                                                    : "复制"}
+                                                                            </button>
+                                                                        )}
                                                                     </div>
-                                                                    <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap break-all px-4 py-4 text-xs leading-6 text-slate-700">
-                                                                        {item.payloadText}
-                                                                    </pre>
+                                                                    {hasTokenStats && (
+                                                                        <div className="border-t border-slate-200 bg-white/70 px-4 py-3">
+                                                                            <div className="flex flex-col gap-2">
+                                                                                {renderTokenChips(summaryStats)}
+                                                                                {inputStats.length > 0 && (
+                                                                                    <div className="flex flex-wrap items-center gap-2">
+                                                                                        <span className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                                                                                            输入明细
+                                                                                        </span>
+                                                                                        {renderTokenChips(inputStats, "emerald")}
+                                                                                    </div>
+                                                                                )}
+                                                                                {outputStats.length > 0 && (
+                                                                                    <div className="flex flex-wrap items-center gap-2">
+                                                                                        <span className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                                                                                            输出明细
+                                                                                        </span>
+                                                                                        {renderTokenChips(outputStats, "sky")}
+                                                                                    </div>
+                                                                                )}
+                                                                                {backendStats.length > 0 && (
+                                                                                    <div className="flex flex-wrap items-center gap-2">
+                                                                                        <span className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                                                                                            后端上报
+                                                                                        </span>
+                                                                                        {renderTokenChips(backendStats, "amber")}
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                    {(item.parsedToolCalls.length > 0 ||
+                                                                        item.payloadText ||
+                                                                        (item.rawPayloadText &&
+                                                                            item.rawPayloadText !== item.payloadText)) && (
+                                                                        <div className="space-y-3 border-t border-slate-200 bg-slate-50/50 px-4 py-4">
+                                                                            {renderToolCallCards(item.parsedToolCalls)}
+                                                                            {item.payloadText && (
+                                                                                <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap break-all rounded-xl bg-white px-4 py-4 text-xs leading-6 text-slate-700">
+                                                                                    {item.payloadText}
+                                                                                </pre>
+                                                                            )}
+                                                                            {item.rawPayloadText &&
+                                                                                item.rawPayloadText !== item.payloadText && (
+                                                                                    <details className="rounded-xl border border-slate-200 bg-white">
+                                                                                        <summary className="cursor-pointer px-4 py-3 text-xs font-medium text-slate-600">
+                                                                                            查看原始 SSE
+                                                                                        </summary>
+                                                                                        <div className="border-t border-slate-200 px-4 py-4">
+                                                                                            <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap break-all text-xs leading-6 text-slate-700">
+                                                                                                {item.rawPayloadText}
+                                                                                            </pre>
+                                                                                        </div>
+                                                                                    </details>
+                                                                                )}
+                                                                        </div>
+                                                                    )}
                                                                 </div>
-                                                            ))}
+                                                            )})}
                                                         </div>
                                                     </div>
                                                 ))}
