@@ -3,7 +3,7 @@ import { getRandomArr } from "../helpers/getRandomArr";
 import { useEffect, useState } from "react";
 import { globalConfig } from "../config/global";
 import { RouterComponentProps } from "../config/router";
-import { setTextAreaHeight } from "../helpers/setTextAreaHeight";
+import { fillTextAreaValue } from "../helpers/fillTextAreaValue";
 import regulationIcon from "../assets/icons/zhidu_logo.svg";
 import { normalizeAssetPath } from "../helpers/normalizeAssetPath";
 
@@ -17,9 +17,7 @@ const Home = (props: RouterComponentProps) => {
     const [randomSamples, setRandomSamples] = useState<string[]>([]);
 
     const handleSelectSample = async (message: string) => {
-        textAreaRef.focus();
-        textAreaRef.value = message;
-        setTextAreaHeight(textAreaRef);
+        fillTextAreaValue(textAreaRef, message);
     };
 
     useEffect(() => {

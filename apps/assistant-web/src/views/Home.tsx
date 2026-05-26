@@ -2,7 +2,7 @@ import { Landing } from "../components/Landing";
 import { useEffect, useState } from "react";
 import { globalConfig } from "../config/global";
 import { RouterComponentProps } from "../config/router";
-import { setTextAreaHeight } from "../helpers/setTextAreaHeight";
+import { fillTextAreaValue } from "../helpers/fillTextAreaValue";
 import { useTranslation } from "react-i18next";
 
 const Home = (props: RouterComponentProps) => {
@@ -14,9 +14,7 @@ const Home = (props: RouterComponentProps) => {
     const [randomSamples] = useState<string[]>([]);
 
     const handleSelectSample = async (message: string) => {
-        textAreaRef.focus();
-        textAreaRef.value = message;
-        setTextAreaHeight(textAreaRef);
+        fillTextAreaValue(textAreaRef, message);
     };
 
     useEffect(() => {
