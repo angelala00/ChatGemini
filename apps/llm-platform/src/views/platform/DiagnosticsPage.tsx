@@ -54,6 +54,41 @@ const resolveGroupTokenValue = (
     return fallbackEntry ? (fallbackEntry.entry[fieldName] as number) : null;
 };
 
+const TOKEN_STAT_FIELDS: Array<keyof TokenDiagnosticsLogEntry> = [
+    "input_tokens",
+    "input_message_tokens",
+    "input_image_tokens",
+    "input_tool_schema_tokens",
+    "input_json_overhead_tokens",
+    "input_tool_call_tokens",
+    "output_tokens",
+    "output_message_tokens",
+    "output_reasoning_tokens",
+    "output_tool_call_tokens",
+    "total_tokens",
+    "backend_input_tokens",
+    "backend_output_tokens",
+    "backend_total_tokens",
+];
+
+const resolveGroupTokenEntry = (group: DiagnosticsRequestGroup) => {
+    let bestEntry: TokenDiagnosticsLogEntry | null = null;
+    let bestScore = 0;
+
+    for (const item of group.entries) {
+        const score = TOKEN_STAT_FIELDS.reduce(
+            (count, fieldName) => count + (hasTokenValue(item.entry[fieldName]) ? 1 : 0),
+            0,
+        );
+        if (score > bestScore) {
+            bestEntry = item.entry;
+            bestScore = score;
+        }
+    }
+
+    return bestEntry;
+};
+
 const buildTokenStats = (
     entry: TokenDiagnosticsLogEntry,
     items: Array<[label: string, value: number | null | undefined]>,
@@ -145,6 +180,18 @@ const renderToolCallCards = (toolCalls: DiagnosticsParsedToolCall[]) => {
                 </div>
             ))}
         </div>
+    );
+};
+
+const resolveSectionDisplayItem = (group: DiagnosticsRequestGroup, sectionKey: "input" | "output" | "other") => {
+    const sectionItems = group.entries.filter((item) => item.role === sectionKey);
+    return (
+        sectionItems.find(
+            (item) =>
+                item.parsedToolCalls.length > 0 ||
+                Boolean(item.payloadText) ||
+                Boolean(item.rawPayloadText),
+        ) ?? null
     );
 };
 
@@ -266,9 +313,14 @@ const DiagnosticsPage = ({
                                 const isExpanded = Boolean(expandedDiagnosticsGroups[group.key]);
                                 const groupInputTokens = resolveGroupTokenValue(group, "input_tokens", "input");
                                 const groupOutputTokens = resolveGroupTokenValue(group, "output_tokens", "output");
+                                const groupTokenEntry = resolveGroupTokenEntry(group);
+                                const groupTokenStats = groupTokenEntry
+                                    ? getEntryTokenStats(groupTokenEntry)
+                                    : null;
                                 const inputEntries = group.entries.filter((item) => item.role === "input");
                                 const outputEntries = group.entries.filter((item) => item.role === "output");
                                 const otherEntries = group.entries.filter((item) => item.role === "other");
+                                const outputDisplayItem = resolveSectionDisplayItem(group, "output");
                                 const sections = [
                                     { key: "input", title: "输入", items: inputEntries },
                                     { key: "output", title: "输出", items: outputEntries },
@@ -279,16 +331,7 @@ const DiagnosticsPage = ({
                                         key={group.key}
                                         className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50"
                                     >
-                                        <button
-                                            type="button"
-                                            className="flex w-full flex-wrap items-center justify-between gap-3 bg-white px-4 py-3 text-left transition hover:bg-slate-50"
-                                            onClick={() =>
-                                                setExpandedDiagnosticsGroups((prev) => ({
-                                                    ...prev,
-                                                    [group.key]: !prev[group.key],
-                                                }))
-                                            }
-                                        >
+                                        <div className="flex w-full flex-wrap items-center justify-between gap-3 bg-white px-4 py-3 text-left">
                                             <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-500">
                                                 <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 font-medium text-slate-700">
                                                     请求
@@ -313,12 +356,56 @@ const DiagnosticsPage = ({
                                                 )}
                                                 <span>{group.entries.length} 条日志</span>
                                             </div>
-                                            <span className="text-xs font-medium text-slate-600">
+                                            <button
+                                                type="button"
+                                                aria-expanded={isExpanded}
+                                                className="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800"
+                                                onClick={() =>
+                                                    setExpandedDiagnosticsGroups((prev) => ({
+                                                        ...prev,
+                                                        [group.key]: !prev[group.key],
+                                                    }))
+                                                }
+                                            >
                                                 {isExpanded ? "收起" : "展开"}
-                                            </span>
-                                        </button>
+                                            </button>
+                                        </div>
                                         {isExpanded && (
                                             <div className="border-t border-slate-200 bg-slate-50">
+                                                {groupTokenStats && (
+                                                    <div className="border-b border-slate-200 bg-white/80 px-4 py-4">
+                                                        <div className="flex flex-col gap-3">
+                                                            <div className="text-xs font-medium tracking-wide text-slate-500">
+                                                                Token 概览
+                                                            </div>
+                                                            {renderTokenChips(groupTokenStats.summaryStats)}
+                                                            {groupTokenStats.inputStats.length > 0 && (
+                                                                <div className="flex flex-wrap items-center gap-2">
+                                                                    <span className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                                                                        输入明细
+                                                                    </span>
+                                                                    {renderTokenChips(groupTokenStats.inputStats, "emerald")}
+                                                                </div>
+                                                            )}
+                                                            {groupTokenStats.outputStats.length > 0 && (
+                                                                <div className="flex flex-wrap items-center gap-2">
+                                                                    <span className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                                                                        输出明细
+                                                                    </span>
+                                                                    {renderTokenChips(groupTokenStats.outputStats, "sky")}
+                                                                </div>
+                                                            )}
+                                                            {groupTokenStats.backendStats.length > 0 && (
+                                                                <div className="flex flex-wrap items-center gap-2">
+                                                                    <span className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                                                                        后端上报
+                                                                    </span>
+                                                                    {renderTokenChips(groupTokenStats.backendStats, "amber")}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )}
                                                 {sections.map((section) => (
                                                     <div
                                                         key={section.key}
@@ -327,15 +414,37 @@ const DiagnosticsPage = ({
                                                         <div className="bg-slate-100 px-4 py-2 text-xs font-medium tracking-wide text-slate-600">
                                                             {section.title}
                                                         </div>
+                                                        {section.key === "output" && outputDisplayItem && (
+                                                            <div className="space-y-3 border-b border-slate-200 bg-slate-50/50 px-4 py-4">
+                                                                {renderToolCallCards(outputDisplayItem.parsedToolCalls)}
+                                                                {outputDisplayItem.payloadText && (
+                                                                    <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap break-all rounded-xl bg-white px-4 py-4 text-xs leading-6 text-slate-700">
+                                                                        {outputDisplayItem.payloadText}
+                                                                    </pre>
+                                                                )}
+                                                                {outputDisplayItem.rawPayloadText && (
+                                                                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
+                                                                        <div className="text-xs text-slate-500">
+                                                                            需要排查流式分片或事件顺序时，可查看原始 SSE。
+                                                                        </div>
+                                                                        <details className="group">
+                                                                            <summary className="cursor-pointer rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800">
+                                                                                查看原始 SSE
+                                                                            </summary>
+                                                                            <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                                                                                <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap break-all text-xs leading-6 text-slate-700">
+                                                                                    {outputDisplayItem.rawPayloadText}
+                                                                                </pre>
+                                                                            </div>
+                                                                        </details>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
                                                         <div className="divide-y divide-slate-200">
                                                             {section.items.map((item) => {
-                                                                const { summaryStats, inputStats, outputStats, backendStats } =
-                                                                    getEntryTokenStats(item.entry);
-                                                                const hasTokenStats =
-                                                                    summaryStats.length > 0 ||
-                                                                    inputStats.length > 0 ||
-                                                                    outputStats.length > 0 ||
-                                                                    backendStats.length > 0;
+                                                                const showInlinePayload =
+                                                                    section.key !== "output" || item.key !== outputDisplayItem?.key;
                                                                 return (
                                                                 <div key={item.key}>
                                                                     <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-xs text-slate-500">
@@ -379,41 +488,10 @@ const DiagnosticsPage = ({
                                                                             </button>
                                                                         )}
                                                                     </div>
-                                                                    {hasTokenStats && (
-                                                                        <div className="border-t border-slate-200 bg-white/70 px-4 py-3">
-                                                                            <div className="flex flex-col gap-2">
-                                                                                {renderTokenChips(summaryStats)}
-                                                                                {inputStats.length > 0 && (
-                                                                                    <div className="flex flex-wrap items-center gap-2">
-                                                                                        <span className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
-                                                                                            输入明细
-                                                                                        </span>
-                                                                                        {renderTokenChips(inputStats, "emerald")}
-                                                                                    </div>
-                                                                                )}
-                                                                                {outputStats.length > 0 && (
-                                                                                    <div className="flex flex-wrap items-center gap-2">
-                                                                                        <span className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
-                                                                                            输出明细
-                                                                                        </span>
-                                                                                        {renderTokenChips(outputStats, "sky")}
-                                                                                    </div>
-                                                                                )}
-                                                                                {backendStats.length > 0 && (
-                                                                                    <div className="flex flex-wrap items-center gap-2">
-                                                                                        <span className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
-                                                                                            后端上报
-                                                                                        </span>
-                                                                                        {renderTokenChips(backendStats, "amber")}
-                                                                                    </div>
-                                                                                )}
-                                                                            </div>
-                                                                        </div>
-                                                                    )}
-                                                                    {(item.parsedToolCalls.length > 0 ||
-                                                                        item.payloadText ||
-                                                                        (item.rawPayloadText &&
-                                                                            item.rawPayloadText !== item.payloadText)) && (
+                                                                    {showInlinePayload &&
+                                                                        (item.parsedToolCalls.length > 0 ||
+                                                                            item.payloadText ||
+                                                                            item.rawPayloadText) && (
                                                                         <div className="space-y-3 border-t border-slate-200 bg-slate-50/50 px-4 py-4">
                                                                             {renderToolCallCards(item.parsedToolCalls)}
                                                                             {item.payloadText && (
@@ -421,8 +499,7 @@ const DiagnosticsPage = ({
                                                                                     {item.payloadText}
                                                                                 </pre>
                                                                             )}
-                                                                            {item.rawPayloadText &&
-                                                                                item.rawPayloadText !== item.payloadText && (
+                                                                            {item.rawPayloadText && (
                                                                                     <details className="rounded-xl border border-slate-200 bg-white">
                                                                                         <summary className="cursor-pointer px-4 py-3 text-xs font-medium text-slate-600">
                                                                                             查看原始 SSE
