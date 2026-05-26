@@ -1,4 +1,5 @@
 import { Component, ErrorInfo, ReactNode } from "react";
+import { reportRuntimeEvent } from "../helpers/runtimeTelemetry";
 
 interface RouteErrorBoundaryProps {
     readonly children: ReactNode;
@@ -20,6 +21,11 @@ export class RouteErrorBoundary extends Component<
 
     componentDidCatch(error: Error, errorInfo: ErrorInfo) {
         console.error("Route render failed:", error, errorInfo);
+        reportRuntimeEvent("react_render_error", {
+            message: error.message,
+            stack: error.stack,
+            componentStack: errorInfo.componentStack,
+        });
     }
 
     render() {

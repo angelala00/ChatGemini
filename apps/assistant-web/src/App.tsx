@@ -27,6 +27,11 @@ import { setUserLocale } from "./helpers/setUserLocale";
 import { useTranslation } from "react-i18next";
 import { getCurrentLocale } from "./helpers/getCurrentLocale";
 import { getFullPath } from "./helpers/getDomainAndPath";
+import {
+    initRuntimeTelemetry,
+    reportRuntimeEvent,
+    updateRuntimeTelemetryContext,
+} from "./helpers/runtimeTelemetry";
 import { ModelOption, UploadCategory } from "./types/models";
 import { resolveAttachmentViewItems } from "./helpers/getAttachmentViewItems";
 import { buildAttachmentPostscriptHtml } from "./helpers/buildAttachmentPostscriptHtml";
@@ -115,6 +120,7 @@ const App = () => {
     );
     const mainSectionRef = useRef<HTMLDivElement>(null);
     const textAreaRef = useRef<HTMLTextAreaElement>(null);
+    const previousBusyRef = useRef<boolean | null>(null);
 
     const [abortFn, setAbortFn] = useState<() => void>(() => () => {});
     const [currentLocale, setCurrentLocale] = useState(fallback);
@@ -172,6 +178,29 @@ const App = () => {
         gptsFeatureAllowed ||
         isRequiredPinnedGpt ||
         isPinnedGpt;
+    const activeSessionHistory = id && id in sessions ? sessions[id] : [];
+    const activeConversationId =
+        (id && sessionExtensions[id]?.conversationId) ||
+        (id && mappings[id]) ||
+        "";
+    const activeMessageCount = activeSessionHistory.length;
+    const activeLastResponseLength = [...activeSessionHistory]
+        .reverse()
+        .find((item) => item?.role === "model")
+        ?.parts?.length ?? 0;
+    const activeAttachmentCount = activeSessionHistory.reduce((count, item) => {
+        const rawIds = item?.attachment?.data;
+        if (typeof rawIds !== "string" || !rawIds.trim().length) {
+            return count;
+        }
+        return (
+            count +
+            rawIds
+                .split(",")
+                .map((value) => value.trim())
+                .filter(Boolean).length
+        );
+    }, 0);
 
 
     const handleExportSession = async (id: string) => {
@@ -578,6 +607,79 @@ const App = () => {
                 setVoiceLabAllowed(false);
             });
     }, [hasLogined]);
+
+    useEffect(() => {
+        initRuntimeTelemetry({
+            route: location.pathname,
+            page: location.pathname,
+            gid,
+            chatSessionId: id || "",
+            conversationId: activeConversationId,
+            messageCount: activeMessageCount,
+            lastResponseLength: activeLastResponseLength,
+            attachmentCount: activeAttachmentCount,
+            busy: ai.busy,
+            selectedModel:
+                selectedModel ||
+                sessionExtensions[id || ""]?.selectedModel ||
+                "",
+        });
+    }, []);
+
+    useEffect(() => {
+        updateRuntimeTelemetryContext({
+            route: location.pathname,
+            page: location.pathname,
+            gid,
+            chatSessionId: id || "",
+            conversationId: activeConversationId,
+            messageCount: activeMessageCount,
+            lastResponseLength: activeLastResponseLength,
+            attachmentCount: activeAttachmentCount,
+            busy: ai.busy,
+            selectedModel:
+                selectedModel ||
+                sessionExtensions[id || ""]?.selectedModel ||
+                "",
+        });
+    }, [
+        activeAttachmentCount,
+        activeConversationId,
+        activeLastResponseLength,
+        activeMessageCount,
+        ai.busy,
+        gid,
+        id,
+        location.pathname,
+        selectedModel,
+        sessionExtensions,
+    ]);
+
+    useEffect(() => {
+        if (previousBusyRef.current === null) {
+            previousBusyRef.current = ai.busy;
+            return;
+        }
+        if (previousBusyRef.current !== ai.busy) {
+            reportRuntimeEvent(ai.busy ? "chat_stream_start" : "chat_stream_end", {
+                gid,
+                chatSessionId: id || "",
+                conversationId: activeConversationId,
+                messageCount: activeMessageCount,
+                lastResponseLength: activeLastResponseLength,
+                attachmentCount: activeAttachmentCount,
+            });
+            previousBusyRef.current = ai.busy;
+        }
+    }, [
+        activeAttachmentCount,
+        activeConversationId,
+        activeLastResponseLength,
+        activeMessageCount,
+        ai.busy,
+        gid,
+        id,
+    ]);
 
     useEffect(() => {
         if (

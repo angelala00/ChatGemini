@@ -43,6 +43,7 @@ class DashboardPayload(BaseModel):
     modelLeaderboard: List[LeaderboardEntry]
     requestedModelLeaderboard: List[LeaderboardEntry]
     alerts: List[LeaderboardEntry]
+    runtimeSummary: dict = Field(default_factory=dict)
 
     class Config:
         json_encoders = {

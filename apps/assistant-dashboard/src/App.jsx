@@ -124,6 +124,216 @@ function ListCard({ title, items, limit, scrollHeight }) {
   );
 }
 
+function RuntimeMetricCard({ title, value, hint }) {
+  return (
+    <article className="rounded-2xl border border-slate-800/60 bg-slate-900/60 p-5 shadow-[0_20px_45px_-30px_rgba(15,23,42,1)] backdrop-blur">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">
+        {title}
+      </p>
+      <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-50">{value}</p>
+      {hint ? <p className="mt-2 text-sm text-slate-400">{hint}</p> : null}
+    </article>
+  );
+}
+
+function RuntimeAlertBadge({ level }) {
+  const classes = {
+    high: "border-rose-400/40 bg-rose-500/15 text-rose-200",
+    medium: "border-amber-400/40 bg-amber-500/15 text-amber-100",
+    low: "border-emerald-400/30 bg-emerald-500/10 text-emerald-100"
+  };
+
+  return (
+    <span
+      className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${
+        classes[level] ?? classes.low
+      }`}
+    >
+      {level ?? "low"}
+    </span>
+  );
+}
+
+function RuntimeAlertSection({ alerts }) {
+  if (!Array.isArray(alerts) || alerts.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="grid gap-3 xl:grid-cols-2">
+      {alerts.map((alert, index) => (
+        <article
+          key={`${alert.title}-${index}`}
+          className="rounded-2xl border border-slate-800/60 bg-slate-900/60 p-5 shadow-[0_20px_45px_-30px_rgba(15,23,42,1)] backdrop-blur"
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-base font-semibold text-slate-100">{alert.title}</p>
+              <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-50">
+                {alert.value}
+              </p>
+              <p className="mt-2 text-sm text-slate-400">{alert.hint}</p>
+            </div>
+            <RuntimeAlertBadge level={alert.level} />
+          </div>
+        </article>
+      ))}
+    </section>
+  );
+}
+
+function formatCrashCase(item) {
+  const route = item?.previousRoute || item?.route || "未知页面";
+  const sessionLabel = item?.previousChatSessionId || item?.chatSessionId || "无会话";
+  const messageCount =
+    item?.previousMessageCount ?? item?.messageCount ?? 0;
+  const responseLength =
+    item?.previousLastResponseLength ?? item?.lastResponseLength ?? 0;
+  const wecomLabel = item?.isWeCom ? "企微" : "浏览器";
+  return {
+    name: `${wecomLabel} · ${route}`,
+    value: `${sessionLabel} · ${messageCount} 条消息 · ${responseLength} 字`
+  };
+}
+
+function formatCrashTimestamp(value) {
+  if (!value) {
+    return "未知时间";
+  }
+  try {
+    return new Date(value).toLocaleString("zh-CN", { hour12: false });
+  } catch (_error) {
+    return String(value);
+  }
+}
+
+function RuntimeCrashCard({ item }) {
+  const transportLabel = item?.isWeCom ? "企微" : "浏览器";
+  const inactivitySeconds = Number(item?.inactivitySeconds ?? 0);
+  const metaItems = [
+    ["时间", formatCrashTimestamp(item?.recordedAt)],
+    ["页面", item?.route || "未知页面"],
+    ["环境", `${transportLabel} / ${item?.browser || "other"}`],
+    ["会话", item?.chatSessionId || "无"],
+    ["对话", item?.conversationId || "无"],
+    ["GPT", item?.gid || "默认"],
+    ["模型", item?.selectedModel || "未记录"],
+    ["消息数", `${item?.messageCount ?? 0}`],
+    ["回复长度", `${item?.lastResponseLength ?? 0} 字`],
+    ["附件数", `${item?.attachmentCount ?? 0}`],
+    ["中断前静默", `${inactivitySeconds}s`],
+    ["崩前状态", item?.busy ? "生成中" : "空闲"],
+  ];
+
+  return (
+    <article className="rounded-2xl border border-slate-800/60 bg-slate-900/60 p-5 shadow-[0_20px_45px_-30px_rgba(15,23,42,1)] backdrop-blur">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-base font-semibold text-slate-100">
+            {transportLabel} · {item?.route || "未知页面"}
+          </p>
+          <p className="mt-1 text-sm text-slate-400">
+            runtimeSessionId: {item?.runtimeSessionId || "未记录"}
+          </p>
+        </div>
+        <RuntimeAlertBadge level={item?.busy ? "high" : "medium"} />
+      </div>
+      <dl className="mt-4 grid gap-x-4 gap-y-3 md:grid-cols-2">
+        {metaItems.map(([label, value]) => (
+          <div key={label} className="border-b border-slate-800/70 pb-2 last:border-b-0">
+            <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+              {label}
+            </dt>
+            <dd className="mt-1 text-sm text-slate-200">{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </article>
+  );
+}
+
+function RuntimeSummarySection({ summary }) {
+  const runtimeAlerts = Array.isArray(summary?.runtimeAlerts)
+    ? summary.runtimeAlerts
+    : [];
+  const topRoutes = Array.isArray(summary?.topRoutes)
+    ? summary.topRoutes.map((item) => ({
+        name: item.route,
+        value: `${item.count} 次`
+      }))
+    : [];
+  const topBrowsers = Array.isArray(summary?.topBrowsers)
+    ? summary.topBrowsers.map((item) => ({
+        name: item.browser,
+        value: `${item.count} 次`
+      }))
+    : [];
+  const recentCrashes = Array.isArray(summary?.recentSuspectedCrashes)
+    ? summary.recentSuspectedCrashes.map(formatCrashCase)
+    : [];
+
+  return (
+    <section className="grid gap-3">
+      <div className="flex items-center justify-between rounded-soft border border-white/10 bg-panel p-4 shadow-panel">
+        <div>
+          <h2 className="text-base font-semibold text-slate-100">前端运行时稳定性</h2>
+          <p className="mt-1 text-sm text-muted">
+            来自 runtime-events.log 的日志摘要，含疑似崩溃与前端异常
+          </p>
+        </div>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <RuntimeMetricCard
+          title="疑似崩溃"
+          value={String(summary?.suspectedCrashCount ?? 0)}
+          hint={`相对 page_open 比例 ${summary?.suspectedCrashRate ?? "0.0%"}`}
+        />
+        <RuntimeMetricCard
+          title="JS Error"
+          value={String(summary?.jsErrorCount ?? 0)}
+          hint="window.onerror"
+        />
+        <RuntimeMetricCard
+          title="Promise Rejection"
+          value={String(summary?.unhandledRejectionCount ?? 0)}
+          hint="unhandledrejection"
+        />
+        <RuntimeMetricCard
+          title="Render Error"
+          value={String(summary?.reactRenderErrorCount ?? 0)}
+          hint="React 错误边界捕获"
+        />
+        <RuntimeMetricCard
+          title="企微占比"
+          value={summary?.wecomCrashShare ?? "0.0%"}
+          hint="最近疑似崩溃中的企微比例"
+        />
+      </div>
+
+      <RuntimeAlertSection alerts={runtimeAlerts} />
+
+      <div className="grid gap-3 lg:grid-cols-3">
+        <ListCard title="高频页面" items={topRoutes} />
+        <ListCard title="浏览器分布" items={topBrowsers} />
+        <ListCard title="最近疑似崩溃" items={recentCrashes} />
+      </div>
+
+      {Array.isArray(summary?.recentSuspectedCrashes) &&
+      summary.recentSuspectedCrashes.length > 0 ? (
+        <div className="grid gap-3 xl:grid-cols-2">
+          {summary.recentSuspectedCrashes.map((item, index) => (
+            <RuntimeCrashCard
+              key={`${item.runtimeSessionId || item.chatSessionId || "crash"}-${index}`}
+              item={item}
+            />
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function RequestsTrend({ data }) {
   return (
     <article className="h-full rounded-2xl border border-slate-800/60 bg-slate-900/60 p-6 shadow-[0_20px_45px_-30px_rgba(15,23,42,1)] backdrop-blur">
@@ -206,6 +416,7 @@ export default function App() {
   const modelLeaderboard = displayData?.modelLeaderboard ?? [];
   const requestedModelLeaderboard =
     displayData?.requestedModelLeaderboard ?? [];
+  const runtimeSummary = displayData?.runtimeSummary ?? {};
 
   const timeRangeOptions = useMemo(
     () => [
@@ -361,6 +572,8 @@ export default function App() {
             items={requestedModelLeaderboard}
           />
         </section>
+
+        <RuntimeSummarySection summary={runtimeSummary} />
       </main>
       {showRefreshOverlay ? (
         <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-slate-950/30 backdrop-blur-sm">

@@ -12,6 +12,7 @@ from typing import Dict, Iterable, List, Sequence, Tuple
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.db import get_db
+from app.runtime_events import build_runtime_event_summary
 from .events import init_metrics_storage
 
 logger = logging.getLogger(__name__)
@@ -61,6 +62,18 @@ _BASE_FALLBACK = {
     "modelLeaderboard": [],
     "requestedModelLeaderboard": [],
     "alerts": [],
+    "runtimeSummary": {
+        "suspectedCrashCount": 0,
+        "suspectedCrashRate": "0.0%",
+        "jsErrorCount": 0,
+        "unhandledRejectionCount": 0,
+        "reactRenderErrorCount": 0,
+        "wecomCrashShare": "0.0%",
+        "runtimeAlerts": [],
+        "topRoutes": [],
+        "topBrowsers": [],
+        "recentSuspectedCrashes": [],
+    },
 }
 
 
@@ -111,6 +124,7 @@ def build_dashboard_snapshot(time_range: str | None = None) -> Dict[str, object]
         alerts = _collect_alerts(
             metrics, peak_latency=_fetch_average_latency(conn, now, window)
         )
+        runtime_summary = _collect_runtime_summary(window)
     except Exception:  # pragma: no cover - defensive fallback
         logger.exception("Failed to build dashboard snapshot; returning fallback data")
         return _build_fallback_snapshot(now, window)
@@ -133,6 +147,161 @@ def build_dashboard_snapshot(time_range: str | None = None) -> Dict[str, object]
         "modelLeaderboard": model_leaderboard,
         "requestedModelLeaderboard": requested_model_leaderboard,
         "alerts": alerts,
+        "runtimeSummary": runtime_summary,
+    }
+
+
+def _collect_runtime_summary(window: TimeRangeWindow) -> Dict[str, object]:
+    summary = build_runtime_event_summary(
+        since=window.current_start,
+        until=window.current_end,
+        limit=5000,
+    )
+    event_counts = summary.get("byEvent", {}) if isinstance(summary, dict) else {}
+    if not isinstance(event_counts, dict):
+        event_counts = {}
+
+    suspected_crashes = int(summary.get("suspectedCrashCount") or 0)
+    page_open_count = int(event_counts.get("page_open") or 0)
+    js_error_count = int(event_counts.get("js_error") or 0)
+    unhandled_rejection_count = int(event_counts.get("unhandled_rejection") or 0)
+    react_render_error_count = int(event_counts.get("react_render_error") or 0)
+    recent_suspected_crashes_raw = summary.get("recentSuspectedCrashes", [])
+    if not isinstance(recent_suspected_crashes_raw, list):
+        recent_suspected_crashes_raw = []
+
+    wecom_crash_count = 0
+    for item in recent_suspected_crashes_raw:
+        if isinstance(item, dict) and item.get("isWeCom"):
+            wecom_crash_count += 1
+    crash_rate = (
+        f"{(suspected_crashes / page_open_count) * 100:.1f}%"
+        if page_open_count
+        else "0.0%"
+    )
+    wecom_crash_share = (
+        f"{(wecom_crash_count / suspected_crashes) * 100:.1f}%"
+        if suspected_crashes
+        else "0.0%"
+    )
+    runtime_alerts = _build_runtime_alerts(
+        suspected_crashes=suspected_crashes,
+        page_open_count=page_open_count,
+        js_error_count=js_error_count,
+        unhandled_rejection_count=unhandled_rejection_count,
+        react_render_error_count=react_render_error_count,
+        wecom_crash_count=wecom_crash_count,
+    )
+    recent_suspected_crashes = [
+        _normalize_recent_crash(item)
+        for item in recent_suspected_crashes_raw[:10]
+        if isinstance(item, dict)
+    ]
+
+    return {
+        "suspectedCrashCount": suspected_crashes,
+        "suspectedCrashRate": crash_rate,
+        "jsErrorCount": js_error_count,
+        "unhandledRejectionCount": unhandled_rejection_count,
+        "reactRenderErrorCount": react_render_error_count,
+        "wecomCrashShare": wecom_crash_share,
+        "runtimeAlerts": runtime_alerts,
+        "topRoutes": summary.get("topRoutes", []),
+        "topBrowsers": summary.get("topBrowsers", []),
+        "recentSuspectedCrashes": recent_suspected_crashes,
+    }
+
+
+def _build_runtime_alerts(
+    *,
+    suspected_crashes: int,
+    page_open_count: int,
+    js_error_count: int,
+    unhandled_rejection_count: int,
+    react_render_error_count: int,
+    wecom_crash_count: int,
+) -> List[Dict[str, str]]:
+    alerts: List[Dict[str, str]] = []
+    crash_rate = (suspected_crashes / page_open_count * 100) if page_open_count else 0.0
+    if suspected_crashes >= 3 or crash_rate >= 3:
+        alerts.append(
+            {
+                "level": "high" if crash_rate >= 5 or suspected_crashes >= 5 else "medium",
+                "title": "疑似崩溃偏高",
+                "value": f"{suspected_crashes} 次 · {crash_rate:.1f}%",
+                "hint": "基于 page_open 与异常退出推断",
+            }
+        )
+    if react_render_error_count > 0:
+        alerts.append(
+            {
+                "level": "high",
+                "title": "存在渲染异常",
+                "value": f"{react_render_error_count} 次",
+                "hint": "React 错误边界已捕获到渲染报错",
+            }
+        )
+    if js_error_count >= 10 or unhandled_rejection_count >= 5:
+        alerts.append(
+            {
+                "level": "medium",
+                "title": "前端异常偏多",
+                "value": f"JS {js_error_count} / Promise {unhandled_rejection_count}",
+                "hint": "建议优先查看最近异常与版本变更",
+            }
+        )
+    if suspected_crashes > 0 and wecom_crash_count / max(suspected_crashes, 1) >= 0.5:
+        alerts.append(
+            {
+                "level": "medium",
+                "title": "企微环境占比较高",
+                "value": f"{wecom_crash_count}/{suspected_crashes}",
+                "hint": "疑似崩溃样本中企微占比超过 50%",
+            }
+        )
+    if not alerts:
+        alerts.append(
+            {
+                "level": "low",
+                "title": "运行时稳定",
+                "value": "暂无明显异常",
+                "hint": "当前时间范围未触发 runtime 告警规则",
+            }
+        )
+    return alerts
+
+
+def _normalize_recent_crash(item: Dict[str, object]) -> Dict[str, object]:
+    route = item.get("previousRoute") or item.get("route") or "未知页面"
+    browser_label = _extract_browser_label(str(item.get("userAgent") or "")) or "other"
+    is_wecom = bool(item.get("isWeCom"))
+    message_count = _coerce_int(item.get("previousMessageCount"), default=_coerce_int(item.get("messageCount")))
+    response_length = _coerce_int(
+        item.get("previousLastResponseLength"),
+        default=_coerce_int(item.get("lastResponseLength")),
+    )
+    attachment_count = _coerce_int(
+        item.get("previousAttachmentCount"),
+        default=_coerce_int(item.get("attachmentCount")),
+    )
+    inactivity_ms = _coerce_int(item.get("inactivityMs"), default=0)
+    return {
+        "recordedAt": item.get("recordedAt"),
+        "route": route,
+        "browser": browser_label,
+        "isWeCom": is_wecom,
+        "runtimeSessionId": item.get("previousRuntimeSessionId") or item.get("runtimeSessionId"),
+        "chatSessionId": item.get("previousChatSessionId") or item.get("chatSessionId"),
+        "conversationId": item.get("previousConversationId") or item.get("conversationId"),
+        "gid": item.get("previousGid") or item.get("gid") or "",
+        "selectedModel": item.get("selectedModel") or "",
+        "busy": bool(item.get("previousBusy") if item.get("previousBusy") is not None else item.get("busy")),
+        "messageCount": message_count,
+        "lastResponseLength": response_length,
+        "attachmentCount": attachment_count,
+        "inactivitySeconds": max(inactivity_ms // 1000, 0),
+        "previousLastSeenAt": item.get("previousLastSeenAt") or item.get("lastSeenAt"),
+        "previousStartedAt": item.get("previousStartedAt") or item.get("startedAt"),
     }
 
 
@@ -456,6 +625,19 @@ def _scalar(conn, sql: str, params: Tuple[object, ...] = tuple()) -> int:
 
 def _format_int(value: int) -> str:
     return f"{value:,}"
+
+
+def _coerce_int(value: object, *, default: int | None = None) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, (int, float)):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(float(value))
+        except ValueError:
+            return 0 if default is None else default
+    return 0 if default is None else default
 
 
 def _format_period_change(current: int, previous: int) -> str:
