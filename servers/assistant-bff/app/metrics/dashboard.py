@@ -12,7 +12,7 @@ from typing import Dict, Iterable, List, Sequence, Tuple
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.db import get_db
-from app.runtime_events import build_runtime_event_summary
+from app.runtime_events import build_runtime_event_summary, _extract_browser_label
 from .events import init_metrics_storage
 
 logger = logging.getLogger(__name__)
