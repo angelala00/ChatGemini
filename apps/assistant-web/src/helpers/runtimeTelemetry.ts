@@ -5,6 +5,8 @@ const HEARTBEAT_INTERVAL_MS = 30_000;
 const STORAGE_KEY = "assistant-web:runtime:last-state:v1";
 const CRASH_DETECTION_WINDOW_MS = 1000 * 60 * 60 * 24 * 7;
 
+type NavigationType = PerformanceNavigationTiming["type"] | null;
+
 type JsonValue =
     | string
     | number
@@ -152,6 +154,35 @@ const readStoredState = (): StoredRuntimeState | null => {
     }
 };
 
+const getNavigationType = (): NavigationType => {
+    const navigationEntry = performance.getEntriesByType("navigation")[0] as
+        | PerformanceNavigationTiming
+        | undefined;
+    return navigationEntry?.type ?? null;
+};
+
+const wasDocumentDiscarded = () =>
+    Boolean((document as Document & { readonly wasDiscarded?: boolean }).wasDiscarded);
+
+const buildPreviousStatePayload = (
+    previousState: StoredRuntimeState,
+    inactivityMs: number,
+) => ({
+    previousRuntimeSessionId: previousState.runtimeSessionId,
+    previousStartedAt: previousState.startedAt,
+    previousLastSeenAt: previousState.lastSeenAt,
+    previousRoute: previousState.route ?? "",
+    previousPage: previousState.page ?? "",
+    previousGid: previousState.gid ?? "",
+    previousChatSessionId: previousState.chatSessionId ?? "",
+    previousConversationId: previousState.conversationId ?? "",
+    previousBusy: previousState.busy ?? null,
+    previousMessageCount: previousState.messageCount ?? null,
+    previousLastResponseLength: previousState.lastResponseLength ?? null,
+    previousAttachmentCount: previousState.attachmentCount ?? null,
+    inactivityMs,
+});
+
 const postRuntimePayload = (payload: JsonObject) => {
     const body = JSON.stringify(payload);
     const url = getFullPath(RUNTIME_EVENT_ENDPOINT);
@@ -242,7 +273,10 @@ const sendHeartbeat = () => {
     reportRuntimeEvent("heartbeat");
 };
 
-const reportSuspectedCrashIfNeeded = () => {
+const reportSuspectedCrashIfNeeded = (
+    navigationType: NavigationType,
+    documentWasDiscarded: boolean,
+) => {
     const previousState = readStoredState();
     if (!previousState || previousState.closedAt) {
         return;
@@ -255,21 +289,17 @@ const reportSuspectedCrashIfNeeded = () => {
     if (ageMs <= 0 || ageMs > CRASH_DETECTION_WINDOW_MS) {
         return;
     }
-    reportRuntimeEvent("suspected_crash", {
-        previousRuntimeSessionId: previousState.runtimeSessionId,
-        previousStartedAt: previousState.startedAt,
-        previousLastSeenAt: previousState.lastSeenAt,
-        previousRoute: previousState.route ?? "",
-        previousPage: previousState.page ?? "",
-        previousGid: previousState.gid ?? "",
-        previousChatSessionId: previousState.chatSessionId ?? "",
-        previousConversationId: previousState.conversationId ?? "",
-        previousBusy: previousState.busy ?? null,
-        previousMessageCount: previousState.messageCount ?? null,
-        previousLastResponseLength: previousState.lastResponseLength ?? null,
-        previousAttachmentCount: previousState.attachmentCount ?? null,
-        inactivityMs: ageMs,
-    });
+    const previousStatePayload = buildPreviousStatePayload(previousState, ageMs);
+    if (documentWasDiscarded || navigationType === "reload") {
+        reportRuntimeEvent("runtime_resume", {
+            ...previousStatePayload,
+            resumeReason: documentWasDiscarded ? "tab_discarded" : "reload",
+            navigationType,
+            documentWasDiscarded,
+        });
+        return;
+    }
+    reportRuntimeEvent("suspected_crash", previousStatePayload);
 };
 
 export const initRuntimeTelemetry = (
@@ -281,14 +311,14 @@ export const initRuntimeTelemetry = (
     initialized = true;
     runtimeSessionId = createRuntimeSessionId();
     currentContext = { ...initialContext };
+    const navigationType = getNavigationType();
+    const documentWasDiscarded = wasDocumentDiscarded();
 
-    reportSuspectedCrashIfNeeded();
+    reportSuspectedCrashIfNeeded(navigationType, documentWasDiscarded);
     persistState({ startedAt: nowIso(), closedAt: undefined });
-    const navigationEntry = performance.getEntriesByType("navigation")[0] as
-        | PerformanceNavigationTiming
-        | undefined;
     reportRuntimeEvent("page_open", {
-        navigationType: navigationEntry?.type ?? null,
+        navigationType,
+        documentWasDiscarded,
     });
 
     window.addEventListener("error", handleWindowError);
