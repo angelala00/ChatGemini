@@ -155,6 +155,9 @@ const readStoredState = (): StoredRuntimeState | null => {
 };
 
 const getNavigationType = (): NavigationType => {
+    if (!performance?.getEntriesByType) {
+        return null;
+    }
     const navigationEntry = performance.getEntriesByType("navigation")[0] as
         | PerformanceNavigationTiming
         | undefined;
@@ -289,16 +292,10 @@ const reportSuspectedCrashIfNeeded = (
     if (ageMs <= 0 || ageMs > CRASH_DETECTION_WINDOW_MS) {
         return;
     }
-    const previousStatePayload = buildPreviousStatePayload(previousState, ageMs);
     if (documentWasDiscarded || navigationType === "reload") {
-        reportRuntimeEvent("runtime_resume", {
-            ...previousStatePayload,
-            resumeReason: documentWasDiscarded ? "tab_discarded" : "reload",
-            navigationType,
-            documentWasDiscarded,
-        });
         return;
     }
+    const previousStatePayload = buildPreviousStatePayload(previousState, ageMs);
     reportRuntimeEvent("suspected_crash", previousStatePayload);
 };
 

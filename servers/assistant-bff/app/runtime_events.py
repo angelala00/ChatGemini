@@ -65,7 +65,7 @@ def query_runtime_events(
     until: datetime | None = None,
     limit: int = 100,
 ) -> list[dict[str, Any]]:
-    normalized_limit = max(1, min(int(limit), 500))
+    normalized_limit = max(1, min(int(limit), 5000))
     matched: list[dict[str, Any]] = []
 
     for line in _iter_log_lines():
