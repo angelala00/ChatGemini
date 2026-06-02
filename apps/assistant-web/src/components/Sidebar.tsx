@@ -6,6 +6,7 @@ import wandIcon from "../assets/icons/ds-logo.svg";
 import logoIcon from "../assets/logo.svg";
 import appsIcon from "../assets/icons/apps.svg";
 import {
+    ShieldCheckIcon,
     ChevronDownIcon,
     EllipsisHorizontalIcon,
     ClockIcon,
@@ -14,7 +15,7 @@ import {
     PlusCircleIcon,
     TrashIcon,
 } from "@heroicons/react/24/outline";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
@@ -26,15 +27,18 @@ import { handleRequest } from "../helpers/handleRequest";
 import { getFullPath } from "../helpers/getDomainAndPath";
 import { globalConfig } from "../config/global";
 import { normalizeAssetPath } from "../helpers/normalizeAssetPath";
+import { SessionSummary } from "../types/sessionHistory";
 
 interface SidebarProps {
     readonly title: string;
     readonly expand: boolean;
     readonly gptsFeatureAllowed: boolean;
     readonly voiceLabAllowed: boolean;
+    readonly adminAllowed: boolean;
     readonly userName: string;
     readonly limitation?: number;
     readonly sessions: Sessions;
+    readonly sessionSummaries: SessionSummary[];
     readonly locales: Record<string, string>;
     readonly currentLocale: string;
     readonly onDeleteSession: (id: string) => void;
@@ -43,9 +47,30 @@ interface SidebarProps {
     readonly onToggleSidebar: () => void;
 }
 
-const APP_VERSION = "v1.1.2";
+const APP_VERSION = "v1.2.0";
 
 const releaseHistory = [
+    {
+        version: "v1.2.0",
+        date: "2026.06",
+        type: "minor",
+        zhTitle: "管理员配置页",
+        zhChanges: [
+            "侧边栏账号菜单新增管理员入口，仅对有权限账号显示。",
+            "新增独立的管理员配置页面，可集中维护模型能力、权限分配和功能开关。",
+            "管理员区已拆成模型、权限、功能开关、审计四个独立页面，并采用独立后台布局。",
+            "支持新增、编辑和删除核心业务配置，主助手默认模型、可见模型和思考开关也已收成结构化表单。",
+            "聊天历史开始优先从服务端会话数据读取，刷新页面后的历史连续性更稳定。",
+        ],
+        enTitle: "Admin Configuration Console",
+        enChanges: [
+            "Added an admin entry to the account menu, visible only to authorized users.",
+            "Added a dedicated admin page for managing model capabilities, permissions, and feature flags.",
+            "Split the admin area into dedicated models, permissions, feature flags, and audit pages with a separate admin workspace layout.",
+            "Enabled create, update, and delete flows for core business configuration, including structured forms for the main assistant defaults.",
+            "Switched chat history to prefer the server-side session store so history continuity is more stable after refresh.",
+        ],
+    },
     {
         version: "v1.1.2",
         date: "2026.05",
@@ -339,9 +364,11 @@ export const Sidebar = (props: SidebarProps) => {
         expand,
         gptsFeatureAllowed,
         voiceLabAllowed,
+        adminAllowed,
         userName,
         limitation,
         sessions,
+        sessionSummaries,
         locales,
         currentLocale,
         onDeleteSession,
@@ -377,7 +404,6 @@ export const Sidebar = (props: SidebarProps) => {
     const isNewChatActive = location.pathname === "/";
     const displayUserName = userName || "User";
     const avatarText = displayUserName.trim().charAt(0).toUpperCase() || "U";
-    const [historySessions, setHistorySessions] = useState<Sessions>({});
     const visiblePinnedGpts = pinnedGpts.filter(({ gid }) => gid !== "gptassistant");
     const assistantSectionOffset = visiblePinnedGpts.length > 0
         ? "-mt-2"
@@ -391,21 +417,18 @@ export const Sidebar = (props: SidebarProps) => {
               ? "mt-0.5 pt-2"
               : "mt-2 pt-2.5";
 
-    // const [pinnedGpts, setPinnedGpts] = useState([]);
-    const getSortedSessions = (sessions: Sessions) =>
-        Object.keys(sessions)
-            .sort((a, b) => {
-                const a_ts = sessions[a][sessions[a].length - 1].timestamp;
-                const b_ts = sessions[b][sessions[b].length - 1].timestamp;
-                return b_ts - a_ts;
-            })
-            .map((key) => parseInt(key))
-            .map((key) => {
-                return { [key.toString()]: sessions[key] };
-            })
-            .reduce((prev, curr) => {
-                return { ...prev, ...curr };
-            }, {});
+    const historySessionKeys = useMemo(
+        () => sessionSummaries.map((item) => item.conversation_id),
+        [sessionSummaries],
+    );
+    const sessionSummaryMap = useMemo(
+        () =>
+            sessionSummaries.reduce<Record<string, SessionSummary>>((acc, item) => {
+                acc[item.conversation_id] = item;
+                return acc;
+            }, {}),
+        [sessionSummaries],
+    );
 
     useEffect(() => {
         return () => cancelHistoryLongPress();
@@ -419,10 +442,6 @@ export const Sidebar = (props: SidebarProps) => {
         }).catch(() => dispatch(updatePinnedGpts([])));
     }, [dispatch]);
         
-    useEffect(() => {
-        setHistorySessions(getSortedSessions(sessions));
-    }, [sessions]);
-
     useEffect(() => {
         if (!isVersionHistoryOpen) {
             return;
@@ -475,7 +494,6 @@ export const Sidebar = (props: SidebarProps) => {
     const sessionExtensions = useSelector(
         (state: ReduxStoreProps) => state.sessionExtensions.sessionExtensions
     )
-    const historySessionKeys = Object.keys(historySessions);
     const isHistoryEmpty = historySessionKeys.length === 0;
     const isChineseLocale = currentLocale.toLowerCase().startsWith("zh");
     const closeMobileSidebar = () => {
@@ -630,16 +648,20 @@ export const Sidebar = (props: SidebarProps) => {
                                 {historySessionKeys
                                     .slice(0, sessionsLimitation)
                                     .map((id, _index) => {
-                                        const currentSession =
-                                            historySessions[id][0];
+                                        const currentSession = sessions[id]?.[0];
+                                        const summary = sessionSummaryMap[id];
                                         const currentSessionTitle =
-                                            !!currentSession?.title?.length
-                                                ? currentSession.title
-                                                : currentSession.parts;
+                                            summary?.title?.length
+                                                ? summary.title
+                                                : !!currentSession?.title?.length
+                                                  ? currentSession.title
+                                                  : currentSession?.parts || id;
                                         let path;
                                         const sessionExtension = sessionExtensions[id];
-                                        if (sessionExtension && sessionExtension["gid"]) {
-                                            path = `/g/${sessionExtension["gid"]}/chat/${id}`
+                                        const effectiveGid =
+                                            sessionExtension?.["gid"] || summary?.gid || "";
+                                        if (effectiveGid && effectiveGid !== "gptassistant") {
+                                            path = `/g/${effectiveGid}/chat/${id}`
                                         } else {
                                             path = `/chat/${id}`
                                         }
@@ -874,6 +896,25 @@ export const Sidebar = (props: SidebarProps) => {
                             <span className="text-[#87919d]">当前版本</span>
                             <span className="font-medium text-[#2f3a46]">{APP_VERSION}</span>
                         </button>
+                        {adminAllowed && (
+                            <button
+                                type="button"
+                                className="inline-flex min-h-9 items-center justify-between gap-2 rounded-[10px] px-2.5 text-left text-[13px] font-normal text-[rgba(56,67,79,0.96)] transition-colors hover:bg-[rgba(229,234,239,0.82)]"
+                                onClick={() => {
+                                    setIsProfileMenuOpen(false);
+                                    navigate("/admin/models");
+                                    closeMobileSidebar();
+                                }}
+                            >
+                                <span className="inline-flex items-center gap-2 text-[#2f3a46]">
+                                    <ShieldCheckIcon className="size-4 text-[#87919d]" strokeWidth={1.8} />
+                                    {t("components.Sidebar.admin")}
+                                </span>
+                                <span className="text-xs font-medium text-[#87919d]">
+                                    {t("components.Sidebar.admin_badge")}
+                                </span>
+                            </button>
+                        )}
                         {voiceLabAllowed && (
                             <button
                                 type="button"

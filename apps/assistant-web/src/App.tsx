@@ -35,10 +35,37 @@ import {
 import { ModelOption, UploadCategory } from "./types/models";
 import { resolveAttachmentViewItems } from "./helpers/getAttachmentViewItems";
 import { buildAttachmentPostscriptHtml } from "./helpers/buildAttachmentPostscriptHtml";
+import { SessionSummary } from "./types/sessionHistory";
+import localForage from "localforage";
 
 const PREFERRED_MODEL_COOKIE_KEY = "preferred_model";
 const PREFERRED_REASONING_COOKIE_KEY = "preferred_reasoning_enabled";
 const COOKIE_MAX_AGE_MS = 365 * 24 * 60 * 60 * 1000;
+const LEGACY_PERSISTED_SESSIONS_KEY = "persist:sessions";
+const LEGACY_PERSISTED_MAPPINGS_KEY = "persist:mappings";
+const LEGACY_PERSISTED_SESSION_EXTENSIONS_KEY = "persist:sessionExtensions";
+const LEGACY_SESSION_MIGRATION_STATE_KEY = "chatgemini:legacy-session-migration-state";
+const LEGACY_SESSION_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
+
+interface LegacySessionMessage {
+    readonly role: string;
+    readonly parts: string;
+    readonly timestamp: number;
+    readonly title?: string;
+    readonly attachment?: GenerativeContentBlob;
+}
+
+interface LegacySessionRecord {
+    readonly conversationId: string;
+    readonly gid: string;
+    readonly history: LegacySessionMessage[];
+    readonly summary: SessionSummary;
+}
+
+interface LegacySessionMigrationState {
+    readonly importedAt: number;
+    readonly expiresAt: number;
+}
 
 const readPreferredModel = () => {
     if (typeof document === "undefined") {
@@ -90,6 +117,70 @@ const writePreferredReasoningEnabled = (enabled: boolean) => {
     )}; path=/; expires=${expires}`;
 };
 
+const parsePersistedReduxSlice = <T,>(rawValue: unknown, field: string): T | null => {
+    if (!rawValue) {
+        return null;
+    }
+    let payload: any = rawValue;
+    if (typeof payload === "string") {
+        try {
+            payload = JSON.parse(payload);
+        } catch (_error) {
+            return null;
+        }
+    }
+    const fieldValue = payload?.[field];
+    if (fieldValue == null) {
+        return null;
+    }
+    if (typeof fieldValue === "string") {
+        try {
+            return JSON.parse(fieldValue) as T;
+        } catch (_error) {
+            return null;
+        }
+    }
+    return fieldValue as T;
+};
+
+const toIsoFromTimestamp = (timestamp: number) =>
+    timestamp > 0 ? new Date(timestamp).toISOString() : new Date().toISOString();
+
+const deriveLegacySessionTitle = (history: LegacySessionMessage[], fallbackId: string) => {
+    for (const item of history) {
+        if (typeof item.title === "string" && item.title.trim().length) {
+            return item.title.trim();
+        }
+    }
+    for (const item of history) {
+        if (typeof item.parts === "string" && item.parts.trim().length) {
+            const normalized = item.parts.trim().replace(/\s+/g, " ");
+            return normalized.length <= 48
+                ? normalized
+                : `${normalized.slice(0, 48).trimEnd()}...`;
+        }
+    }
+    return fallbackId;
+};
+
+const mergeSessionSummaries = (
+    serverSummaries: SessionSummary[],
+    legacyRecords: Record<string, LegacySessionRecord>,
+) => {
+    const merged = new Map<string, SessionSummary>();
+    serverSummaries.forEach((item) => {
+        merged.set(item.conversation_id, { ...item, source: "server" });
+    });
+    Object.values(legacyRecords).forEach((item) => {
+        if (!merged.has(item.conversationId)) {
+            merged.set(item.conversationId, item.summary);
+        }
+    });
+    return [...merged.values()].sort((left, right) =>
+        String(right.updated_at || "").localeCompare(String(left.updated_at || "")),
+    );
+};
+
 
 const App = () => {
     const { t } = useTranslation();
@@ -129,6 +220,13 @@ const App = () => {
     const [uploadInlineData, setUploadInlineData] =
         useState<GenerativeContentBlob>({ data: "", mimeType: "" });
     const [sidebarExpand, setSidebarExpand] = useState(window.innerWidth > 900);
+    const [serverSessionSummaries, setServerSessionSummaries] = useState<SessionSummary[]>([]);
+    const [legacySessionRecords, setLegacySessionRecords] = useState<
+        Record<string, LegacySessionRecord>
+    >({});
+    const legacySessionRecordsRef = useRef<Record<string, LegacySessionRecord>>({});
+    const legacySessionGraceExpiresAtRef = useRef<number | null>(null);
+    const coverageReportedRef = useRef(false);
 
     const setCurrentLocaleToState = async () =>
         setCurrentLocale(await getCurrentLocale(i18n));
@@ -154,8 +252,11 @@ const App = () => {
     const [pageSamples, setPageSamples] = useState<string[]>([]);
     const [isNoAuthorized, setIsNoAuthorized] = useState(false);
     const [gptsFeatureAllowed, setGptsFeatureAllowed] = useState(false);
+    const [gptsManageAllowed, setGptsManageAllowed] = useState(false);
     const [gptsPermissionLoaded, setGptsPermissionLoaded] = useState(false);
     const [voiceLabAllowed, setVoiceLabAllowed] = useState(false);
+    const [adminAllowed, setAdminAllowed] = useState(false);
+    const [adminPermissionLoaded, setAdminPermissionLoaded] = useState(false);
     
     const pathParts = location.pathname.split("/")
     const mod = pathParts[1];
@@ -201,6 +302,10 @@ const App = () => {
                 .filter(Boolean).length
         );
     }, 0);
+    const sessionSummaries = useMemo(
+        () => mergeSessionSummaries(serverSessionSummaries, legacySessionRecords),
+        [legacySessionRecords, serverSessionSummaries],
+    );
 
 
     const handleExportSession = async (id: string) => {
@@ -239,17 +344,42 @@ const App = () => {
         }
     };
 
-    const handleRenameSession = (id: string, newTitle: string) => {
-        if (!ai.busy) {
-            const _sessions = {
-                ...sessions,
-                [id]: [
-                    { ...sessions[id][0], title: newTitle },
-                    ...sessions[id].slice(1),
-                ],
-            };
-            dispatch(updateSessions(_sessions));
-        } else {
+    const handleRenameSession = async (id: string, newTitle: string) => {
+        if (ai.busy) {
+            sendUserAlert(t("App.handleRenameSession.not_available"), true);
+            return;
+        }
+        const conversationId = sessionExtensions[id]?.conversationId || mappings[id] || id;
+        try {
+            const response = await handleRequest(
+                "PATCH",
+                getFullPath(`/api/sessions/${encodeURIComponent(conversationId)}/title`),
+                JSON.stringify({ title: newTitle }),
+                { "Content-Type": "application/json" },
+            );
+            if (sessions[id]?.length) {
+                dispatch(
+                    updateSessions({
+                        ...sessions,
+                        [id]: [
+                            { ...sessions[id][0], title: newTitle },
+                            ...sessions[id].slice(1),
+                        ],
+                    }),
+                );
+            }
+            if (response.item) {
+                setServerSessionSummaries((state) =>
+                    state.map((item) =>
+                        item.conversation_id === conversationId
+                            ? { ...item, title: response.item.title || newTitle }
+                            : item,
+                    ),
+                );
+            } else {
+                await loadSessionSummaries();
+            }
+        } catch (_error) {
             sendUserAlert(t("App.handleRenameSession.not_available"), true);
         }
     };
@@ -261,15 +391,31 @@ const App = () => {
                 confirmText: t("App.handleDeleteSession.confirm_button"),
                 cancelText: t("App.handleDeleteSession.cancel_button"),
                 onConfirmed: () => {
-                    navigate(routes.index.prefix);
-                    const _sessions = { ...sessions };
-                    delete _sessions[id];
-                    dispatch(updateSessions(_sessions));
-                    const _mappings = { ...mappings };
-                    delete _mappings[id];
-                    dispatch(updateMappings(mappings));
-                    dispatch(updateSessionExtensions(sessionExtensions));
-                    sendUserAlert(t("App.handleDeleteSession.on_confirmed"));
+                    const conversationId =
+                        sessionExtensions[id]?.conversationId || mappings[id] || id;
+                    handleRequest(
+                        "DELETE",
+                        getFullPath(`/api/sessions/${encodeURIComponent(conversationId)}`),
+                    )
+                        .then(() => {
+                            navigate(routes.index.prefix);
+                            const _sessions = { ...sessions };
+                            delete _sessions[id];
+                            dispatch(updateSessions(_sessions));
+                            const _mappings = { ...mappings };
+                            delete _mappings[id];
+                            dispatch(updateMappings(_mappings));
+                            const _sessionExtensions = { ...sessionExtensions };
+                            delete _sessionExtensions[id];
+                            dispatch(updateSessionExtensions(_sessionExtensions));
+                            setServerSessionSummaries((state) =>
+                                state.filter((item) => item.conversation_id !== conversationId),
+                            );
+                            sendUserAlert(t("App.handleDeleteSession.on_confirmed"));
+                        })
+                        .catch(() => {
+                            sendUserAlert(t("App.handleDeleteSession.not_available"), true);
+                        });
                 },
             });
         } else {
@@ -397,6 +543,20 @@ const App = () => {
             };
         } catch (error) {
             console.error('上传错误:', error);
+            const requestError = error as Error & { status?: number };
+            if (requestError.status === 413) {
+                sendUserAlert(
+                    t("components.InputArea.checkAttachment.upload_too_large"),
+                    true,
+                    2200,
+                );
+            } else {
+                sendUserAlert(
+                    t("components.InputArea.checkAttachment.upload_failed"),
+                    true,
+                    2200,
+                );
+            }
             return null;
         }
     };
@@ -409,6 +569,302 @@ const App = () => {
             mimeType: items.length > 0 ? items[items.length - 1].mimeType : "",
         });
     };
+
+    const loadSessionSummaries = useCallback(async () => {
+        const response = await handleRequest("GET", getFullPath("/api/sessions?limit=100"));
+        const items = Array.isArray(response.items) ? response.items : [];
+        setServerSessionSummaries(items);
+        return items;
+    }, []);
+
+    const migrateLegacyPersistedSessions = useCallback(async () => {
+        const [rawSessions, rawMappings, rawSessionExtensions] = await Promise.all([
+            localForage.getItem(LEGACY_PERSISTED_SESSIONS_KEY),
+            localForage.getItem(LEGACY_PERSISTED_MAPPINGS_KEY),
+            localForage.getItem(LEGACY_PERSISTED_SESSION_EXTENSIONS_KEY),
+        ]);
+        const persistedSessions = parsePersistedReduxSlice<Record<string, Array<any>>>(
+            rawSessions,
+            "sessions",
+        );
+        if (!persistedSessions || !Object.keys(persistedSessions).length) {
+            setLegacySessionRecords({});
+            legacySessionRecordsRef.current = {};
+            legacySessionGraceExpiresAtRef.current = null;
+            return false;
+        }
+        const persistedMappings =
+            parsePersistedReduxSlice<Record<string, string>>(rawMappings, "mappings") || {};
+        const persistedSessionExtensions =
+            parsePersistedReduxSlice<
+                Record<
+                    string,
+                    {
+                        readonly conversationId?: string;
+                        readonly gid?: string;
+                    }
+                >
+            >(rawSessionExtensions, "sessionExtensions") || {};
+
+        const items = Object.entries(persistedSessions)
+            .map(([sessionId, history]) => {
+                const sessionExtension = persistedSessionExtensions[sessionId];
+                const conversationId =
+                    sessionExtension?.conversationId ||
+                    persistedMappings[sessionId] ||
+                    sessionId;
+                const gid = sessionExtension?.gid || "gptassistant";
+                const normalizedHistory = Array.isArray(history)
+                    ? history
+                          .filter(Boolean)
+                          .map((entry) => ({
+                              role: entry.role,
+                              parts:
+                                  typeof entry.parts === "string"
+                                      ? entry.parts
+                                      : entry.parts == null
+                                        ? ""
+                                        : String(entry.parts),
+                              timestamp:
+                                  typeof entry.timestamp === "number" ? entry.timestamp : 0,
+                              title:
+                                  typeof entry.title === "string" ? entry.title : undefined,
+                              attachment:
+                                  entry.attachment &&
+                                  typeof entry.attachment === "object" &&
+                                  (typeof entry.attachment.data === "string" ||
+                                      typeof entry.attachment.mimeType === "string")
+                                      ? {
+                                            data:
+                                                typeof entry.attachment.data === "string"
+                                                    ? entry.attachment.data
+                                                    : "",
+                                            mimeType:
+                                                typeof entry.attachment.mimeType === "string"
+                                                    ? entry.attachment.mimeType
+                                                    : "",
+                                        }
+                                      : undefined,
+                          }))
+                    : [];
+                return {
+                    session_id: sessionId,
+                    conversation_id: conversationId,
+                    gid,
+                    history: normalizedHistory,
+                };
+            })
+            .filter((item) => item.history.length > 0);
+
+        if (!items.length) {
+            await Promise.all([
+                localForage.removeItem(LEGACY_PERSISTED_SESSIONS_KEY),
+                localForage.removeItem(LEGACY_PERSISTED_MAPPINGS_KEY),
+                localForage.removeItem(LEGACY_PERSISTED_SESSION_EXTENSIONS_KEY),
+                localForage.removeItem(LEGACY_SESSION_MIGRATION_STATE_KEY),
+            ]);
+            setLegacySessionRecords({});
+            legacySessionRecordsRef.current = {};
+            legacySessionGraceExpiresAtRef.current = null;
+            return false;
+        }
+
+        const migrationState = (await localForage.getItem(
+            LEGACY_SESSION_MIGRATION_STATE_KEY,
+        )) as LegacySessionMigrationState | null;
+        const now = Date.now();
+        if (migrationState?.expiresAt && migrationState.expiresAt <= now) {
+            await Promise.all([
+                localForage.removeItem(LEGACY_PERSISTED_SESSIONS_KEY),
+                localForage.removeItem(LEGACY_PERSISTED_MAPPINGS_KEY),
+                localForage.removeItem(LEGACY_PERSISTED_SESSION_EXTENSIONS_KEY),
+                localForage.removeItem(LEGACY_SESSION_MIGRATION_STATE_KEY),
+            ]);
+            setLegacySessionRecords({});
+            legacySessionRecordsRef.current = {};
+            legacySessionGraceExpiresAtRef.current = null;
+            return false;
+        }
+
+        const nextLegacyRecords = items.reduce<Record<string, LegacySessionRecord>>((acc, item) => {
+            const latestTimestamp = item.history.reduce(
+                (max, entry) => Math.max(max, Number(entry.timestamp || 0)),
+                0,
+            );
+            acc[item.conversation_id] = {
+                conversationId: item.conversation_id,
+                gid: item.gid,
+                history: item.history,
+                summary: {
+                    conversation_id: item.conversation_id,
+                    user_id: "",
+                    user_email: "",
+                    gid: item.gid,
+                    title: deriveLegacySessionTitle(item.history, item.conversation_id),
+                    created_at: toIsoFromTimestamp(latestTimestamp),
+                    updated_at: toIsoFromTimestamp(latestTimestamp),
+                    source: "local_fallback",
+                },
+            };
+            return acc;
+        }, {});
+        setLegacySessionRecords(nextLegacyRecords);
+        legacySessionRecordsRef.current = nextLegacyRecords;
+
+        if (migrationState?.expiresAt && migrationState.expiresAt > now) {
+            legacySessionGraceExpiresAtRef.current = migrationState.expiresAt;
+            return true;
+        }
+
+        await handleRequest(
+            "POST",
+            getFullPath("/api/sessions/import-local"),
+            JSON.stringify({ items }),
+            { "Content-Type": "application/json" },
+        );
+        const importedAt = migrationState?.importedAt || now;
+        const expiresAt = migrationState?.expiresAt || importedAt + LEGACY_SESSION_GRACE_MS;
+        await localForage.setItem(LEGACY_SESSION_MIGRATION_STATE_KEY, {
+            importedAt,
+            expiresAt,
+        } satisfies LegacySessionMigrationState);
+        legacySessionGraceExpiresAtRef.current = expiresAt;
+        return true;
+    }, []);
+
+    const reportSessionCoverage = useCallback(
+        async (serverItems: SessionSummary[]) => {
+            if (coverageReportedRef.current) {
+                return;
+            }
+            const legacyRecords = legacySessionRecordsRef.current;
+            const serverIds = new Set(serverItems.map((item) => item.conversation_id));
+            const localOnlyItems = Object.values(legacyRecords)
+                .filter((item) => !serverIds.has(item.conversationId))
+                .map((item) => ({
+                    conversation_id: item.conversationId,
+                    gid: item.gid,
+                    source: "local_fallback",
+                    reason: "missing_server_summary",
+                }));
+            await handleRequest(
+                "POST",
+                getFullPath("/api/sessions/coverage-report"),
+                JSON.stringify({
+                    phase: "startup",
+                    grace_expires_at: legacySessionGraceExpiresAtRef.current
+                        ? new Date(legacySessionGraceExpiresAtRef.current).toISOString()
+                        : null,
+                    local_total_count: Object.keys(legacyRecords).length,
+                    server_count: serverItems.length,
+                    local_only_count: localOnlyItems.length,
+                    items: localOnlyItems,
+                }),
+                { "Content-Type": "application/json" },
+            );
+            coverageReportedRef.current = true;
+        },
+        [],
+    );
+
+    const loadSessionDetail = useCallback(
+        async (sessionId: string, conversationId: string) => {
+            try {
+                const response = await handleRequest(
+                    "GET",
+                    getFullPath(`/api/sessions/${encodeURIComponent(conversationId)}`),
+                );
+                const item = response.item;
+                if (!item) {
+                    return;
+                }
+                const history = Array.isArray(item.history) ? item.history : [];
+                dispatch(
+                    updateSessions({
+                        ...sessions,
+                        [sessionId]: history,
+                    }),
+                );
+                dispatch(
+                    updateMappings({
+                        ...mappings,
+                        [sessionId]: conversationId,
+                    }),
+                );
+                dispatch(
+                    updateSessionExtensions({
+                        ...sessionExtensions,
+                        [sessionId]: {
+                            ...(sessionExtensions[sessionId] || {}),
+                            conversationId,
+                            gid: item.gid || "",
+                            selectedModel: sessionExtensions[sessionId]?.selectedModel || "",
+                            reasoningEnabled: sessionExtensions[sessionId]?.reasoningEnabled,
+                        },
+                    }),
+                );
+                return;
+            } catch (_error) {
+                const fallbackRecord = legacySessionRecordsRef.current[conversationId];
+                if (!fallbackRecord) {
+                    return;
+                }
+                dispatch(
+                    updateSessions({
+                        ...sessions,
+                        [sessionId]: fallbackRecord.history,
+                    }),
+                );
+                dispatch(
+                    updateMappings({
+                        ...mappings,
+                        [sessionId]: conversationId,
+                    }),
+                );
+                dispatch(
+                    updateSessionExtensions({
+                        ...sessionExtensions,
+                        [sessionId]: {
+                            ...(sessionExtensions[sessionId] || {}),
+                            conversationId,
+                            gid: fallbackRecord.gid || "",
+                            selectedModel: sessionExtensions[sessionId]?.selectedModel || "",
+                            reasoningEnabled: sessionExtensions[sessionId]?.reasoningEnabled,
+                        },
+                    }),
+                );
+                handleRequest(
+                    "POST",
+                    getFullPath("/api/sessions/coverage-report"),
+                    JSON.stringify({
+                        phase: "detail_fallback",
+                        grace_expires_at: legacySessionGraceExpiresAtRef.current
+                            ? new Date(legacySessionGraceExpiresAtRef.current).toISOString()
+                            : null,
+                        local_total_count: Object.keys(legacySessionRecordsRef.current).length,
+                        server_count: serverSessionSummaries.length,
+                        local_only_count: 1,
+                        items: [
+                            {
+                                conversation_id: conversationId,
+                                gid: fallbackRecord.gid,
+                                source: "local_fallback",
+                                reason: "session_detail_missing_on_server",
+                            },
+                        ],
+                    }),
+                    { "Content-Type": "application/json" },
+                ).catch(() => {});
+            }
+        },
+        [
+            dispatch,
+            mappings,
+            serverSessionSummaries.length,
+            sessionExtensions,
+            sessions,
+        ],
+    );
 
     const handleSubmit = async (prompt: string) => {
         if (!prompt.trim().length) {
@@ -489,17 +945,54 @@ const App = () => {
         const handler = (message: string, end: boolean, convId : string) => {
 	        // console.log("onChatMessage, message=" + message + ", end=" +  end + ", convId=" + convId + ", id=" + id + ", gid=" + gid);
             if (convId !== "") {
-                dispatch(updateMappings({ ...mappings, [id]: convId}));
-                currentSessionExtensionsState = {
-                    ...currentSessionExtensionsState,
-                    [id]: {
-                        ...currentSessionExtensionsState[id],
-                        conversationId: convId,
-                        selectedModel: selectedModelId,
-                        reasoningEnabled: selectedReasoningEnabled,
-                    },
-                };
-                dispatch(updateSessionExtensions(currentSessionExtensionsState));
+                if (!mappings[id] && !sessionExtensions[id]?.conversationId) {
+                    loadSessionSummaries().catch(() => {});
+                }
+                if (id !== convId) {
+                    const previousId = id;
+                    const nextSessions = { ..._sessions, [convId]: _sessions[previousId] };
+                    delete nextSessions[previousId];
+                    _sessions = nextSessions;
+                    dispatch(updateSessions(nextSessions));
+
+                    const nextMappings = { ...mappings, [convId]: convId };
+                    delete nextMappings[previousId];
+                    dispatch(updateMappings(nextMappings));
+
+                    currentSessionExtensionsState = {
+                        ...currentSessionExtensionsState,
+                        [convId]: {
+                            ...(currentSessionExtensionsState[previousId] || {}),
+                            conversationId: convId,
+                            gid:
+                                gid ||
+                                currentSessionExtensionsState[previousId]?.gid ||
+                                "",
+                            selectedModel: selectedModelId,
+                            reasoningEnabled: selectedReasoningEnabled,
+                        },
+                    };
+                    delete currentSessionExtensionsState[previousId];
+                    dispatch(updateSessionExtensions(currentSessionExtensionsState));
+                    id = convId;
+                    if (gid) {
+                        navigate(`/g/${gid}/chat/${convId}`, { replace: true });
+                    } else {
+                        navigate(`/chat/${convId}`, { replace: true });
+                    }
+                } else {
+                    dispatch(updateMappings({ ...mappings, [id]: convId}));
+                    currentSessionExtensionsState = {
+                        ...currentSessionExtensionsState,
+                        [id]: {
+                            ...currentSessionExtensionsState[id],
+                            conversationId: convId,
+                            selectedModel: selectedModelId,
+                            reasoningEnabled: selectedReasoningEnabled,
+                        },
+                    };
+                    dispatch(updateSessionExtensions(currentSessionExtensionsState));
+                }
             }
             if (end) {
                 dispatch(updateAI({ ...ai, busy: false }));
@@ -576,6 +1069,34 @@ const App = () => {
         },
         currentPath,
     );
+    const isGptsManagePage =
+        !!matchPath(
+            {
+                path: `${routes.my_gpts.prefix}${routes.my_gpts.uri}${routes.my_gpts.suffix}`,
+            },
+            currentPath,
+        ) ||
+        !!matchPath(
+            {
+                path: `${routes.gpts_create.prefix}${routes.gpts_create.uri}${routes.gpts_create.suffix}`,
+            },
+            currentPath,
+        );
+    const adminRoutes = [
+        "admin_index",
+        "admin",
+        "admin_permissions",
+        "admin_flags",
+        "admin_audit",
+    ] as const;
+    const isAdminPage = adminRoutes.some((key) =>
+        matchPath(
+            {
+                path: `${routes[key].prefix}${routes[key].uri}${routes[key].suffix}`,
+            },
+            currentPath,
+        ),
+    );
     const isNewSessionPage =
         currentPath === routes.index.prefix ||
         (!!gid && !id && currentPath === `/g/${gid}`);
@@ -584,17 +1105,28 @@ const App = () => {
     useEffect(() => {
         if (!hasLogined) {
             setGptsFeatureAllowed(false);
+            setGptsManageAllowed(false);
             setGptsPermissionLoaded(false);
             setVoiceLabAllowed(false);
+            setAdminAllowed(false);
+            setAdminPermissionLoaded(false);
+            setServerSessionSummaries([]);
+            setLegacySessionRecords({});
+            legacySessionRecordsRef.current = {};
+            legacySessionGraceExpiresAtRef.current = null;
+            coverageReportedRef.current = false;
             return;
         }
         setGptsPermissionLoaded(false);
+        setAdminPermissionLoaded(false);
         handleRequest('GET', getFullPath('/api/gpts/permission'))
             .then((responseJson) => {
                 setGptsFeatureAllowed(Boolean(responseJson.allowed));
+                setGptsManageAllowed(Boolean(responseJson.manage_allowed));
             })
             .catch(() => {
                 setGptsFeatureAllowed(false);
+                setGptsManageAllowed(false);
             })
             .finally(() => {
                 setGptsPermissionLoaded(true);
@@ -606,7 +1138,58 @@ const App = () => {
             .catch(() => {
                 setVoiceLabAllowed(false);
             });
+        handleRequest('GET', getFullPath('/api/admin/permission'))
+            .then((responseJson) => {
+                setAdminAllowed(Boolean(responseJson.allowed));
+            })
+            .catch(() => {
+                setAdminAllowed(false);
+            })
+            .finally(() => {
+                setAdminPermissionLoaded(true);
+            });
     }, [hasLogined]);
+
+    useEffect(() => {
+        if (!hasLogined) {
+            return;
+        }
+        coverageReportedRef.current = false;
+        migrateLegacyPersistedSessions()
+            .catch(() => {})
+            .finally(async () => {
+                const items = await loadSessionSummaries().catch(() => []);
+                reportSessionCoverage(Array.isArray(items) ? items : []).catch(() => {});
+            });
+    }, [hasLogined, loadSessionSummaries, migrateLegacyPersistedSessions, reportSessionCoverage]);
+
+    useEffect(() => {
+        if (
+            !hasLogined ||
+            !id ||
+            isAdminPage ||
+            isTracePage ||
+            isVoiceLabPage ||
+            !canOpenCurrentGpt
+        ) {
+            return;
+        }
+        if (sessions[id]?.length) {
+            return;
+        }
+        const conversationId = activeConversationId || id;
+        loadSessionDetail(id, conversationId).catch(() => {});
+    }, [
+        activeConversationId,
+        canOpenCurrentGpt,
+        hasLogined,
+        id,
+        isAdminPage,
+        isTracePage,
+        isVoiceLabPage,
+        loadSessionDetail,
+        sessions,
+    ]);
 
     useEffect(() => {
         initRuntimeTelemetry({
@@ -696,6 +1279,42 @@ const App = () => {
         gptsPermissionLoaded,
         hasLogined,
         isGptsPage,
+        navigate,
+        routes.index.prefix,
+    ]);
+
+    useEffect(() => {
+        if (
+            hasLogined &&
+            gptsPermissionLoaded &&
+            !gptsManageAllowed &&
+            isGptsManagePage
+        ) {
+            navigate(routes.gpts.prefix, { replace: true });
+        }
+    }, [
+        gptsManageAllowed,
+        gptsPermissionLoaded,
+        hasLogined,
+        isGptsManagePage,
+        navigate,
+        routes.gpts.prefix,
+    ]);
+
+    useEffect(() => {
+        if (
+            hasLogined &&
+            adminPermissionLoaded &&
+            !adminAllowed &&
+            isAdminPage
+        ) {
+            navigate(routes.index.prefix, { replace: true });
+        }
+    }, [
+        adminAllowed,
+        adminPermissionLoaded,
+        hasLogined,
+        isAdminPage,
         navigate,
         routes.index.prefix,
     ]);
@@ -880,6 +1499,49 @@ const App = () => {
                     }}
                 />
             </div>
+        ) : hasLogined && isAdminPage ? (
+            <Container className="h-screen w-full" toaster={true}>
+                <div className="flex h-screen min-w-full flex-col overflow-hidden bg-white/95">
+                    <div className="border-b border-[rgba(223,231,236,0.96)] bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(247,250,252,0.96))] px-4 py-3">
+                        <div className="mx-auto flex w-full max-w-[1560px] items-center justify-between gap-3">
+                            <div className="min-w-0">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#7f8b96]">
+                                    {t("views.Admin.page_title")}
+                                </p>
+                                <p className="mt-1 truncate text-sm text-[#66717d]">
+                                    {t("views.Admin.page_subtitle")}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                className="inline-flex h-9 shrink-0 items-center justify-center rounded-xl border border-[rgba(214,223,229,0.98)] bg-white px-3.5 text-sm font-semibold text-[#2f3a46] transition-colors hover:bg-[rgba(245,248,250,0.96)]"
+                                onClick={() => navigate(routes.index.prefix)}
+                            >
+                                {t("views.Admin.back_to_chat")}
+                            </button>
+                        </div>
+                    </div>
+                    <div
+                        ref={mainSectionRef}
+                        className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden"
+                    >
+                        <RouterView
+                            routes={routes}
+                            suspense={<Skeleton />}
+                            routerProps={{
+                                refs: { mainSectionRef, textAreaRef },
+                                onAbortUpdate: onAbortUpdate,
+                                gid: gid,
+                                title: pageTitle,
+                                logo: pageLogo,
+                                subTitle: pageSubTitle,
+                                samples: pageSamples,
+                                userName: userName,
+                            }}
+                        />
+                    </div>
+                </div>
+            </Container>
         ) : (
             <Container
                 className={
@@ -902,9 +1564,11 @@ const App = () => {
                             userName={userName}
                             locales={locales}
                             sessions={sessions}
+                            sessionSummaries={sessionSummaries}
                             expand={sidebarExpand}
                             gptsFeatureAllowed={gptsFeatureAllowed}
                             voiceLabAllowed={voiceLabAllowed}
+                            adminAllowed={adminAllowed}
                             currentLocale={currentLocale}
                             onSwitchLocale={handleSwitchLocale}
                             onDeleteSession={handleDeleteSession}
@@ -916,7 +1580,7 @@ const App = () => {
                         <Container
                             className="col-start-2 flex h-screen min-w-0 flex-col bg-white/95 max-[900px]:col-start-1"
                         >
-                            {!isGptsPage && (
+                            {!isGptsPage && !isAdminPage && (
                                 <Header
                                     sidebarExpand={sidebarExpand}
                                     title={pageName}
@@ -931,6 +1595,7 @@ const App = () => {
                             <div
                                 className={
                                     isNewSessionPage && !isGptsPage
+                                        && !isAdminPage
                                         ? `flex min-h-0 flex-1 flex-col justify-center gap-3 pb-2 md:gap-4 md:pb-0 ${
                                             isDefaultNewSessionPage
                                                 ? "relative -top-10 md:-top-12"
@@ -943,6 +1608,7 @@ const App = () => {
                                     ref={mainSectionRef}
                                     className={`relative min-h-0 overflow-y-auto overflow-x-hidden ${
                                         isGptsPage
+                                            || isAdminPage
                                             ? "h-screen flex-1"
                                             : isNewSessionPage
                                                 ? "flex-none overflow-visible"
@@ -964,7 +1630,7 @@ const App = () => {
                                         }}
                                     />
                                 </div>
-                                {!isGptsPage && (
+                                {!isGptsPage && !isAdminPage && (
                                     <InputArea
                                         minHeight={45}
                                         ref={textAreaRef}

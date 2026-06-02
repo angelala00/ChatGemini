@@ -136,7 +136,7 @@ const Gpts = () => {
             });
         fetch(getFullPath('/api/gpts/permission'), {})
             .then((res) => res.json())
-            .then((data) => setCanManage(Boolean(data.allowed)))
+            .then((data) => setCanManage(Boolean(data.manage_allowed)))
             .catch(() => setCanManage(false));
     }, []);
 

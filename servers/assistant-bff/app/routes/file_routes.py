@@ -1,11 +1,12 @@
 import time
 import os
 import uuid
+from pathlib import Path
 from apscheduler.schedulers.background import BackgroundScheduler
 from ..utils import extract_text
 from fastapi import APIRouter, Request, Depends, File, UploadFile, HTTPException, status, Form
 from fastapi.responses import JSONResponse, FileResponse
-from datetime import datetime
+from datetime import datetime, timezone
 import mimetypes
 from app.auth.auth_routes import get_current_user
 from app.logger import gpt_logger
@@ -17,14 +18,21 @@ from app.utils.model_tool import (
     MODEL_NAME_VL,
 )
 from app.utils.image_utils import detect_image_dimensions_from_bytes, is_image_file
-from app.db import get_db
+from app.storage.business_store import (
+    count_file_mappings,
+    delete_file_mapping,
+    get_file_mapping,
+    insert_file_mapping,
+    list_file_mappings,
+)
+from app.storage.object_store import (
+    delete_object,
+    ensure_local_path,
+    local_cache_path,
+    store_bytes,
+)
 
 router = APIRouter(prefix="/api", tags=["auth"])
-
-# 配置
-UPLOAD_FOLDER = f"{model_config.FILE_BASE}/gptassistant/uploads"
-if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER)
 
 DOCUMENT_EXTENSIONS = {"txt", "md", "csv", "pdf", "doc", "docx", "xlsx", "pptx"}
 IMAGE_EXTENSIONS = {"jpg", "jpeg", "png"}
@@ -104,7 +112,7 @@ def allowed_file(filename, model_id: str):
 
 def _validate_upload_limits(filename: str, file_content: bytes, model_rule: dict) -> None:
     limits = _get_gptassistant_upload_limits()
-    current_file_count = len(load_file_mapping())
+    current_file_count = count_file_mappings("gptassistant")
     if current_file_count >= limits["max_active_files"]:
         gpt_logger.warning(
             "upload_validation_failed reason=max_active_files filename=%s current_file_count=%s limit=%s model_rule=%s",
@@ -183,48 +191,8 @@ def _validate_upload_limits(filename: str, file_content: bytes, model_rule: dict
             ),
         )
 
-
-def init_db():
-    conn = get_db()
-    try:
-        conn.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS file_mapping (
-              file_id TEXT PRIMARY KEY,
-              filename TEXT NOT NULL,
-              fileExtension TEXT NOT NULL,
-              path TEXT NOT NULL,
-              uploadTime TEXT NOT NULL,
-              gid TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_file_mapping_gid ON file_mapping(gid);
-            """
-        )
-    finally:
-        conn.close()
-
-
-init_db()
-
-
 def load_gid_file_mapping(gid):
-    conn = get_db()
-    try:
-        rows = conn.execute(
-            "SELECT file_id, filename, fileExtension, path, uploadTime FROM file_mapping WHERE gid=?",
-            (gid,),
-        ).fetchall()
-    finally:
-        conn.close()
-    return {
-        row["file_id"]: {
-            "filename": row["filename"],
-            "fileExtension": row["fileExtension"],
-            "path": row["path"],
-            "uploadTime": row["uploadTime"],
-        }
-        for row in rows
-    }
+    return list_file_mappings(gid)
 
 
 def load_file_mapping():
@@ -251,19 +219,19 @@ def describe_file_mapping_entry(file_id: str, entry: dict | None) -> dict:
     if not entry:
         return {"file_id": file_id, "found": False}
 
-    file_path = entry.get("path")
+    local_path = _ensure_entry_local_path(file_id, entry)
     file_extension = _normalize_file_extension(entry.get("fileExtension"))
-    exists = bool(file_path and os.path.exists(file_path))
-    kind = classify_file_kind(file_path, file_extension) if file_path else "unknown"
-    size_bytes = os.path.getsize(file_path) if exists else None
+    exists = bool(local_path and os.path.exists(local_path))
+    kind = classify_file_kind(local_path, file_extension) if local_path else "unknown"
+    size_bytes = os.path.getsize(local_path) if exists else entry.get("sizeBytes")
     size_kb = round(size_bytes / 1024, 1) if isinstance(size_bytes, int) else None
-    mime_type, _ = mimetypes.guess_type(entry.get("filename") or file_path or "")
+    mime_type, _ = mimetypes.guess_type(entry.get("filename") or local_path or "")
     return {
         "file_id": file_id,
         "found": True,
         "filename": entry.get("filename"),
         "file_extension": file_extension,
-        "path": file_path,
+        "path": local_path,
         "upload_time": entry.get("uploadTime"),
         "mime_type": mime_type or "application/octet-stream",
         "kind": kind,
@@ -273,23 +241,21 @@ def describe_file_mapping_entry(file_id: str, entry: dict | None) -> dict:
     }
 
 
-def insert_file_mapping(file_id, filename, file_extension, path, gid="gptassistant"):
-    conn = get_db()
+def _ensure_entry_local_path(file_id: str, entry: dict | None) -> str | None:
+    if not entry:
+        return None
     try:
-        conn.execute(
-            "INSERT INTO file_mapping(file_id, filename, fileExtension, path, uploadTime, gid) VALUES(?, ?, ?, ?, ?, ?)",
-            (file_id, filename, file_extension, path, datetime.now().isoformat(), gid),
-        )
-    finally:
-        conn.close()
+        enriched = {"file_id": file_id, **entry}
+        return ensure_local_path(enriched)
+    except Exception:
+        return None
 
 
-def delete_file_mapping(file_id):
-    conn = get_db()
-    try:
-        conn.execute("DELETE FROM file_mapping WHERE file_id=?", (file_id,))
-    finally:
-        conn.close()
+def _get_mapping_or_404(file_id: str, gid: str | None = None) -> dict:
+    entry = get_file_mapping(file_id, gid)
+    if not entry:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found")
+    return entry
 
 
 @router.post("/upload")
@@ -339,7 +305,6 @@ async def upload_file(
     try:
         file_id = str(uuid.uuid4())
         file_extension = os.path.splitext(file.filename)[1]
-        file_path = os.path.join(UPLOAD_FOLDER, file_id)
         file_content = await file.read()
         gpt_logger.info(
             "upload_request_received model_id=%s filename=%s content_type=%s extension=%s file_size=%s model_rule=%s",
@@ -352,18 +317,30 @@ async def upload_file(
         )
         _validate_upload_limits(file.filename, file_content, model_rule)
 
-        # 保存文件
-        with open(file_path, "wb") as buffer:
-            buffer.write(file_content)
+        object_meta = store_bytes(
+            file_id=file_id,
+            filename=file.filename,
+            content=file_content,
+            content_type=file.content_type,
+        )
 
-        # 存储文件ID、文件路径和原始文件名的映射
-        insert_file_mapping(file_id, file.filename, file_extension, file_path)
+        insert_file_mapping(
+            file_id,
+            filename=file.filename,
+            file_extension=file_extension,
+            content_type=file.content_type,
+            bucket=str(object_meta["bucket"]),
+            object_key=str(object_meta["object_key"]),
+            storage_backend=str(object_meta["storage_backend"]),
+            size_bytes=int(object_meta["size_bytes"]),
+        )
         gpt_logger.info(
-            "upload_request_succeeded model_id=%s filename=%s file_id=%s path=%s",
+            "upload_request_succeeded model_id=%s filename=%s file_id=%s storage_backend=%s object_key=%s",
             model_id,
             file.filename,
             file_id,
-            file_path,
+            object_meta["storage_backend"],
+            object_meta["object_key"],
         )
 
         return JSONResponse(
@@ -395,27 +372,17 @@ async def upload_file(
 @router.get("/g/{gid}/file/{file_id}")
 async def get_file_by_gid(gid: str, file_id: str, user: dict = Depends(get_current_user)):
     gpt_logger.info(f"path=get_file_by_gid user={user['email']} at={time.strftime('%Y-%m-%d %H:%M:%S')}")
-    file_mapping = load_gid_file_mapping(gid)
-
-    if file_id not in file_mapping:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found")
-
-    file_path = file_mapping[file_id]['path']
-
-    if not os.path.isfile(file_path):
+    entry = _get_mapping_or_404(file_id, gid)
+    file_path = _ensure_entry_local_path(file_id, entry)
+    if not file_path or not os.path.isfile(file_path):
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="File not exist")
 
-    # 获取文件的 MIME 类型
-    mime_type, _ = mimetypes.guess_type(file_path)
-    if mime_type is None:
-        mime_type = "application/octet-stream"
-
-    # print(f"fileinfo:{file_mapping[file_id]}")
+    mime_type = entry.get("contentType") or mimetypes.guess_type(entry["filename"])[0] or "application/octet-stream"
 
     return FileResponse(
         file_path,
         media_type=mime_type,
-        filename=file_mapping[file_id]['filename']
+        filename=entry['filename']
     )
 
 
@@ -423,27 +390,17 @@ async def get_file_by_gid(gid: str, file_id: str, user: dict = Depends(get_curre
 @router.get("/file/{file_id}")
 async def get_file(file_id: str, user: dict = Depends(get_current_user)):
     gpt_logger.info(f"path=get_file user={user['email']} at={time.strftime('%Y-%m-%d %H:%M:%S')}")
-    file_mapping = load_file_mapping()
-
-    if file_id not in file_mapping:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found")
-
-    file_path = file_mapping[file_id]['path']
-
-    if not os.path.isfile(file_path):
+    entry = _get_mapping_or_404(file_id)
+    file_path = _ensure_entry_local_path(file_id, entry)
+    if not file_path or not os.path.isfile(file_path):
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="File not exist")
 
-    # 获取文件的 MIME 类型
-    mime_type, _ = mimetypes.guess_type(file_path)
-    if mime_type is None:
-        mime_type = "application/octet-stream"
-
-    # print(f"fileinfo:{file_mapping[file_id]}")
+    mime_type = entry.get("contentType") or mimetypes.guess_type(entry["filename"])[0] or "application/octet-stream"
 
     return FileResponse(
         file_path,
         media_type=mime_type,
-        filename=file_mapping[file_id]['filename']
+        filename=entry['filename']
     )
 
 
@@ -451,50 +408,67 @@ async def get_file(file_id: str, user: dict = Depends(get_current_user)):
 @router.get("/file_name/{file_id}")
 async def get_file_name(file_id, user: dict = Depends(get_current_user)):
     gpt_logger.info(f"path=get_file_name user={user['email']} at={time.strftime('%Y-%m-%d %H:%M:%S')}")
-    file_mapping = load_file_mapping()
-
-    if file_id not in file_mapping:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found")
-
-    original_filename = file_mapping[file_id]['filename']
+    entry = _get_mapping_or_404(file_id)
+    original_filename = entry['filename']
     return JSONResponse({"file_id": file_id, "original_filename": original_filename})
 
 
 # 删除过期文件的函数
 def delete_expired_files():
-    now = time.time()
+    now = datetime.now(timezone.utc)
     file_mapping = load_file_mapping()
 
     for file_id, file_data in list(file_mapping.items()):
-        file_path = file_data['path']
-        if os.path.isfile(file_path):
-            file_age = now - os.path.getmtime(file_path)
-            if file_age > FILE_LIFETIME_DAYS * 86400:  # 86400是一天的秒数
-                os.remove(file_path)
-                delete_file_mapping(file_id)
-                print(f"Deleted expired file: {file_id}")
+        upload_time_raw = str(file_data.get("uploadTime") or "")
+        try:
+            upload_time = datetime.fromisoformat(upload_time_raw.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if (now - upload_time).total_seconds() <= FILE_LIFETIME_DAYS * 86400:
+            continue
+        try:
+            delete_object({"file_id": file_id, **file_data})
+        except Exception:
+            pass
+        cache_path = local_cache_path({"file_id": file_id, **file_data})
+        if cache_path and Path(cache_path).exists():
+            try:
+                Path(cache_path).unlink()
+            except OSError:
+                pass
+        delete_file_mapping(file_id)
 
 
-# 启动定时任务
-scheduler = BackgroundScheduler()
-scheduler.add_job(delete_expired_files, 'interval', days=1)  # 每天检查一次
-scheduler.start()
+_cleanup_scheduler: BackgroundScheduler | None = None
+
+
+def start_file_retention_scheduler() -> None:
+    global _cleanup_scheduler
+    if _cleanup_scheduler is not None and _cleanup_scheduler.running:
+        return
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(delete_expired_files, "interval", days=1)
+    scheduler.start()
+    _cleanup_scheduler = scheduler
+
+
+def stop_file_retention_scheduler() -> None:
+    global _cleanup_scheduler
+    if _cleanup_scheduler is None:
+        return
+    _cleanup_scheduler.shutdown(wait=False)
+    _cleanup_scheduler = None
 
 
 @router.get("/extract_text_from_file/{file_id}")
 async def extract_text_from_file(file_id: str, user: dict = Depends(get_current_user)):
     gpt_logger.info(f"path=extract_text_from_file user={user['email']} at={time.strftime('%Y-%m-%d %H:%M:%S')}")
-    file_mapping = load_file_mapping()
-
-    if file_id not in file_mapping:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found")
-
-    file_path = file_mapping[file_id]['path']
-    if not os.path.exists(file_path):
+    entry = _get_mapping_or_404(file_id)
+    file_path = _ensure_entry_local_path(file_id, entry)
+    if not file_path or not os.path.exists(file_path):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "FilePath not found")
 
-    # print(f"file_path:{file_path}")
-    extension = file_mapping[file_id]['fileExtension']
+    extension = entry['fileExtension']
     result = await extract_text.extract_text_from_file(file_path, extension)
     return JSONResponse({"text": result})
 
@@ -502,14 +476,17 @@ async def extract_text_from_file(file_id: str, user: dict = Depends(get_current_
 def get_file_paths(file_ids: str):
     if not file_ids:
         return None
-    file_mapping = load_file_mapping()
     paths = []
     for file_id in file_ids.split(","):
-        if file_id not in file_mapping:
+        current_file_id = file_id.strip()
+        if not current_file_id:
+            continue
+        entry = get_file_mapping(current_file_id)
+        if not entry:
             print(f"file_id:{file_id} is not found")
             continue
-        file_path = file_mapping[file_id]['path']
-        if not os.path.exists(file_path):
+        file_path = _ensure_entry_local_path(current_file_id, entry)
+        if not file_path or not os.path.exists(file_path):
             print(f"file_path:{file_path} is not found")
             continue
         paths.append(file_path)
@@ -531,8 +508,8 @@ def split_file_ids_by_type(file_ids: str):
             print(f"file_id:{current_file_id} is not found")
             continue
 
-        file_path = file_mapping[current_file_id]["path"]
-        if not os.path.exists(file_path):
+        file_path = _ensure_entry_local_path(current_file_id, file_mapping[current_file_id])
+        if not file_path or not os.path.exists(file_path):
             print(f"file_path:{file_path} is not found")
             continue
 
@@ -565,9 +542,9 @@ async def extract_text_from_file_ids(
             print(f"file_id:{file_id} is not found")
             continue
 
-        file_path = file_mapping[file_id]['path']
+        file_path = _ensure_entry_local_path(file_id, file_mapping[file_id])
         file_name = file_mapping[file_id]['filename']
-        if not os.path.exists(file_path):
+        if not file_path or not os.path.exists(file_path):
             print(f"file_path:{file_path} is not found")
             continue
             # raise HTTPException(status.HTTP_404_NOT_FOUND, "FilePath not found")

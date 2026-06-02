@@ -1,71 +1,18 @@
 from __future__ import annotations
 
 import json
-import sqlite3
+import threading
 import uuid
 from dataclasses import asdict, dataclass, is_dataclass
-from datetime import datetime, timezone
-from typing import Any, Iterable, Optional
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, Optional
 
 from app.base_config import model_config
-from app.db import get_db
-from app.logger import gpt_logger
+from app.logger import gpt_logger, log_dir
 
-_TRACE_TABLE_DDL = """
-CREATE TABLE IF NOT EXISTS chat_traces (
-  id TEXT PRIMARY KEY,
-  conversation_id TEXT,
-  user_id TEXT NOT NULL,
-  user_email TEXT,
-  gid TEXT,
-  route TEXT,
-  requested_model TEXT,
-  selected_model TEXT,
-  reasoning_enabled INTEGER,
-  status TEXT NOT NULL,
-  error TEXT,
-  started_at TEXT NOT NULL,
-  completed_at TEXT,
-  duration_ms REAL,
-  query TEXT,
-  system_prompt TEXT,
-  file_ids TEXT,
-  request_json TEXT,
-  response_preview TEXT,
-  detail_count INTEGER NOT NULL DEFAULT 0
-);
-"""
-
-_TRACE_EVENT_TABLE_DDL = """
-CREATE TABLE IF NOT EXISTS chat_trace_events (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  trace_id TEXT NOT NULL,
-  seq INTEGER NOT NULL,
-  event_type TEXT NOT NULL,
-  occurred_at TEXT NOT NULL,
-  payload TEXT NOT NULL
-);
-"""
-
-_TRACE_INDEXES = (
-    (
-        "CREATE INDEX IF NOT EXISTS idx_chat_traces_started_at ON chat_traces(started_at)",
-        ("started_at",),
-    ),
-    (
-        "CREATE INDEX IF NOT EXISTS idx_chat_traces_conversation_id ON chat_traces(conversation_id)",
-        ("conversation_id",),
-    ),
-    (
-        "CREATE INDEX IF NOT EXISTS idx_chat_traces_gid ON chat_traces(gid)",
-        ("gid",),
-    ),
-    (
-        "CREATE INDEX IF NOT EXISTS idx_chat_trace_events_trace_id_seq ON chat_trace_events(trace_id, seq)",
-        ("trace_id", "seq"),
-    ),
-)
-
+TRACE_DIR = Path(log_dir) / "chat-traces"
+_TRACE_LOCK = threading.Lock()
 _MAX_STRING_CHARS = 100_000
 
 
@@ -73,8 +20,34 @@ def trace_enabled() -> bool:
     return bool(model_config.TRACE_ENABLED)
 
 
+def init_trace_storage() -> None:
+    TRACE_DIR.mkdir(parents=True, exist_ok=True)
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _trace_path(trace_id: str) -> Path:
+    init_trace_storage()
+    return TRACE_DIR / f"{trace_id}.json"
+
+
+def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
+    temp_path = path.with_suffix(".tmp")
+    temp_path.write_text(
+        json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=str),
+        encoding="utf-8",
+    )
+    temp_path.replace(path)
+
+
+def _load_trace_file(path: Path) -> dict[str, Any] | None:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
 
 
 def _log_preview(value: Any, *, limit: int = 1200) -> str:
@@ -123,53 +96,12 @@ def _serialize_value(value: Any, *, _depth: int = 0) -> Any:
     return repr(value)
 
 
-def _json_dumps(value: Any) -> str:
-    return json.dumps(_serialize_value(value), ensure_ascii=False, default=str)
+def _load_trace_doc(trace_id: str) -> dict[str, Any] | None:
+    return _load_trace_file(_trace_path(trace_id))
 
 
-def _execute(sql: str, params: Iterable[object]) -> None:
-    conn = get_db()
-    try:
-        conn.execute(sql, tuple(params))
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def _fetchone(sql: str, params: Iterable[object]) -> Optional[sqlite3.Row]:
-    conn = get_db()
-    try:
-        cur = conn.execute(sql, tuple(params))
-        return cur.fetchone()
-    finally:
-        conn.close()
-
-
-def _fetchall(sql: str, params: Iterable[object]) -> list[sqlite3.Row]:
-    conn = get_db()
-    try:
-        cur = conn.execute(sql, tuple(params))
-        return cur.fetchall()
-    finally:
-        conn.close()
-
-
-def init_trace_storage() -> None:
-    conn = get_db()
-    try:
-        conn.executescript(_TRACE_TABLE_DDL)
-        conn.executescript(_TRACE_EVENT_TABLE_DDL)
-        for sql, required_columns in _TRACE_INDEXES:
-            columns = {row["name"] for row in conn.execute("PRAGMA table_info(chat_traces)")}
-            event_columns = {row["name"] for row in conn.execute("PRAGMA table_info(chat_trace_events)")}
-            if required_columns == ("trace_id", "seq"):
-                if {"trace_id", "seq"}.issubset(event_columns):
-                    conn.execute(sql)
-            elif set(required_columns).issubset(columns):
-                conn.execute(sql)
-        conn.commit()
-    finally:
-        conn.close()
+def _save_trace_doc(trace_id: str, payload: dict[str, Any]) -> None:
+    _atomic_write_json(_trace_path(trace_id), payload)
 
 
 @dataclass
@@ -181,20 +113,23 @@ class ChatTraceRecorder:
     def log(self, event_type: str, payload: Any) -> None:
         if not trace_enabled() or self.finalized:
             return
-        self.event_seq += 1
-        payload_json = _json_dumps(payload)
-        occurred_at = _now_iso()
-        _execute(
-            """
-            INSERT INTO chat_trace_events(trace_id, seq, event_type, occurred_at, payload)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (self.trace_id, self.event_seq, event_type, occurred_at, payload_json),
-        )
-        _execute(
-            "UPDATE chat_traces SET detail_count = detail_count + 1 WHERE id=?",
-            (self.trace_id,),
-        )
+        with _TRACE_LOCK:
+            document = _load_trace_doc(self.trace_id)
+            if not document:
+                return
+            trace = document.setdefault("trace", {})
+            events = document.setdefault("events", [])
+            self.event_seq += 1
+            events.append(
+                {
+                    "seq": self.event_seq,
+                    "event_type": event_type,
+                    "occurred_at": _now_iso(),
+                    "payload": _serialize_value(payload),
+                }
+            )
+            trace["detail_count"] = len(events)
+            _save_trace_doc(self.trace_id, document)
         gpt_logger.info(
             "chat_trace trace_id=%s seq=%s event=%s payload=%s",
             self.trace_id,
@@ -206,12 +141,14 @@ class ChatTraceRecorder:
     def update(self, **fields: Any) -> None:
         if not trace_enabled() or not fields or self.finalized:
             return
-        assignments = ", ".join(f"{key}=?" for key in fields)
-        values = tuple(_serialize_value(value) for value in fields.values())
-        _execute(
-            f"UPDATE chat_traces SET {assignments} WHERE id=?",
-            (*values, self.trace_id),
-        )
+        with _TRACE_LOCK:
+            document = _load_trace_doc(self.trace_id)
+            if not document:
+                return
+            trace = document.setdefault("trace", {})
+            for key, value in fields.items():
+                trace[key] = _serialize_value(value)
+            _save_trace_doc(self.trace_id, document)
 
     def finalize(
         self,
@@ -223,26 +160,19 @@ class ChatTraceRecorder:
     ) -> None:
         if not trace_enabled() or self.finalized:
             return
-        completed_at = _now_iso()
-        _execute(
-            """
-            UPDATE chat_traces
-               SET status=?,
-                   error=?,
-                   completed_at=?,
-                   duration_ms=COALESCE(?, duration_ms),
-                   response_preview=COALESCE(?, response_preview)
-             WHERE id=?
-            """,
-            (
-                status,
-                error,
-                completed_at,
-                duration_ms,
-                response_preview,
-                self.trace_id,
-            ),
-        )
+        with _TRACE_LOCK:
+            document = _load_trace_doc(self.trace_id)
+            if not document:
+                return
+            trace = document.setdefault("trace", {})
+            trace["status"] = status
+            trace["error"] = error
+            trace["completed_at"] = _now_iso()
+            if duration_ms is not None:
+                trace["duration_ms"] = duration_ms
+            if response_preview is not None:
+                trace["response_preview"] = response_preview
+            _save_trace_doc(self.trace_id, document)
         gpt_logger.info(
             "chat_trace_finalize trace_id=%s status=%s error=%s response_preview=%s",
             self.trace_id,
@@ -273,44 +203,34 @@ def create_chat_trace(
 
     trace_id = str(uuid.uuid4())
     started_at = _now_iso()
-    _execute(
-        """
-        INSERT INTO chat_traces(
-            id,
-            conversation_id,
-            user_id,
-            user_email,
-            gid,
-            route,
-            requested_model,
-            selected_model,
-            reasoning_enabled,
-            status,
-            started_at,
-            query,
-            system_prompt,
-            file_ids,
-            request_json,
-            detail_count
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, ?, 0)
-        """,
-        (
-            trace_id,
-            conversation_id,
-            user_id,
-            user_email,
-            gid,
-            route,
-            requested_model,
-            selected_model,
-            1 if reasoning_enabled else 0 if reasoning_enabled is not None else None,
-            started_at,
-            query,
-            system_prompt,
-            file_ids,
-            _json_dumps(request_payload) if request_payload is not None else None,
-        ),
-    )
+    payload = {
+        "enabled": True,
+        "trace": {
+            "id": trace_id,
+            "conversation_id": conversation_id,
+            "user_id": user_id,
+            "user_email": user_email,
+            "gid": gid,
+            "route": route,
+            "requested_model": requested_model,
+            "selected_model": selected_model,
+            "reasoning_enabled": reasoning_enabled,
+            "status": "running",
+            "error": None,
+            "started_at": started_at,
+            "completed_at": None,
+            "duration_ms": None,
+            "query": query,
+            "system_prompt": system_prompt,
+            "file_ids": file_ids,
+            "request_json": _serialize_value(request_payload) if request_payload is not None else None,
+            "response_preview": None,
+            "detail_count": 0,
+        },
+        "events": [],
+    }
+    with _TRACE_LOCK:
+        _save_trace_doc(trace_id, payload)
     gpt_logger.info(
         "chat_trace_start trace_id=%s conversation_id=%s gid=%s route=%s requested_model=%s selected_model=%s reasoning_enabled=%s",
         trace_id,
@@ -330,98 +250,110 @@ def list_chat_traces(
     limit: int = 50,
 ) -> dict[str, Any]:
     init_trace_storage()
-    limit = max(1, min(int(limit), 200))
-    clauses = []
-    params: list[Any] = []
-    if conversation_id:
-        clauses.append("conversation_id = ?")
-        params.append(conversation_id)
-    where_clause = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-    rows = _fetchall(
-        f"""
-        SELECT *
-          FROM chat_traces
-          {where_clause}
-         ORDER BY started_at DESC
-         LIMIT ?
-        """,
-        (*params, limit),
-    )
-    items = [_row_to_summary(row) for row in rows]
+    normalized_limit = max(1, min(int(limit), 200))
+    items: list[dict[str, Any]] = []
+    for path in sorted(TRACE_DIR.glob("*.json"), key=lambda item: item.stat().st_mtime, reverse=True):
+        payload = _load_trace_file(path)
+        if not payload:
+            continue
+        trace = payload.get("trace")
+        if not isinstance(trace, dict):
+            continue
+        if conversation_id and trace.get("conversation_id") != conversation_id:
+            continue
+        items.append(_row_to_summary(trace))
+        if len(items) >= normalized_limit:
+            break
+    items.sort(key=lambda item: item.get("started_at") or "", reverse=True)
     return {"enabled": trace_enabled(), "items": items}
 
 
 def get_chat_trace(trace_id: str) -> Optional[dict[str, Any]]:
     init_trace_storage()
-    session = _fetchone(
-        "SELECT * FROM chat_traces WHERE id=?",
-        (trace_id,),
-    )
-    if not session:
+    payload = _load_trace_doc(trace_id)
+    if not payload:
         return None
-    events = _fetchall(
-        """
-        SELECT seq, event_type, occurred_at, payload
-          FROM chat_trace_events
-         WHERE trace_id=?
-         ORDER BY seq ASC
-        """,
-        (trace_id,),
-    )
+    trace = payload.get("trace")
+    events = payload.get("events")
+    if not isinstance(trace, dict) or not isinstance(events, list):
+        return None
     return {
         "enabled": trace_enabled(),
-        "trace": _row_to_detail(session),
-        "events": [
-            {
-                "seq": row["seq"],
-                "event_type": row["event_type"],
-                "occurred_at": row["occurred_at"],
-                "payload": _load_payload(row["payload"]),
-            }
-            for row in events
-        ],
+        "trace": _row_to_detail(trace),
+        "events": events,
     }
 
 
-def _load_payload(payload: str) -> Any:
-    try:
-        return json.loads(payload)
-    except Exception:
-        return payload
+def cleanup_trace_storage(*, retention_days: int | None = None) -> int:
+    init_trace_storage()
+    keep_days = retention_days or model_config.TRACE_RETENTION_DAYS
+    cutoff = datetime.now(timezone.utc) - timedelta(days=keep_days)
+    deleted = 0
+    for path in TRACE_DIR.glob("*.json"):
+        try:
+            payload = _load_trace_file(path)
+            started_at = None
+            if payload and isinstance(payload.get("trace"), dict):
+                started_at = payload["trace"].get("started_at")
+            started_at_dt = _now_from_any(started_at)
+            if started_at_dt is None:
+                started_at_dt = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+        except OSError:
+            continue
+        if started_at_dt >= cutoff:
+            continue
+        try:
+            path.unlink()
+            deleted += 1
+        except OSError:
+            continue
+    return deleted
 
 
-def _row_to_summary(row: sqlite3.Row) -> dict[str, Any]:
+def _now_from_any(value: object) -> datetime | None:
+    if isinstance(value, datetime):
+        return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+    if isinstance(value, str) and value:
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    return None
+
+
+def _row_to_summary(row: dict[str, Any]) -> dict[str, Any]:
     return {
-        "id": row["id"],
-        "conversation_id": row["conversation_id"],
-        "user_id": row["user_id"],
-        "user_email": row["user_email"],
-        "gid": row["gid"],
-        "route": row["route"],
-        "requested_model": row["requested_model"],
-        "selected_model": row["selected_model"],
-        "reasoning_enabled": bool(row["reasoning_enabled"]) if row["reasoning_enabled"] is not None else None,
-        "status": row["status"],
-        "error": row["error"],
-        "started_at": row["started_at"],
-        "completed_at": row["completed_at"],
-        "duration_ms": row["duration_ms"],
-        "query": row["query"],
-        "file_ids": row["file_ids"],
-        "detail_count": row["detail_count"],
-        "response_preview": row["response_preview"],
+        "id": row.get("id"),
+        "conversation_id": row.get("conversation_id"),
+        "user_id": row.get("user_id"),
+        "user_email": row.get("user_email"),
+        "gid": row.get("gid"),
+        "route": row.get("route"),
+        "requested_model": row.get("requested_model"),
+        "selected_model": row.get("selected_model"),
+        "reasoning_enabled": row.get("reasoning_enabled"),
+        "status": row.get("status"),
+        "error": row.get("error"),
+        "started_at": row.get("started_at"),
+        "completed_at": row.get("completed_at"),
+        "duration_ms": row.get("duration_ms"),
+        "query": row.get("query"),
+        "file_ids": row.get("file_ids"),
+        "detail_count": row.get("detail_count", 0),
+        "response_preview": row.get("response_preview"),
     }
 
 
-def _row_to_detail(row: sqlite3.Row) -> dict[str, Any]:
+def _row_to_detail(row: dict[str, Any]) -> dict[str, Any]:
     item = _row_to_summary(row)
-    item["request_json"] = _load_payload(row["request_json"]) if row["request_json"] else None
-    item["system_prompt"] = row["system_prompt"]
+    item["request_json"] = row.get("request_json")
+    item["system_prompt"] = row.get("system_prompt")
     return item
 
 
 __all__ = [
     "ChatTraceRecorder",
+    "cleanup_trace_storage",
     "create_chat_trace",
     "get_chat_trace",
     "init_trace_storage",

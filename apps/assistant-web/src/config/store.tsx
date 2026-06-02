@@ -8,11 +8,6 @@ import sessionExtensions, { SessionExtensions } from "../store/sessionsExtension
 import gpts, { PinnedGpts } from "../store/gpts";
 import localForage from "localforage";
 
-const sessionsPersistConfig = persistReducer(
-    { storage: localForage, key: "sessions", whitelist: ["sessions"] },
-    sessions
-);
-
 const mappingsPersistConfig = persistReducer(
     { storage: localForage, key: "mappings", whitelist: ["mappings"]},
     mappings
@@ -25,7 +20,7 @@ const sessionExtensionsPersistConfig = persistReducer(
 
 const reducer = combineReducers({
     ai,
-    sessions: sessionsPersistConfig,
+    sessions,
     mappings: mappingsPersistConfig,
     sessionExtensions: sessionExtensionsPersistConfig,
     gpts,

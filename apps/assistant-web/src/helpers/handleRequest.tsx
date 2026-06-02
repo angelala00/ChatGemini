@@ -14,7 +14,11 @@ export const handleStreamingRequest = async(method: string, url:string, body?:st
           window.location.href = '/';
         } else {
           // 抛出其他错误
-          throw new Error(`请求失败，状态码：${response.status}`);
+          const error = new Error(`请求失败，状态码：${response.status}`) as Error & {
+            status?: number;
+          };
+          error.status = response.status;
+          throw error;
         }
       }
       if (streamCallback) {
@@ -43,7 +47,11 @@ export const handleStreamingRequest = async(method: string, url:string, body?:st
           window.location.href = '/';
         } else {
           // 抛出其他错误
-          throw new Error(`请求失败，状态码：${response.status}`);
+          const error = new Error(`请求失败，状态码：${response.status}`) as Error & {
+            status?: number;
+          };
+          error.status = response.status;
+          throw error;
         }
       }
       return response.json();

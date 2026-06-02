@@ -291,9 +291,6 @@ export const InputArea = forwardRef(
                 );
                 return false;
             }
-            sendUserAlert(
-                t("components.InputArea.checkAttachment.upload_success")
-            );
             return true;
         };
 
@@ -491,6 +488,9 @@ export const InputArea = forwardRef(
                                                             const previewUrl = uploaded.mimeType.startsWith("image/")
                                                                 ? URL.createObjectURL(file)
                                                                 : undefined;
+                                                            sendUserAlert(
+                                                                t("components.InputArea.checkAttachment.upload_success")
+                                                            );
                                                             nextItems.push({
                                                                 id: `${uploaded.fileId}-${file.name}-${file.lastModified}`,
                                                                 fileId: uploaded.fileId,

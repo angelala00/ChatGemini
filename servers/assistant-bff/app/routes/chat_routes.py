@@ -3,11 +3,30 @@ import time
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from app.auth.auth_routes import get_current_user
-from .gpts_routes import auth_ok, ensure_gpt_access_allowed, filter_models_for_user, gpts
+from app.storage.business_store import (
+    delete_session_history,
+    get_session_history_meta,
+    list_session_history_meta,
+    load_session_client_history,
+    load_session_history,
+    save_session_client_history,
+    save_session_history,
+    update_session_history_title,
+    upsert_session_history_meta,
+)
+from .gpts_routes import (
+    apply_admin_model_config_overrides,
+    apply_runtime_gpt_defaults,
+    apply_runtime_model_visibility,
+    auth_ok,
+    ensure_gpt_access_allowed,
+    filter_models_for_user,
+    gpts,
+)
 from app.gpts.model_metadata import resolve_model_configs
 from .file_routes import extract_text_from_file_ids
 from app.logger import gpt_logger
@@ -17,6 +36,7 @@ from app.chat_service import (
     chat_with_gpt,
 )
 from app.chat_kernel_service import chat_with_kernel_gptassistant
+from app.chat_kernel_service import KERNEL_HISTORY_PREFIX
 from app.utils.model_tool import MODEL_NAME_THINKING
 from app.metrics.events import create_usage_event
 from app.tracing import create_chat_trace
@@ -70,6 +90,13 @@ async def generate_conversation_id():
     return f"{timestamp}_{random_uuid}"
 
 
+def _derive_session_title(query: str) -> str:
+    normalized = " ".join((query or "").strip().split())
+    if len(normalized) <= 48:
+        return normalized
+    return f"{normalized[:48].rstrip()}..."
+
+
 class QueryRequest(BaseModel):
     query: str
     conversation_id: str = None
@@ -79,6 +106,316 @@ class QueryRequest(BaseModel):
     reasoning_enabled: Optional[bool] = None
 
 
+class SessionTitleUpdateRequest(BaseModel):
+    title: str
+
+
+class LegacyAttachmentPayload(BaseModel):
+    data: str = ""
+    mimeType: str = ""
+
+
+class LegacySessionMessagePayload(BaseModel):
+    role: str
+    parts: str | None = None
+    timestamp: int | None = None
+    title: str | None = None
+    attachment: LegacyAttachmentPayload | None = None
+
+
+class LocalSessionImportItem(BaseModel):
+    session_id: str
+    conversation_id: str | None = None
+    gid: str | None = None
+    history: list[LegacySessionMessagePayload]
+
+
+class LocalSessionImportRequest(BaseModel):
+    items: list[LocalSessionImportItem]
+
+
+class SessionCoverageItem(BaseModel):
+    conversation_id: str
+    gid: str | None = None
+    source: str
+    reason: str | None = None
+
+
+class SessionCoverageReportRequest(BaseModel):
+    phase: str
+    grace_expires_at: str | None = None
+    local_total_count: int = 0
+    server_count: int = 0
+    local_only_count: int = 0
+    items: list[SessionCoverageItem] = []
+
+
+def _runtime_history_key(conversation_id: str, gid: str) -> str:
+    if gid == "gptassistant":
+        return f"{KERNEL_HISTORY_PREFIX}{conversation_id}"
+    return conversation_id
+
+
+def _load_runtime_history(conversation_id: str, gid: str) -> list:
+    preferred_key = _runtime_history_key(conversation_id, gid)
+    preferred_history = load_session_history(preferred_key)
+    if preferred_history:
+        return preferred_history
+    if preferred_key != conversation_id:
+        return load_session_history(conversation_id)
+    return preferred_history
+
+
+def _runtime_history_to_client_history(history: list, gid: str) -> list[dict]:
+    client_history: list[dict] = []
+    for item in history:
+        if not isinstance(item, dict):
+            continue
+        role = str(item.get("role") or "")
+        if role == "system":
+            continue
+        if role == "user":
+            content = item.get("content", "")
+            if isinstance(content, list):
+                text_parts: list[str] = []
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        text = str(block.get("text") or "").strip()
+                        if text:
+                            text_parts.append(text)
+                content = "\n".join(text_parts)
+            elif not isinstance(content, str):
+                content = str(content or "")
+            client_history.append(
+                {
+                    "role": "user",
+                    "parts": content,
+                    "timestamp": int(item.get("timestamp") or 0),
+                }
+            )
+            continue
+        if role == "assistant":
+            content = item.get("content", "")
+            if isinstance(content, str):
+                rendered = content
+            elif isinstance(content, list):
+                parts: list[str] = []
+                for block in content:
+                    if not isinstance(block, dict):
+                        continue
+                    block_type = block.get("type")
+                    if block_type == "thinking":
+                        thinking = str(block.get("thinking") or "").strip()
+                        if thinking:
+                            parts.append(f"<think>{thinking}</think>")
+                    elif block_type == "text":
+                        text = str(block.get("text") or "")
+                        if text:
+                            parts.append(text)
+                rendered = "\n\n".join(part for part in parts if part)
+            else:
+                rendered = str(content or "")
+            client_history.append(
+                {
+                    "role": "model",
+                    "parts": rendered,
+                    "timestamp": int(item.get("timestamp") or 0),
+                }
+            )
+    return client_history
+
+
+def _legacy_client_history_to_runtime_history(history: list[LegacySessionMessagePayload], gid: str) -> list[dict]:
+    runtime_history: list[dict] = []
+    for item in history:
+        parts = (item.parts or "").strip()
+        timestamp = int(item.timestamp or 0)
+        if item.role == "user":
+            if gid == "gptassistant":
+                runtime_history.append(
+                    {
+                        "role": "user",
+                        "content": parts,
+                        "timestamp": timestamp,
+                    }
+                )
+            else:
+                runtime_history.append(
+                    {
+                        "role": "user",
+                        "content": parts,
+                    }
+                )
+        elif item.role == "model":
+            if gid == "gptassistant":
+                runtime_history.append(
+                    {
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": parts}],
+                        "api": "",
+                        "provider": "",
+                        "model": "",
+                        "response_id": None,
+                        "usage": None,
+                        "stop_reason": "stop",
+                        "error_message": None,
+                        "timestamp": timestamp,
+                    }
+                )
+            else:
+                runtime_history.append(
+                    {
+                        "role": "assistant",
+                        "content": parts,
+                    }
+                )
+    return runtime_history
+
+
+@router.get("/sessions")
+async def list_sessions(
+    limit: int = Query(100, ge=1, le=500),
+    user: dict = Depends(get_current_user),
+):
+    items = list_session_history_meta(user_id=user.get("sub", "unknown"), limit=limit)
+    return {"items": items}
+
+
+@router.get("/sessions/{conversation_id}")
+async def get_session(
+    conversation_id: str,
+    user: dict = Depends(get_current_user),
+):
+    meta = get_session_history_meta(conversation_id)
+    if not meta or meta.get("user_id") != user.get("sub", "unknown"):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "session not found")
+    client_history = load_session_client_history(conversation_id)
+    if not client_history:
+        client_history = _runtime_history_to_client_history(
+            _load_runtime_history(conversation_id, meta.get("gid") or "gptassistant"),
+            meta.get("gid") or "gptassistant",
+        )
+    return {
+        "item": {
+            **meta,
+            "history": client_history,
+        }
+    }
+
+
+@router.patch("/sessions/{conversation_id}/title")
+async def update_session_title(
+    conversation_id: str,
+    request: SessionTitleUpdateRequest,
+    user: dict = Depends(get_current_user),
+):
+    meta = get_session_history_meta(conversation_id)
+    if not meta or meta.get("user_id") != user.get("sub", "unknown"):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "session not found")
+    update_session_history_title(conversation_id, request.title)
+    updated = get_session_history_meta(conversation_id)
+    return {"item": updated}
+
+
+@router.delete("/sessions/{conversation_id}")
+async def delete_session(
+    conversation_id: str,
+    user: dict = Depends(get_current_user),
+):
+    meta = get_session_history_meta(conversation_id)
+    if not meta or meta.get("user_id") != user.get("sub", "unknown"):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "session not found")
+    runtime_key = _runtime_history_key(conversation_id, meta.get("gid") or "gptassistant")
+    if runtime_key != conversation_id:
+        delete_session_history(runtime_key)
+    delete_session_history(conversation_id)
+    return {"ok": True}
+
+
+@router.post("/sessions/import-local")
+async def import_local_sessions(
+    request: LocalSessionImportRequest,
+    user: dict = Depends(get_current_user),
+):
+    user_email = user.get("email", "")
+    user_id = user.get("sub", "unknown")
+    gpt_logger.info(
+        "path=import_local_sessions user=%s user_id=%s items=%s at=%s",
+        user_email,
+        user_id,
+        len(request.items),
+        time.strftime("%Y-%m-%d %H:%M:%S"),
+    )
+    imported = 0
+    skipped = 0
+    for item in request.items:
+        conversation_id = (item.conversation_id or item.session_id or "").strip()
+        if not conversation_id or not item.history:
+            skipped += 1
+            continue
+        gid = (item.gid or "gptassistant").strip() or "gptassistant"
+        client_history = [history_item.model_dump() for history_item in item.history]
+        runtime_history = _legacy_client_history_to_runtime_history(item.history, gid)
+        title = ""
+        for history_item in item.history:
+            if history_item.title and history_item.title.strip():
+                title = history_item.title.strip()
+                break
+        if not title:
+            title = _derive_session_title(item.history[0].parts or conversation_id)
+        save_session_client_history(conversation_id, client_history)
+        if runtime_history and not _load_runtime_history(conversation_id, gid):
+            save_session_history(_runtime_history_key(conversation_id, gid), runtime_history)
+        upsert_session_history_meta(
+            conversation_id=conversation_id,
+            user_id=user_id,
+            user_email=user_email,
+            gid=gid,
+            title=title,
+        )
+        imported += 1
+    gpt_logger.info(
+        "path=import_local_sessions_done user=%s user_id=%s imported=%s skipped=%s at=%s",
+        user_email,
+        user_id,
+        imported,
+        skipped,
+        time.strftime("%Y-%m-%d %H:%M:%S"),
+    )
+    return {"ok": True, "imported": imported, "skipped": skipped}
+
+
+@router.post("/sessions/coverage-report")
+async def report_session_coverage(
+    request: SessionCoverageReportRequest,
+    user: dict = Depends(get_current_user),
+):
+    user_email = user.get("email", "")
+    user_id = user.get("sub", "unknown")
+    detail = [
+        {
+            "conversation_id": item.conversation_id,
+            "gid": item.gid or "gptassistant",
+            "source": item.source,
+            "reason": item.reason or "",
+        }
+        for item in request.items[:50]
+    ]
+    gpt_logger.info(
+        "path=session_coverage_report user=%s user_id=%s phase=%s server_count=%s local_total_count=%s local_only_count=%s grace_expires_at=%s items=%s at=%s",
+        user_email,
+        user_id,
+        request.phase,
+        request.server_count,
+        request.local_total_count,
+        request.local_only_count,
+        request.grace_expires_at or "",
+        detail,
+        time.strftime("%Y-%m-%d %H:%M:%S"),
+    )
+    return {"ok": True}
+
+
 async def _get_gid_model_config(
     gid: str,
     requested_model: Optional[str],
@@ -86,20 +423,23 @@ async def _get_gid_model_config(
     user_email: str,
     user_id: Optional[str] = None,
 ):
-    assistant_config = gpts.get(gid, {})
+    assistant_config = apply_runtime_gpt_defaults(gid, gpts.get(gid, {}))
     all_models = assistant_config.get("models", [])
-    visible_models = filter_models_for_user(all_models, user_email, user_id)
+    runtime_visible_models = apply_runtime_model_visibility(gid, all_models)
+    runtime_visible_models = apply_admin_model_config_overrides(gid, runtime_visible_models)
+    visible_models = filter_models_for_user(runtime_visible_models, user_email, user_id)
     visible_model_ids = {
         item.get("id")
         for item in visible_models
         if isinstance(item, dict)
     }
     models = await resolve_model_configs(visible_models)
+    models = apply_admin_model_config_overrides(gid, models)
     default_model = assistant_config.get("default_model", "")
     selected_model = requested_model or default_model
 
     if requested_model and requested_model not in visible_model_ids:
-        for item in all_models:
+        for item in runtime_visible_models:
             if item.get("id") == requested_model:
                 raise HTTPException(status.HTTP_403_FORBIDDEN, "No Authorized")
 
@@ -114,13 +454,25 @@ async def _get_gid_model_config(
     return models[0] if models else None
 
 
+def _resolve_default_reasoning(assistant_config: dict, gid: str) -> bool:
+    runtime_config = apply_runtime_gpt_defaults(gid, assistant_config)
+    return bool(runtime_config.get("default_reasoning", True))
+
+
 @router.post("/chat")
 async def chat_with_gpt_assistant(request: QueryRequest, user: dict = Depends(get_current_user)):
     gpt_logger.info(f"path=chat_with_gpt user={user['email']} at={time.strftime('%Y-%m-%d %H:%M:%S')}")
     if not request.conversation_id:
         request.conversation_id = await generate_conversation_id()
     cid = request.conversation_id
-    assistant_config = gpts["gptassistant"]
+    upsert_session_history_meta(
+        conversation_id=cid,
+        user_id=user.get("sub", "unknown"),
+        user_email=user.get("email", ""),
+        gid="gptassistant",
+        title=_derive_session_title(request.query),
+    )
+    assistant_config = apply_runtime_gpt_defaults("gptassistant", gpts["gptassistant"])
     system_prompt = assistant_config["system_prompt"]
     user_prompt = request.query
     selected_model_config = await _get_gid_model_config(
@@ -135,7 +487,7 @@ async def chat_with_gpt_assistant(request: QueryRequest, user: dict = Depends(ge
     reasoning_enabled = (
         bool(request.reasoning_enabled)
         if request.reasoning_enabled is not None
-        else bool(assistant_config.get("default_reasoning", True))
+        else _resolve_default_reasoning(assistant_config, "gptassistant")
     )
     if not selected_model_config.get("supports_reasoning", False):
         reasoning_enabled = False
@@ -217,7 +569,14 @@ async def chat_with_gpt_assistant_v2(request: QueryRequest, user: dict = Depends
     if not request.conversation_id:
         request.conversation_id = await generate_conversation_id()
     cid = request.conversation_id
-    assistant_config = gpts["gptassistant"]
+    upsert_session_history_meta(
+        conversation_id=cid,
+        user_id=user.get("sub", "unknown"),
+        user_email=user.get("email", ""),
+        gid="gptassistant",
+        title=_derive_session_title(request.query),
+    )
+    assistant_config = apply_runtime_gpt_defaults("gptassistant", gpts["gptassistant"])
     system_prompt = assistant_config["system_prompt"]
     selected_model_config = await _get_gid_model_config(
         "gptassistant",
@@ -231,7 +590,7 @@ async def chat_with_gpt_assistant_v2(request: QueryRequest, user: dict = Depends
     reasoning_enabled = (
         bool(request.reasoning_enabled)
         if request.reasoning_enabled is not None
-        else bool(assistant_config.get("default_reasoning", True))
+        else _resolve_default_reasoning(assistant_config, "gptassistant")
     )
     if not selected_model_config.get("supports_reasoning", False):
         reasoning_enabled = False
@@ -297,6 +656,13 @@ async def chat_with_gpts(request: QueryRequest, gid: str, user: dict = Depends(g
     if not request.conversation_id:
         request.conversation_id = await generate_conversation_id()
     cid = request.conversation_id
+    upsert_session_history_meta(
+        conversation_id=cid,
+        user_id=user.get("sub", "unknown"),
+        user_email=user.get("email", ""),
+        gid=gid,
+        title=_derive_session_title(request.query),
+    )
     if gid not in gpts:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "gid not found")
     ensure_gpt_access_allowed(user, gid)

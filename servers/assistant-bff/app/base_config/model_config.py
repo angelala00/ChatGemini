@@ -31,6 +31,15 @@ def _parse_list_env(value: str | None) -> Set[str]:
     return {item.strip() for item in re.split(r"[,;]", value) if item.strip()}
 
 
+def _parse_int_env(value: str | None, default: int) -> int:
+    if value is None or not value.strip():
+        return default
+    try:
+        return int(value.strip())
+    except ValueError:
+        return default
+
+
 API_KEY: str = os.getenv("OPENAI_API_KEY", "")
 BASE_URL: str = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
 ASSISTANT_MODEL_GLM47: str = os.getenv("ASSISTANT_MODEL_GLM47", "GLM-4.7-W8A8")
@@ -38,6 +47,26 @@ ASSISTANT_MODEL_QWEN35: str = os.getenv("ASSISTANT_MODEL_QWEN35", "qwen3.5-35b-a
 ASSISTANT_MODEL_GLM5: str = os.getenv("ASSISTANT_MODEL_GLM5", "glm-5")
 FILE_BASE: str = os.getenv("FILE_BASE", "/tmp")
 LOG_BASE: str = os.getenv("LOG_BASE", "/tmp")
+POSTGRES_DSN: str = os.getenv("POSTGRES_DSN", "").strip()
+SESSION_HISTORY_ENCRYPTION_KEY: str = os.getenv("SESSION_HISTORY_ENCRYPTION_KEY", "").strip()
+BUSINESS_STORAGE_BACKEND: str = os.getenv(
+    "BUSINESS_STORAGE_BACKEND",
+    "postgres" if POSTGRES_DSN else "sqlite",
+).strip().lower()
+MINIO_ENDPOINT: str = os.getenv("MINIO_ENDPOINT", "").strip()
+MINIO_ACCESS_KEY: str = os.getenv("MINIO_ACCESS_KEY", "").strip()
+MINIO_SECRET_KEY: str = os.getenv("MINIO_SECRET_KEY", "").strip()
+MINIO_BUCKET: str = os.getenv("MINIO_BUCKET", "gptassistant").strip()
+MINIO_REGION: str = os.getenv("MINIO_REGION", "").strip()
+MINIO_BASE_PREFIX: str = os.getenv("MINIO_BASE_PREFIX", "assistant-files").strip("/")
+MINIO_SECURE: bool = _parse_bool_env(os.getenv("MINIO_SECURE"), False)
+OBJECT_STORAGE_BACKEND: str = os.getenv(
+    "OBJECT_STORAGE_BACKEND",
+    "minio" if MINIO_ENDPOINT else "filesystem",
+).strip().lower()
+USAGE_EVENT_RETENTION_DAYS: int = _parse_int_env(os.getenv("USAGE_EVENT_RETENTION_DAYS"), 14)
+TRACE_RETENTION_DAYS: int = _parse_int_env(os.getenv("TRACE_RETENTION_DAYS"), 7)
+OBJECT_CACHE_RETENTION_DAYS: int = _parse_int_env(os.getenv("OBJECT_CACHE_RETENTION_DAYS"), 3)
 _allow_origins_env = os.getenv("ALLOW_ORIGINS", "*")
 ALLOW_ORIGINS: List[str] = [
     origin.strip() for origin in _allow_origins_env.split(",") if origin.strip()

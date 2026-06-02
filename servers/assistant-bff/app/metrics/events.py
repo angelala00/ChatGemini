@@ -1,82 +1,61 @@
-"""Persistence helpers for chat usage events."""
+"""Local file persistence for chat usage events."""
 
 from __future__ import annotations
 
 import json
-import sqlite3
+import threading
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Iterable, Optional
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, Iterable, Iterator, Optional
 
-from app.db import get_db
+from app.base_config import model_config
+from app.logger import log_dir
 
-_TABLE_DDL = """
-CREATE TABLE IF NOT EXISTS usage_events (
-  id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL,
-  user_email TEXT,
-  conversation_id TEXT,
-  gid TEXT,
-  model TEXT,
-  requested_model TEXT,
-  status TEXT NOT NULL,
-  error TEXT,
-  started_at TEXT NOT NULL,
-  completed_at TEXT,
-  latency_ms REAL,
-  tool_names TEXT,
-  request_tokens INTEGER,
-  response_tokens INTEGER,
-  upload_count INTEGER NOT NULL DEFAULT 0
-);
-"""
+USAGE_EVENTS_DIR = Path(log_dir) / "usage-events"
+_PENDING_LOCK = threading.Lock()
+_PENDING_EVENTS: dict[str, dict[str, Any]] = {}
 
-_INDEX_DEFINITIONS: dict[str, tuple[str, set[str]]] = {
-    "idx_usage_events_started_at": (
-        "CREATE INDEX IF NOT EXISTS idx_usage_events_started_at ON usage_events(started_at)",
-        {"started_at"},
-    ),
-    "idx_usage_events_user_id": (
-        "CREATE INDEX IF NOT EXISTS idx_usage_events_user_id ON usage_events(user_id)",
-        {"user_id"},
-    ),
-    "idx_usage_events_gid": (
-        "CREATE INDEX IF NOT EXISTS idx_usage_events_gid ON usage_events(gid)",
-        {"gid"},
-    ),
-    "idx_usage_events_model": (
-        "CREATE INDEX IF NOT EXISTS idx_usage_events_model ON usage_events(model)",
-        {"model"},
-    ),
-    "idx_usage_events_requested_model": (
-        "CREATE INDEX IF NOT EXISTS idx_usage_events_requested_model ON usage_events(requested_model)",
-        {"requested_model"},
-    ),
-}
 
-_REQUIRED_COLUMNS = {
-    "user_email": "TEXT",
-    "conversation_id": "TEXT",
-    "gid": "TEXT",
-    "model": "TEXT",
-    "requested_model": "TEXT",
-    "status": "TEXT NOT NULL DEFAULT 'running'",
-    "error": "TEXT",
-    "completed_at": "TEXT",
-    "latency_ms": "REAL",
-    "tool_names": "TEXT",
-    "request_tokens": "INTEGER",
-    "response_tokens": "INTEGER",
-    "upload_count": "INTEGER NOT NULL DEFAULT 0",
-}
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
-# NOTE: ``_ensure_required_columns`` runs during service start (see ``init_metrics_storage``)
-# and issues ``ALTER TABLE`` statements for any columns missing from an existing
-# ``usage_events`` table.  This keeps rolling upgrades safe: the new code adds
-# ``requested_model`` automatically, while older binaries continue to work
-# because the column remains optional and defaults to ``NULL`` when writes do not
-# mention it explicitly.
+
+def init_metrics_storage() -> None:
+    USAGE_EVENTS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _event_log_path(when: datetime) -> Path:
+    init_metrics_storage()
+    return USAGE_EVENTS_DIR / f"{when.astimezone(timezone.utc):%Y-%m-%d}.jsonl"
+
+
+def _append_event(record: dict[str, Any]) -> None:
+    started_at = _parse_datetime(record.get("started_at")) or datetime.now(timezone.utc)
+    path = _event_log_path(started_at)
+    with path.open("a", encoding="utf-8") as file:
+        file.write(json.dumps(record, ensure_ascii=False, separators=(",", ":")))
+        file.write("\n")
+
+
+def _parse_datetime(value: object) -> datetime | None:
+    if isinstance(value, datetime):
+        return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+    if isinstance(value, str) and value:
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    return None
+
+
+def _coerce_record(record: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(record)
+    tools = normalized.get("tool_names")
+    if isinstance(tools, set):
+        normalized["tool_names"] = sorted(tools)
+    return normalized
 
 
 @dataclass
@@ -88,29 +67,21 @@ class UsageEventTracker:
     def set_model(self, model_name: Optional[str]) -> None:
         if not model_name:
             return
-        _execute(
-            "UPDATE usage_events SET model=? WHERE id=?",
-            (model_name, self.event_id),
-        )
+        with _PENDING_LOCK:
+            record = _PENDING_EVENTS.get(self.event_id)
+            if record is not None:
+                record["model"] = model_name
 
     def mark_tool(self, tool_name: str) -> None:
         if not tool_name:
             return
-        row = _fetchone(
-            "SELECT tool_names FROM usage_events WHERE id=?",
-            (self.event_id,),
-        )
-        tools: set[str] = set()
-        if row and row["tool_names"]:
-            try:
-                tools = set(json.loads(row["tool_names"]))
-            except json.JSONDecodeError:
-                tools = set(row["tool_names"].split(","))
-        tools.add(tool_name)
-        _execute(
-            "UPDATE usage_events SET tool_names=? WHERE id=?",
-            (json.dumps(sorted(tools)), self.event_id),
-        )
+        with _PENDING_LOCK:
+            record = _PENDING_EVENTS.get(self.event_id)
+            if record is None:
+                return
+            tools = record.setdefault("tool_names", set())
+            if isinstance(tools, set):
+                tools.add(tool_name)
 
     def finalize(
         self,
@@ -121,59 +92,19 @@ class UsageEventTracker:
         request_tokens: Optional[int] = None,
         response_tokens: Optional[int] = None,
     ) -> None:
-        completed_at = datetime.now(timezone.utc).isoformat()
-        _execute(
-            """
-            UPDATE usage_events
-               SET status=?,
-                   completed_at=?,
-                   latency_ms=?,
-                   error=?,
-                   request_tokens=COALESCE(?, request_tokens),
-                   response_tokens=COALESCE(?, response_tokens)
-             WHERE id=?
-            """,
-            (
-                status,
-                completed_at,
-                float(latency_ms),
-                error,
-                request_tokens,
-                response_tokens,
-                self.event_id,
-            ),
-        )
-
-
-def init_metrics_storage() -> None:
-    conn = get_db()
-    try:
-        conn.executescript(_TABLE_DDL)
-        _ensure_required_columns(conn)
-        _ensure_indexes(conn)
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def _ensure_required_columns(conn: sqlite3.Connection) -> None:
-    """Best-effort schema migration to add missing columns."""
-
-    existing = {row["name"] for row in conn.execute("PRAGMA table_info(usage_events)")}
-    missing = _REQUIRED_COLUMNS.keys() - existing
-    for column in missing:
-        conn.execute(
-            f"ALTER TABLE usage_events ADD COLUMN {column} {_REQUIRED_COLUMNS[column]}"
-        )
-
-
-def _ensure_indexes(conn: sqlite3.Connection) -> None:
-    """Create indexes after columns are guaranteed to exist."""
-
-    existing_columns = {row["name"] for row in conn.execute("PRAGMA table_info(usage_events)")}
-    for sql, required_columns in _INDEX_DEFINITIONS.values():
-        if required_columns.issubset(existing_columns):
-            conn.execute(sql)
+        with _PENDING_LOCK:
+            record = _PENDING_EVENTS.pop(self.event_id, None)
+        if record is None:
+            return
+        record["status"] = status
+        record["completed_at"] = _now_iso()
+        record["latency_ms"] = float(latency_ms)
+        record["error"] = error
+        if request_tokens is not None:
+            record["request_tokens"] = request_tokens
+        if response_tokens is not None:
+            record["response_tokens"] = response_tokens
+        _append_event(_coerce_record(record))
 
 
 def create_usage_event(
@@ -186,34 +117,26 @@ def create_usage_event(
     upload_count: int = 0,
 ) -> UsageEventTracker:
     event_id = str(uuid.uuid4())
-    started_at = datetime.now(timezone.utc).isoformat()
-    _execute(
-        """
-        INSERT INTO usage_events(
-            id,
-            user_id,
-            user_email,
-            conversation_id,
-            gid,
-            model,
-            requested_model,
-            status,
-            started_at,
-            upload_count
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'running', ?, ?)
-        """,
-        (
-            event_id,
-            user_id,
-            user_email,
-            conversation_id,
-            gid,
-            requested_model,
-            requested_model,
-            started_at,
-            max(int(upload_count), 0),
-        ),
-    )
+    started_at = _now_iso()
+    with _PENDING_LOCK:
+        _PENDING_EVENTS[event_id] = {
+            "id": event_id,
+            "user_id": user_id,
+            "user_email": user_email,
+            "conversation_id": conversation_id,
+            "gid": gid,
+            "model": requested_model,
+            "requested_model": requested_model,
+            "status": "running",
+            "error": None,
+            "started_at": started_at,
+            "completed_at": None,
+            "latency_ms": None,
+            "tool_names": set(),
+            "request_tokens": None,
+            "response_tokens": None,
+            "upload_count": max(int(upload_count), 0),
+        }
     return UsageEventTracker(event_id)
 
 
@@ -223,39 +146,91 @@ def record_tokens(
     request_tokens: Optional[int] = None,
     response_tokens: Optional[int] = None,
 ) -> None:
-    _execute(
-        """
-        UPDATE usage_events
-           SET request_tokens=COALESCE(?, request_tokens),
-               response_tokens=COALESCE(?, response_tokens)
-         WHERE id=?
-        """,
-        (request_tokens, response_tokens, event_id),
-    )
+    with _PENDING_LOCK:
+        record = _PENDING_EVENTS.get(event_id)
+        if record is None:
+            return
+        if request_tokens is not None:
+            record["request_tokens"] = request_tokens
+        if response_tokens is not None:
+            record["response_tokens"] = response_tokens
 
 
-def _execute(sql: str, params: Iterable[object]) -> None:
-    conn = get_db()
-    try:
-        conn.execute(sql, tuple(params))
-        conn.commit()
-    finally:
-        conn.close()
+def iter_usage_events(
+    *,
+    since: datetime | None = None,
+    until: datetime | None = None,
+) -> Iterator[dict[str, Any]]:
+    init_metrics_storage()
+    for path in _resolve_event_files(since=since, until=until):
+        try:
+            with path.open("r", encoding="utf-8") as file:
+                for line in file:
+                    try:
+                        item = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if not isinstance(item, dict):
+                        continue
+                    started_at = _parse_datetime(item.get("started_at"))
+                    if since is not None and started_at is not None and started_at < since:
+                        continue
+                    if until is not None and started_at is not None and started_at >= until:
+                        continue
+                    yield item
+        except OSError:
+            continue
 
 
-def _fetchone(sql: str, params: Iterable[object]) -> Optional[sqlite3.Row]:
-    conn = get_db()
-    try:
-        cur = conn.execute(sql, tuple(params))
-        row = cur.fetchone()
-        return row
-    finally:
-        conn.close()
+def _resolve_event_files(
+    *,
+    since: datetime | None,
+    until: datetime | None,
+) -> Iterable[Path]:
+    files = sorted(USAGE_EVENTS_DIR.glob("*.jsonl"))
+    if since is None and until is None:
+        return files
+
+    start_date = (since or datetime.min.replace(tzinfo=timezone.utc)).date()
+    end_anchor = until or (datetime.now(timezone.utc) + timedelta(days=1))
+    end_date = end_anchor.date()
+    selected: list[Path] = []
+    for path in files:
+        try:
+            file_date = datetime.strptime(path.stem, "%Y-%m-%d").date()
+        except ValueError:
+            selected.append(path)
+            continue
+        if start_date <= file_date <= end_date:
+            selected.append(path)
+    return selected
+
+
+def cleanup_usage_events(*, retention_days: int | None = None) -> int:
+    init_metrics_storage()
+    keep_days = retention_days or model_config.USAGE_EVENT_RETENTION_DAYS
+    cutoff = datetime.now(timezone.utc) - timedelta(days=keep_days)
+    deleted = 0
+    for path in USAGE_EVENTS_DIR.glob("*.jsonl"):
+        try:
+            file_date = datetime.strptime(path.stem, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+        if file_date >= cutoff:
+            continue
+        try:
+            path.unlink()
+            deleted += 1
+        except OSError:
+            continue
+    return deleted
 
 
 __all__ = [
     "UsageEventTracker",
-    "init_metrics_storage",
+    "cleanup_usage_events",
     "create_usage_event",
+    "init_metrics_storage",
+    "iter_usage_events",
     "record_tokens",
 ]

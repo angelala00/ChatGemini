@@ -1,17 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from app.admin.access_control import resolve_user_permissions
 from app.auth.auth_routes import get_current_user
-from app.base_config import model_config
 
 
 router = APIRouter(prefix="/api/voice-lab", tags=["voice-lab"])
 
 
 def is_voice_lab_allowed(user: dict) -> bool:
-    white_list = model_config.VOICE_LAB_WHITE_LIST
-    if not white_list:
-        return False
-    return user.get("email") in white_list or user.get("sub") in white_list
+    return "voice_lab.access" in resolve_user_permissions(user)
 
 
 def ensure_voice_lab_allowed(user: dict) -> None:

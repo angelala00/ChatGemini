@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import os
-import sqlite3
 import tempfile
 import unittest
 from unittest.mock import AsyncMock, patch
 
 from fastapi import HTTPException
 
+from app.admin import access_control
 from app.routes import chat_routes, gpts_routes
+from app.storage import business_store
 
 
 class GPTAssistantModelAuthTests(unittest.IsolatedAsyncioTestCase):
@@ -44,11 +45,16 @@ class GPTAssistantModelAuthTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("auth", visible_models[0])
 
     async def test_model_selection_rejects_unauthorized_requested_model(self):
-        with patch.dict(chat_routes.gpts, {"gptassistant": self.assistant_config}, clear=False):
-            with patch(
-                "app.routes.chat_routes.resolve_model_configs",
-                new=AsyncMock(side_effect=lambda models: models),
-            ):
+        with patch.dict(chat_routes.gpts, {"gptassistant": self.assistant_config}, clear=False), patch(
+            "app.routes.chat_routes.apply_admin_model_config_overrides",
+            side_effect=lambda gid, models: models,
+        ), patch(
+            "app.routes.chat_routes.apply_runtime_model_visibility",
+            side_effect=lambda gid, models: models,
+        ), patch(
+            "app.routes.chat_routes.resolve_model_configs",
+            new=AsyncMock(side_effect=lambda models: models),
+        ):
                 with self.assertRaises(HTTPException) as ctx:
                     await chat_routes._get_gid_model_config(
                         "gptassistant",
@@ -60,11 +66,16 @@ class GPTAssistantModelAuthTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ctx.exception.status_code, 403)
 
     async def test_model_selection_falls_back_to_visible_default(self):
-        with patch.dict(chat_routes.gpts, {"gptassistant": self.assistant_config}, clear=False):
-            with patch(
-                "app.routes.chat_routes.resolve_model_configs",
-                new=AsyncMock(side_effect=lambda models: models),
-            ):
+        with patch.dict(chat_routes.gpts, {"gptassistant": self.assistant_config}, clear=False), patch(
+            "app.routes.chat_routes.apply_admin_model_config_overrides",
+            side_effect=lambda gid, models: models,
+        ), patch(
+            "app.routes.chat_routes.apply_runtime_model_visibility",
+            side_effect=lambda gid, models: models,
+        ), patch(
+            "app.routes.chat_routes.resolve_model_configs",
+            new=AsyncMock(side_effect=lambda models: models),
+        ):
                 selected = await chat_routes._get_gid_model_config(
                     "gptassistant",
                     None,
@@ -75,11 +86,16 @@ class GPTAssistantModelAuthTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(selected["id"], "glm-4.7")
 
     async def test_model_selection_allows_whitelisted_user(self):
-        with patch.dict(chat_routes.gpts, {"gptassistant": self.assistant_config}, clear=False):
-            with patch(
-                "app.routes.chat_routes.resolve_model_configs",
-                new=AsyncMock(side_effect=lambda models: models),
-            ):
+        with patch.dict(chat_routes.gpts, {"gptassistant": self.assistant_config}, clear=False), patch(
+            "app.routes.chat_routes.apply_admin_model_config_overrides",
+            side_effect=lambda gid, models: models,
+        ), patch(
+            "app.routes.chat_routes.apply_runtime_model_visibility",
+            side_effect=lambda gid, models: models,
+        ), patch(
+            "app.routes.chat_routes.resolve_model_configs",
+            new=AsyncMock(side_effect=lambda models: models),
+        ):
                 selected = await chat_routes._get_gid_model_config(
                     "gptassistant",
                     "glm-5",
@@ -100,11 +116,16 @@ class GPTAssistantModelAuthTests(unittest.IsolatedAsyncioTestCase):
                 "compat": {"reasoning_parameter_format": "qwen"},
             }
         ]
-        with patch.dict(chat_routes.gpts, {"gptassistant": self.assistant_config}, clear=False):
-            with patch(
-                "app.routes.chat_routes.resolve_model_configs",
-                new=AsyncMock(return_value=remote_models),
-            ):
+        with patch.dict(chat_routes.gpts, {"gptassistant": self.assistant_config}, clear=False), patch(
+            "app.routes.chat_routes.apply_admin_model_config_overrides",
+            side_effect=lambda gid, models: models,
+        ), patch(
+            "app.routes.chat_routes.apply_runtime_model_visibility",
+            side_effect=lambda gid, models: models,
+        ), patch(
+            "app.routes.chat_routes.resolve_model_configs",
+            new=AsyncMock(return_value=remote_models),
+        ):
                 selected = await chat_routes._get_gid_model_config(
                     "gptassistant",
                     "glm-4.7",
@@ -116,14 +137,73 @@ class GPTAssistantModelAuthTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(selected["supports_native_image_input"])
         self.assertEqual(selected["compat"]["reasoning_parameter_format"], "qwen")
 
+    async def test_admin_model_config_overrides_reasoning_capability(self):
+        temp_dir = tempfile.TemporaryDirectory()
+        db_path = os.path.join(temp_dir.name, "business-dev.db")
+        backend_patcher = patch.object(business_store.model_config, "BUSINESS_STORAGE_BACKEND", "sqlite")
+        data_dir_patcher = patch.object(business_store, "DATA_DIR", temp_dir.name)
+        db_path_patcher = patch.object(business_store, "DEV_DB_PATH", db_path)
+        backend_patcher.start()
+        data_dir_patcher.start()
+        db_path_patcher.start()
+        try:
+            business_store._INITIALIZED = False
+            business_store.init_business_storage()
+            business_store.upsert_admin_model_config(
+                model_id="glm-4.7",
+                display_name="GLM 4.7",
+                provider_model_name="glm-4.7",
+                supports_reasoning=False,
+                supports_tool_calling=False,
+                supports_native_image_input=False,
+            )
+            with patch.dict(chat_routes.gpts, {"gptassistant": self.assistant_config}, clear=False), patch(
+                "app.routes.chat_routes.apply_runtime_model_visibility",
+                side_effect=lambda gid, models: models,
+            ), patch(
+                "app.routes.chat_routes.resolve_model_configs",
+                new=AsyncMock(
+                    return_value=[
+                        {
+                            "id": "glm-4.7",
+                            "model_name": "glm-4.7",
+                            "name": "GLM 4.7",
+                            "supports_reasoning": True,
+                        }
+                    ]
+                ),
+            ):
+                selected = await chat_routes._get_gid_model_config(
+                    "gptassistant",
+                    "glm-4.7",
+                    user_email="blocked@example.com",
+                    user_id="blocked-user",
+                )
+            self.assertFalse(selected["supports_reasoning"])
+        finally:
+            backend_patcher.stop()
+            data_dir_patcher.stop()
+            db_path_patcher.stop()
+            business_store._INITIALIZED = False
+            temp_dir.cleanup()
+
 
 class GPTSPinnedAccessTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
-        self.db_path = os.path.join(self.temp_dir.name, "pins.db")
-        self.get_db_patcher = patch.object(gpts_routes, "get_db", self.get_db)
-        self.get_db_patcher.start()
-        gpts_routes.init_db()
+        self.db_path = os.path.join(self.temp_dir.name, "business-dev.db")
+        self.backend_patcher = patch.object(gpts_routes.model_config, "BUSINESS_STORAGE_BACKEND", "sqlite")
+        self.access_gpts_patcher = patch.object(access_control.model_config, "GPTS_WHITE_LIST", set())
+        self.access_voice_patcher = patch.object(access_control.model_config, "VOICE_LAB_WHITE_LIST", set())
+        self.data_dir_patcher = patch.object(business_store, "DATA_DIR", self.temp_dir.name)
+        self.db_path_patcher = patch.object(business_store, "DEV_DB_PATH", self.db_path)
+        self.backend_patcher.start()
+        self.access_gpts_patcher.start()
+        self.access_voice_patcher.start()
+        self.data_dir_patcher.start()
+        self.db_path_patcher.start()
+        business_store._INITIALIZED = False
+        business_store.init_business_storage()
         self.user = {
             "email": "blocked@example.com",
             "sub": "blocked-user",
@@ -135,17 +215,13 @@ class GPTSPinnedAccessTests(unittest.IsolatedAsyncioTestCase):
         }
 
     def tearDown(self) -> None:
-        self.get_db_patcher.stop()
+        self.backend_patcher.stop()
+        self.access_voice_patcher.stop()
+        self.access_gpts_patcher.stop()
+        self.data_dir_patcher.stop()
+        self.db_path_patcher.stop()
+        business_store._INITIALIZED = False
         self.temp_dir.cleanup()
-
-    def get_db(self, *, check_same_thread=True, isolation_level=None):
-        conn = sqlite3.connect(
-            self.db_path,
-            check_same_thread=check_same_thread,
-            isolation_level=isolation_level,
-        )
-        conn.row_factory = sqlite3.Row
-        return conn
 
     async def test_pinned_endpoint_forces_regulation_for_non_whitelisted_user(self):
         with patch.object(gpts_routes, "GPTS_WHITE_LIST", {"allowed@example.com"}), \
@@ -172,15 +248,7 @@ class GPTSPinnedAccessTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ctx.exception.status_code, 400)
 
     def test_non_whitelisted_user_can_access_previously_pinned_gpt(self):
-        conn = self.get_db()
-        try:
-            conn.execute(
-                """INSERT INTO user_gpts_state(user_id, gpts_id, pinned_at)
-                   VALUES(?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))""",
-                (self.user["sub"], "custom-gpt"),
-            )
-        finally:
-            conn.close()
+        business_store.set_user_gpt_pin(self.user["sub"], "custom-gpt", is_pinned=True)
 
         with patch.object(gpts_routes, "GPTS_WHITE_LIST", {"allowed@example.com"}):
             self.assertTrue(gpts_routes.can_access_gpt(self.user, "custom-gpt"))
@@ -198,6 +266,175 @@ class GPTSPinnedAccessTests(unittest.IsolatedAsyncioTestCase):
             pinned = await gpts_routes.gpts_pined(user)
 
         self.assertEqual(pinned[0]["gid"], "ssglf")
+
+    def test_gpts_manage_allowed_uses_runtime_permissions(self):
+        business_store.upsert_admin_user_permission(
+            user_key=self.user["email"],
+            permission_code="gpts.manage",
+            enabled=True,
+            remark="runtime",
+        )
+        self.assertTrue(gpts_routes.is_gpts_manage_allowed(self.user))
+
+    async def test_gpts_created_requires_manage_permission(self):
+        with self.assertRaises(HTTPException) as ctx:
+            await gpts_routes.gpts_created(self.user)
+        self.assertEqual(ctx.exception.status_code, 403)
+
+        business_store.upsert_admin_user_permission(
+            user_key=self.user["email"],
+            permission_code="gpts.manage",
+            enabled=True,
+            remark="runtime",
+        )
+        business_store.upsert_admin_feature_flag(
+            config_key="gpts_feature_enabled",
+            config_value=True,
+            value_type="boolean",
+            description="Enable GPTS",
+            updated_by="admin@example.com",
+        )
+        with patch.object(gpts_routes, "GPTS_WHITE_LIST", set()), patch.object(
+            gpts_routes, "refresh_gpts", lambda: None
+        ), patch.dict(
+            gpts_routes.gpts,
+            {"custom-gpt": {"name": "Custom GPT", "owner": self.user["sub"]}},
+            clear=True,
+        ):
+            items = await gpts_routes.gpts_created(self.user)
+        self.assertEqual(items[0]["gid"], "custom-gpt")
+
+    async def test_default_visible_models_feature_flag_filters_gptassistant_models(self):
+        business_store.upsert_admin_feature_flag(
+            config_key="default_visible_models",
+            config_value=["glm-4.7"],
+            value_type="json",
+            description="Visible models",
+            updated_by="admin@example.com",
+        )
+        assistant_config = {
+            "default_model": "glm-5",
+            "models": [
+                {
+                    "id": "glm-4.7",
+                    "model_name": "glm-4.7",
+                    "name": "GLM 4.7",
+                },
+                {
+                    "id": "glm-5",
+                    "model_name": "glm-5",
+                    "name": "GLM 5",
+                },
+            ],
+        }
+        with patch.dict(chat_routes.gpts, {"gptassistant": assistant_config}, clear=False), patch.dict(
+            gpts_routes.gpts, {"gptassistant": assistant_config}, clear=False
+        ), patch(
+            "app.routes.chat_routes.resolve_model_configs",
+            new=AsyncMock(side_effect=lambda models: models),
+        ), patch.object(gpts_routes, "refresh_gpts", lambda: None):
+            selected = await chat_routes._get_gid_model_config(
+                "gptassistant",
+                None,
+                user_email=self.user["email"],
+                user_id=self.user["sub"],
+            )
+            detail = await gpts_routes.get_gpts_detail("gptassistant", self.user)
+
+        self.assertEqual(selected["id"], "glm-4.7")
+        self.assertEqual([item["id"] for item in detail["models"]], ["glm-4.7"])
+
+    async def test_default_reasoning_enabled_feature_flag_overrides_gptassistant_default(self):
+        business_store.upsert_admin_feature_flag(
+            config_key="default_reasoning_enabled",
+            config_value=False,
+            value_type="boolean",
+            description="Disable default reasoning",
+            updated_by="admin@example.com",
+        )
+        assistant_config = {
+            "system_prompt": "You are helpful.",
+            "default_reasoning": True,
+            "models": [
+                {
+                    "id": "glm-4.7",
+                    "model_name": "glm-4.7",
+                    "name": "GLM 4.7",
+                    "supports_reasoning": True,
+                }
+            ],
+        }
+
+        with patch.dict(chat_routes.gpts, {"gptassistant": assistant_config}, clear=False), patch.dict(
+            gpts_routes.gpts, {"gptassistant": assistant_config}, clear=False
+        ), patch(
+            "app.routes.chat_routes.resolve_model_configs",
+            new=AsyncMock(
+                return_value=[
+                    {
+                        "id": "glm-4.7",
+                        "model_name": "glm-4.7",
+                        "name": "GLM 4.7",
+                        "supports_reasoning": True,
+                    }
+                ]
+            ),
+        ):
+            detail = await gpts_routes.get_gpts_detail("gptassistant", self.user)
+            reasoning_enabled = chat_routes._resolve_default_reasoning(
+                assistant_config,
+                "gptassistant",
+            )
+
+        self.assertFalse(detail["default_reasoning"])
+        self.assertFalse(reasoning_enabled)
+
+    async def test_default_model_feature_flag_overrides_gptassistant_default_model(self):
+        business_store.upsert_admin_feature_flag(
+            config_key="default_model",
+            config_value="glm-5",
+            value_type="string",
+            description="Override default model",
+            updated_by="admin@example.com",
+        )
+        assistant_config = {
+            "default_model": "glm-4.7",
+            "models": [
+                {
+                    "id": "glm-4.7",
+                    "model_name": "glm-4.7",
+                    "name": "GLM 4.7",
+                },
+                {
+                    "id": "glm-5",
+                    "model_name": "glm-5",
+                    "name": "GLM 5",
+                },
+            ],
+        }
+
+        with patch.dict(chat_routes.gpts, {"gptassistant": assistant_config}, clear=False), patch.dict(
+            gpts_routes.gpts, {"gptassistant": assistant_config}, clear=False
+        ), patch(
+            "app.routes.chat_routes.apply_admin_model_config_overrides",
+            side_effect=lambda gid, models: models,
+        ), patch(
+            "app.routes.gpts_routes.apply_admin_model_config_overrides",
+            side_effect=lambda gid, models: models,
+        ), patch(
+            "app.routes.chat_routes.resolve_model_configs",
+            new=AsyncMock(side_effect=lambda models: models),
+        ), patch.object(gpts_routes, "refresh_gpts", lambda: None):
+            selected = await chat_routes._get_gid_model_config(
+                "gptassistant",
+                None,
+                user_email=self.user["email"],
+                user_id=self.user["sub"],
+            )
+            detail = await gpts_routes.get_gpts_detail("gptassistant", self.user)
+
+        self.assertEqual(selected["id"], "glm-5")
+        self.assertEqual(detail["default_model"], "glm-5")
 
 
 if __name__ == "__main__":

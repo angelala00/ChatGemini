@@ -1,47 +1,20 @@
 """GPT configuration management.
 
 This module previously exposed a static ``gpts`` dictionary with a handful
-of built-in assistants.  To support user created GPTs we now persist custom
-definitions in SQLite and expose helpers to load/refresh the combined
-configuration.
+of built-in assistants. To support user created GPTs we persist custom
+definitions in the business storage backend and expose helpers to load/refresh
+the combined configuration.
 """
 
 from __future__ import annotations
 
-import json
 from typing import Any, Dict
 
-from app.db import get_db
-
-
-def init_db() -> None:
-    conn = get_db()
-    try:
-        conn.execute(
-            """CREATE TABLE IF NOT EXISTS custom_gpts (
-            gid TEXT PRIMARY KEY,
-            config TEXT NOT NULL
-            )"""
-        )
-    finally:
-        conn.close()
-
-
-init_db()
-
+from app.storage.business_store import load_custom_gpts
 
 builtin_gpts: Dict[str, Dict[str, Any]] = {}
 
 BUILTIN_GIDS = set(builtin_gpts.keys())
-
-
-def load_custom_gpts() -> Dict[str, Dict[str, Any]]:
-    conn = get_db()
-    try:
-        rows = conn.execute("SELECT gid, config FROM custom_gpts").fetchall()
-    finally:
-        conn.close()
-    return {row["gid"]: json.loads(row["config"]) for row in rows}
 
 
 def fetch_gpts() -> Dict[str, Dict[str, Any]]:
@@ -49,8 +22,7 @@ def fetch_gpts() -> Dict[str, Dict[str, Any]]:
 
     combined = builtin_gpts.copy()
     combined.update(load_custom_gpts())
-    sorted_data = dict(sorted(combined.items(), key=lambda kv: kv[1].get("sort", float("inf"))))
-    return sorted_data
+    return dict(sorted(combined.items(), key=lambda kv: kv[1].get("sort", float("inf"))))
 
 
 gpts: Dict[str, Dict[str, Any]] = {}

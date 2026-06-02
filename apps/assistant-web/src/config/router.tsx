@@ -8,6 +8,8 @@ const Chat = lazy(() => import("../views/Chat"));
 const GptAssistantChat = lazy(() => import("../views/GptAssistantChat"));
 const TraceInspector = lazy(() => import("../views/TraceInspector"));
 const VoiceLab = lazy(() => import("../views/VoiceLab"));
+const AdminIndex = lazy(() => import("../views/AdminIndex"));
+const AdminConfig = lazy(() => import("../views/AdminConfig"));
 const Gpts = lazy(() => import("../views/Gpts"));
 const MyGpts = lazy(() => import("../views/MyGpts"));
 const CreateGpt = lazy(() => import("../views/CreateGpt"));
@@ -49,6 +51,16 @@ export const routerConfig: RouterConfig = {
         chat: { prefix: "/chat", uri: "/:id", suffix: "", element: GptAssistantChat },
         trace: { prefix: "/trace", uri: "/:conversationId?", suffix: "", element: TraceInspector },
         voice_lab: { prefix: "/voice-lab", uri: "", suffix: "", element: VoiceLab },
+        admin_index: { prefix: "/admin", uri: "", suffix: "", element: AdminIndex },
+        admin: { prefix: "/admin/models", uri: "", suffix: "", element: AdminConfig },
+        admin_permissions: {
+            prefix: "/admin/permissions",
+            uri: "",
+            suffix: "",
+            element: AdminConfig,
+        },
+        admin_flags: { prefix: "/admin/flags", uri: "", suffix: "", element: AdminConfig },
+        admin_audit: { prefix: "/admin/audit", uri: "", suffix: "", element: AdminConfig },
         gpts: { prefix: "/gpts", uri: "", suffix: "", element: Gpts },
         my_gpts: { prefix: "/my-gpts", uri: "", suffix: "", element: MyGpts },
         gpts_create: { prefix: "/gpts/create", uri: "", suffix: "", element: CreateGpt },

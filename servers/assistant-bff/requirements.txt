@@ -19,3 +19,6 @@ tzdata
 pandas
 PyJWT
 pytest
+psycopg[binary]
+minio
+cryptography
