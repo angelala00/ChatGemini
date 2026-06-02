@@ -33,6 +33,7 @@ const GptAssistantChat = (props: RouterComponentProps) => {
     const { t } = useTranslation();
     const refreshPlaceholder = t("views.Chat.refresh_placeholder");
     const invalidPlaceholder = t("views.Chat.invalid_placeholder");
+    const loadingPlaceholder = t("views.Chat.loading_placeholder");
     const onAbortUpdate = props.onAbortUpdate;
     const dispatch = useDispatch();
     const sessions = useSelector((state: ReduxStoreProps) => state.sessions.sessions);
@@ -212,9 +213,15 @@ const GptAssistantChat = (props: RouterComponentProps) => {
                     : [{ role: "model", parts: invalidPlaceholder, timestamp: 0 }],
             );
         } else {
-            setChat([{ role: "model", parts: invalidPlaceholder, timestamp: 0 }]);
+            setChat([
+                {
+                    role: "model",
+                    parts: id ? loadingPlaceholder : invalidPlaceholder,
+                    timestamp: 0,
+                },
+            ]);
         }
-    }, [id, invalidPlaceholder, sessions]);
+    }, [id, invalidPlaceholder, loadingPlaceholder, sessions]);
 
     useEffect(() => {
         let cancelled = false;

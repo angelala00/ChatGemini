@@ -47,6 +47,7 @@
         "Chat": {
             "view_attachment": "Click to view attachment",
             "refresh_placeholder": "Regenerating...",
+            "loading_placeholder": "Loading the current conversation...",
             "invalid_placeholder": "Your current conversation ID seems to be invalid, please check your URL or you can create a new conversation.",
             "handleRefresh": {
                 "not_available": "AI is currently busy, please refresh again later"

@@ -33,6 +33,7 @@ const Chat = (props: RouterComponentProps) => {
     const { t } = useTranslation();
     const refreshPlaceholder = t("views.Chat.refresh_placeholder");
     const invalidPlaceholder = t("views.Chat.invalid_placeholder");
+    const loadingPlaceholder = t("views.Chat.loading_placeholder");
 
     const onAbortUpdate = props.onAbortUpdate;
     const { site: siteTitle } = globalConfig.title;
@@ -258,10 +259,10 @@ const Chat = (props: RouterComponentProps) => {
         } else {
             document.title = siteTitle;
             setChat([
-                { role: "model", parts: invalidPlaceholder, timestamp: 0 },
+                { role: "model", parts: id ? loadingPlaceholder : invalidPlaceholder, timestamp: 0 },
             ]);
         }
-    }, [t, siteTitle, id, sessions]);
+    }, [t, siteTitle, id, invalidPlaceholder, loadingPlaceholder, sessions]);
 
     useEffect(() => {
         let cancelled = false;

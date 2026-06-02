@@ -47,6 +47,7 @@
         "Chat": {
             "view_attachment": "点击查看附件",
             "refresh_placeholder": "重新生成中...",
+            "loading_placeholder": "正在加载当前会话...",
             "invalid_placeholder": "您当前的会话 ID 似乎无效，请检查您的网址，您也可以新建一个会话。",
             "handleRefresh": {
                 "not_available": "AI 正忙，请稍后再刷新"
