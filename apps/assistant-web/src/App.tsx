@@ -227,6 +227,8 @@ const App = () => {
     const legacySessionRecordsRef = useRef<Record<string, LegacySessionRecord>>({});
     const legacySessionGraceExpiresAtRef = useRef<number | null>(null);
     const coverageReportedRef = useRef(false);
+    const loadingSessionDetailsRef = useRef<Set<string>>(new Set());
+    const loadedSessionDetailsRef = useRef<Record<string, string>>({});
 
     const setCurrentLocaleToState = async () =>
         setCurrentLocale(await getCurrentLocale(i18n));
@@ -769,6 +771,14 @@ const App = () => {
 
     const loadSessionDetail = useCallback(
         async (sessionId: string, conversationId: string) => {
+            const loadedConversationId = loadedSessionDetailsRef.current[sessionId];
+            if (loadedConversationId === conversationId) {
+                return;
+            }
+            if (loadingSessionDetailsRef.current.has(sessionId)) {
+                return;
+            }
+            loadingSessionDetailsRef.current.add(sessionId);
             try {
                 const response = await handleRequest(
                     "GET",
@@ -776,6 +786,7 @@ const App = () => {
                 );
                 const item = response.item;
                 if (!item) {
+                    loadedSessionDetailsRef.current[sessionId] = conversationId;
                     return;
                 }
                 const history = Array.isArray(item.history) ? item.history : [];
@@ -803,10 +814,12 @@ const App = () => {
                         },
                     }),
                 );
+                loadedSessionDetailsRef.current[sessionId] = conversationId;
                 return;
             } catch (_error) {
                 const fallbackRecord = legacySessionRecordsRef.current[conversationId];
                 if (!fallbackRecord) {
+                    loadedSessionDetailsRef.current[sessionId] = conversationId;
                     return;
                 }
                 dispatch(
@@ -855,6 +868,9 @@ const App = () => {
                     }),
                     { "Content-Type": "application/json" },
                 ).catch(() => {});
+                loadedSessionDetailsRef.current[sessionId] = conversationId;
+            } finally {
+                loadingSessionDetailsRef.current.delete(sessionId);
             }
         },
         [
@@ -1115,6 +1131,8 @@ const App = () => {
             legacySessionRecordsRef.current = {};
             legacySessionGraceExpiresAtRef.current = null;
             coverageReportedRef.current = false;
+            loadingSessionDetailsRef.current.clear();
+            loadedSessionDetailsRef.current = {};
             return;
         }
         setGptsPermissionLoaded(false);
