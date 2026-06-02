@@ -106,7 +106,8 @@ const GptAssistantChat = (props: RouterComponentProps) => {
                 dispatch(updateSessions(nextSessions));
             };
             const sessionExtension = sessionExtensions[id];
-            const conversationId = id in mappings ? mappings[id] : "";
+            const conversationId =
+                sessionExtension?.conversationId || (id in mappings ? mappings[id] : "");
             const selectedModel = sessionExtension?.selectedModel ?? "";
             const reasoningEnabled =
                 typeof sessionExtension?.reasoningEnabled === "boolean"

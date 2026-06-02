@@ -1,7 +1,7 @@
 import inspect
 import time
 import uuid
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
@@ -37,6 +37,7 @@ from app.chat_service import (
 )
 from app.chat_kernel_service import chat_with_kernel_gptassistant
 from app.chat_kernel_service import KERNEL_HISTORY_PREFIX
+from app.chat_kernel_regulation_service import KERNEL_HISTORY_PREFIX as REGULATION_KERNEL_HISTORY_PREFIX
 from app.utils.model_tool import MODEL_NAME_THINKING
 from app.metrics.events import create_usage_event
 from app.tracing import create_chat_trace
@@ -70,6 +71,39 @@ async def _stream_with_metrics(generator, tracker):
         raise
     else:
         tracker.finalize(status="success", latency_ms=(time.perf_counter() - start_time) * 1000)
+
+
+def _persist_session_client_history_from_runtime(conversation_id: str, gid: str) -> None:
+    runtime_history = _load_runtime_history(conversation_id, gid)
+    client_history = _runtime_history_to_client_history(runtime_history, gid)
+    if not client_history:
+        gpt_logger.warning(
+            "session_client_history_persist_skipped conversation_id=%s gid=%s reason=empty_runtime_history",
+            conversation_id,
+            gid,
+        )
+        return
+    save_session_client_history(conversation_id, client_history)
+    gpt_logger.info(
+        "session_client_history_persisted conversation_id=%s gid=%s message_count=%s",
+        conversation_id,
+        gid,
+        len(client_history),
+    )
+
+
+async def _stream_with_session_client_history(generator, conversation_id: str, gid: str):
+    async for chunk in generator:
+        yield chunk
+    try:
+        _persist_session_client_history_from_runtime(conversation_id, gid)
+    except Exception as exc:  # pragma: no cover - response streaming must not fail after completion
+        gpt_logger.exception(
+            "session_client_history_persist_failed conversation_id=%s gid=%s error=%s",
+            conversation_id,
+            gid,
+            exc,
+        )
 
 
 def _dump_model(model):
@@ -153,6 +187,8 @@ class SessionCoverageReportRequest(BaseModel):
 def _runtime_history_key(conversation_id: str, gid: str) -> str:
     if gid == "gptassistant":
         return f"{KERNEL_HISTORY_PREFIX}{conversation_id}"
+    if gid == "regulationassistant":
+        return f"{REGULATION_KERNEL_HISTORY_PREFIX}{conversation_id}"
     return conversation_id
 
 
@@ -169,18 +205,16 @@ def _load_runtime_history(conversation_id: str, gid: str) -> list:
 def _runtime_history_to_client_history(history: list, gid: str) -> list[dict]:
     client_history: list[dict] = []
     for item in history:
-        if not isinstance(item, dict):
-            continue
-        role = str(item.get("role") or "")
+        role = str(_message_field(item, "role") or "")
         if role == "system":
             continue
         if role == "user":
-            content = item.get("content", "")
+            content = _message_field(item, "content", "")
             if isinstance(content, list):
                 text_parts: list[str] = []
                 for block in content:
-                    if isinstance(block, dict) and block.get("type") == "text":
-                        text = str(block.get("text") or "").strip()
+                    if _message_field(block, "type") == "text":
+                        text = str(_message_field(block, "text") or "").strip()
                         if text:
                             text_parts.append(text)
                 content = "\n".join(text_parts)
@@ -190,26 +224,24 @@ def _runtime_history_to_client_history(history: list, gid: str) -> list[dict]:
                 {
                     "role": "user",
                     "parts": content,
-                    "timestamp": int(item.get("timestamp") or 0),
+                    "timestamp": int(_message_field(item, "timestamp") or 0),
                 }
             )
             continue
         if role == "assistant":
-            content = item.get("content", "")
+            content = _message_field(item, "content", "")
             if isinstance(content, str):
                 rendered = content
             elif isinstance(content, list):
                 parts: list[str] = []
                 for block in content:
-                    if not isinstance(block, dict):
-                        continue
-                    block_type = block.get("type")
+                    block_type = _message_field(block, "type")
                     if block_type == "thinking":
-                        thinking = str(block.get("thinking") or "").strip()
+                        thinking = str(_message_field(block, "thinking") or "").strip()
                         if thinking:
                             parts.append(f"<think>{thinking}</think>")
                     elif block_type == "text":
-                        text = str(block.get("text") or "")
+                        text = str(_message_field(block, "text") or "")
                         if text:
                             parts.append(text)
                 rendered = "\n\n".join(part for part in parts if part)
@@ -219,10 +251,16 @@ def _runtime_history_to_client_history(history: list, gid: str) -> list[dict]:
                 {
                     "role": "model",
                     "parts": rendered,
-                    "timestamp": int(item.get("timestamp") or 0),
+                    "timestamp": int(_message_field(item, "timestamp") or 0),
                 }
             )
     return client_history
+
+
+def _message_field(item: Any, field: str, default: Any = None) -> Any:
+    if isinstance(item, dict):
+        return item.get(field, default)
+    return getattr(item, field, default)
 
 
 def _legacy_client_history_to_runtime_history(history: list[LegacySessionMessagePayload], gid: str) -> list[dict]:
@@ -295,6 +333,8 @@ async def get_session(
             _load_runtime_history(conversation_id, meta.get("gid") or "gptassistant"),
             meta.get("gid") or "gptassistant",
         )
+        if client_history:
+            save_session_client_history(conversation_id, client_history)
     return {
         "item": {
             **meta,
@@ -558,7 +598,11 @@ async def chat_with_gpt_assistant(request: QueryRequest, user: dict = Depends(ge
             trace_recorder.finalize(status="error", error=str(exc), duration_ms=0.0)
         raise
     return StreamingResponse(
-        _stream_with_metrics(generator, tracker),
+        _stream_with_session_client_history(
+            _stream_with_metrics(generator, tracker),
+            cid,
+            "gptassistant",
+        ),
         media_type="text/event-stream",
     )
 
@@ -647,7 +691,10 @@ async def chat_with_gpt_assistant_v2(request: QueryRequest, user: dict = Depends
         if trace_recorder:
             trace_recorder.finalize(status="error", error=str(exc), duration_ms=0.0)
         raise
-    return StreamingResponse(generator, media_type="text/event-stream")
+    return StreamingResponse(
+        _stream_with_session_client_history(generator, cid, "gptassistant"),
+        media_type="text/event-stream",
+    )
 
 
 @router.post("/{gid}/chat-messages")
@@ -737,7 +784,10 @@ async def chat_with_gpts(request: QueryRequest, gid: str, user: dict = Depends(g
             if trace_recorder:
                 trace_recorder.finalize(status="error", error=str(exc), duration_ms=0.0)
             raise
-        return StreamingResponse(generator, media_type="text/event-stream")
+        return StreamingResponse(
+            _stream_with_session_client_history(generator, cid, gid),
+            media_type="text/event-stream",
+        )
     system_prompt = assistant_config["system_prompt"]
     model_name = MODEL_NAME_THINKING
     if "model_name" in gpts[gid]:
@@ -797,6 +847,10 @@ async def chat_with_gpts(request: QueryRequest, gid: str, user: dict = Depends(g
             trace_recorder.finalize(status="error", error=str(exc), duration_ms=0.0)
         raise
     return StreamingResponse(
-        _stream_with_metrics(generator, tracker),
+        _stream_with_session_client_history(
+            _stream_with_metrics(generator, tracker),
+            cid,
+            gid,
+        ),
         media_type="text/event-stream",
     )

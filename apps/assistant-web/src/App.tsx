@@ -901,7 +901,10 @@ const App = () => {
         }
         const modelPlaceholder = t("App.handleSubmit.model_placeholder");
         const currentSessionHistory = id in sessions ? sessions[id] : [];
-        let conversationId = id in sessions ? mappings[id] : "";
+        let conversationId =
+            id in sessions
+                ? sessionExtensions[id]?.conversationId || mappings[id] || ""
+                : "";
         const selectedModelId = resolveModelId();
 
         const requiresExplicitModel = !gid;

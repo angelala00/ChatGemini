@@ -125,8 +125,11 @@ const Chat = (props: RouterComponentProps) => {
                     dispatch(updateAI({ ...ai, busy: true }));
             	}
             };
-            let conversationId = id in sessions ? mappings[id] : "";
             const sessionExtension = sessionExtensions[id];
+            let conversationId =
+                id in sessions
+                    ? sessionExtension?.conversationId || mappings[id] || ""
+                    : "";
             let gid = "";
             if (sessionExtension && sessionExtension["gid"]) {
                 gid = sessionExtension["gid"]

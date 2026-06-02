@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import os
@@ -169,6 +170,90 @@ class StorageBackendFallbackTests(unittest.TestCase):
         self.assertEqual(meta["user_id"], "legacy-user")
         self.assertEqual(meta["gid"], "gptassistant")
         self.assertEqual(meta["title"], "这是一个旧会话标题测试")
+
+    def test_session_detail_backfills_client_history_from_runtime_history(self):
+        from app.routes import chat_routes
+
+        conversation_id = "cid-runtime-only"
+        runtime_key = f"{chat_routes.KERNEL_HISTORY_PREFIX}{conversation_id}"
+        business_store.save_session_history(
+            runtime_key,
+            [
+                {
+                    "role": "user",
+                    "content": [{"type": "text", "text": "你好"}],
+                    "timestamp": 100,
+                },
+                {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "你好，有什么可以帮你？"}],
+                    "timestamp": 101,
+                },
+            ],
+        )
+        business_store.upsert_session_history_meta(
+            conversation_id=conversation_id,
+            user_id="user-1",
+            user_email="user@example.com",
+            gid="gptassistant",
+            title="你好",
+        )
+
+        response = asyncio.run(
+            chat_routes.get_session(
+                conversation_id,
+                user={"sub": "user-1", "email": "user@example.com"},
+            )
+        )
+
+        history = response["item"]["history"]
+        self.assertEqual(history[0]["parts"], "你好")
+        self.assertEqual(history[1]["parts"], "你好，有什么可以帮你？")
+        self.assertEqual(
+            business_store.load_session_client_history(conversation_id)[1]["parts"],
+            "你好，有什么可以帮你？",
+        )
+
+    def test_stream_completion_persists_client_history_from_runtime_history(self):
+        from app.routes import chat_routes
+
+        conversation_id = "cid-stream-complete"
+        runtime_key = f"{chat_routes.KERNEL_HISTORY_PREFIX}{conversation_id}"
+
+        async def source_stream():
+            yield "data: {}\n\n"
+            business_store.save_session_history(
+                runtime_key,
+                [
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": "刷新测试"}],
+                        "timestamp": 200,
+                    },
+                    {
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": "刷新后仍可见"}],
+                        "timestamp": 201,
+                    },
+                ],
+            )
+
+        async def consume_stream():
+            chunks = []
+            async for chunk in chat_routes._stream_with_session_client_history(
+                source_stream(),
+                conversation_id,
+                "gptassistant",
+            ):
+                chunks.append(chunk)
+            return chunks
+
+        chunks = asyncio.run(consume_stream())
+
+        self.assertEqual(chunks, ["data: {}\n\n"])
+        persisted = business_store.load_session_client_history(conversation_id)
+        self.assertEqual(persisted[0]["parts"], "刷新测试")
+        self.assertEqual(persisted[1]["parts"], "刷新后仍可见")
 
     def test_object_store_round_trip_uses_filesystem_fallback(self):
         payload = object_store.store_bytes(
