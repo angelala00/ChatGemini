@@ -6,6 +6,7 @@ import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from threading import Lock
 from typing import Any, Iterator
 
 from app.base_config import model_config
@@ -17,10 +18,18 @@ except Exception:  # pragma: no cover - optional dependency in sqlite dev mode
     psycopg = None
     dict_row = None
 
+try:
+    from psycopg_pool import ConnectionPool
+except Exception:  # pragma: no cover - optional dependency in sqlite dev mode
+    ConnectionPool = None
+
 DATA_DIR = os.path.join("", f"{model_config.FILE_BASE}/gptassistant")
 DEV_DB_PATH = os.path.join(DATA_DIR, "business-dev.db")
 _INITIALIZED = False
+_INITIALIZE_LOCK = Lock()
 _FERNET: Any = None
+_POSTGRES_POOL: Any = None
+_POSTGRES_POOL_DSN = ""
 
 
 def business_storage_backend() -> str:
@@ -38,11 +47,10 @@ def _now_iso() -> str:
 @contextmanager
 def _connect() -> Iterator[Any]:
     if _use_postgres():
-        if psycopg is None:
-            raise RuntimeError("psycopg is required when BUSINESS_STORAGE_BACKEND=postgres")
-        if not model_config.POSTGRES_DSN:
-            raise RuntimeError("POSTGRES_DSN is required when BUSINESS_STORAGE_BACKEND=postgres")
-        conn = psycopg.connect(model_config.POSTGRES_DSN, row_factory=dict_row)
+        pool = _get_postgres_pool()
+        with pool.connection() as conn:
+            yield conn
+        return
     else:
         os.makedirs(DATA_DIR, exist_ok=True)
         conn = sqlite3.connect(DEV_DB_PATH, check_same_thread=False)
@@ -51,6 +59,39 @@ def _connect() -> Iterator[Any]:
         yield conn
     finally:
         conn.close()
+
+
+def _get_postgres_pool() -> Any:
+    global _POSTGRES_POOL, _POSTGRES_POOL_DSN
+    if psycopg is None:
+        raise RuntimeError("psycopg is required when BUSINESS_STORAGE_BACKEND=postgres")
+    if ConnectionPool is None:
+        raise RuntimeError("psycopg_pool is required when BUSINESS_STORAGE_BACKEND=postgres")
+    dsn = model_config.POSTGRES_DSN
+    if not dsn:
+        raise RuntimeError("POSTGRES_DSN is required when BUSINESS_STORAGE_BACKEND=postgres")
+    if _POSTGRES_POOL is not None and _POSTGRES_POOL_DSN == dsn:
+        return _POSTGRES_POOL
+    if _POSTGRES_POOL is not None:
+        _POSTGRES_POOL.close()
+    max_size = max(1, int(model_config.POSTGRES_POOL_MAX_SIZE))
+    min_size = max(0, min(int(model_config.POSTGRES_POOL_MIN_SIZE), max_size))
+    _POSTGRES_POOL = ConnectionPool(
+        conninfo=dsn,
+        min_size=min_size,
+        max_size=max_size,
+        kwargs={"row_factory": dict_row},
+    )
+    _POSTGRES_POOL_DSN = dsn
+    return _POSTGRES_POOL
+
+
+def close_business_storage() -> None:
+    global _POSTGRES_POOL, _POSTGRES_POOL_DSN
+    if _POSTGRES_POOL is not None:
+        _POSTGRES_POOL.close()
+    _POSTGRES_POOL = None
+    _POSTGRES_POOL_DSN = ""
 
 
 def _normalize_row(row: Any) -> dict[str, Any]:
@@ -369,8 +410,10 @@ def ensure_initialized() -> None:
     global _INITIALIZED
     if _INITIALIZED:
         return
-    init_business_storage()
-    _INITIALIZED = True
+    with _INITIALIZE_LOCK:
+        if _INITIALIZED:
+            return
+        init_business_storage()
 
 
 def _load_seed_gptassistant_model_configs() -> list[dict[str, Any]]:
@@ -764,6 +807,7 @@ def _seed_admin_feature_flags_if_empty() -> None:
 
 
 def init_business_storage() -> None:
+    global _INITIALIZED
     with _connect() as conn:
         if _use_postgres():
             conn.execute(
@@ -1052,6 +1096,7 @@ def init_business_storage() -> None:
     _seed_admin_user_permissions_if_empty()
     _seed_admin_feature_flags_if_empty()
     _backfill_session_history_meta_from_existing_history()
+    _INITIALIZED = True
 
 
 def business_storage_health() -> dict[str, Any]:
@@ -2422,6 +2467,7 @@ def list_enabled_permissions_for_user(user_keys: list[str]) -> set[str]:
 __all__ = [
     "business_storage_backend",
     "business_storage_health",
+    "close_business_storage",
     "count_file_mappings",
     "delete_custom_gpt",
     "delete_admin_feature_flag",

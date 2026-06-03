@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import importlib.util
+
 from app.base_config import model_config
 
 _BUSINESS_BACKENDS = {"postgres", "sqlite"}
@@ -28,6 +30,14 @@ def validate_storage_configuration() -> None:
         )
     if model_config.BUSINESS_STORAGE_BACKEND == "postgres":
         _validate_session_history_encryption_key(model_config.SESSION_HISTORY_ENCRYPTION_KEY)
+        if importlib.util.find_spec("psycopg_pool") is None:
+            raise RuntimeError("psycopg_pool is required when BUSINESS_STORAGE_BACKEND=postgres")
+        if model_config.POSTGRES_POOL_MAX_SIZE < 1:
+            raise RuntimeError("POSTGRES_POOL_MAX_SIZE must be >= 1")
+        if model_config.POSTGRES_POOL_MIN_SIZE < 0:
+            raise RuntimeError("POSTGRES_POOL_MIN_SIZE must be >= 0")
+        if model_config.POSTGRES_POOL_MIN_SIZE > model_config.POSTGRES_POOL_MAX_SIZE:
+            raise RuntimeError("POSTGRES_POOL_MIN_SIZE must be <= POSTGRES_POOL_MAX_SIZE")
 
     if model_config.OBJECT_STORAGE_BACKEND == "minio":
         missing = [

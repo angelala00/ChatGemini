@@ -78,6 +78,7 @@ class StorageBackendFallbackTests(unittest.TestCase):
             self.business_backend_patcher,
         ):
             patcher.stop()
+        business_store.close_business_storage()
         business_store._INITIALIZED = False
         business_store._FERNET = None
         object_store._CLIENT = None
@@ -98,6 +99,11 @@ class StorageBackendFallbackTests(unittest.TestCase):
 
         business_store.set_user_config_version("user-1", "v1.2.3")
         self.assertEqual(business_store.get_user_config_version("user-1"), "v1.2.3")
+
+    def test_init_business_storage_marks_store_initialized(self):
+        business_store._INITIALIZED = False
+        business_store.init_business_storage()
+        self.assertTrue(business_store._INITIALIZED)
 
     def test_business_store_encrypts_session_history_when_key_configured(self):
         try:
@@ -379,8 +385,35 @@ class ConfigValidationTests(unittest.TestCase):
             self.skipTest("cryptography not installed in current test environment")
         with patch.object(model_config, "BUSINESS_STORAGE_BACKEND", "postgres"), \
              patch.object(model_config, "POSTGRES_DSN", "postgresql://demo"), \
-             patch.object(model_config, "SESSION_HISTORY_ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8")):
+             patch.object(model_config, "SESSION_HISTORY_ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8")), \
+             patch("importlib.util.find_spec", return_value=object()):
             validate_storage_configuration()
+
+    def test_postgres_backend_rejects_invalid_pool_size(self):
+        try:
+            from cryptography.fernet import Fernet
+        except Exception:
+            self.skipTest("cryptography not installed in current test environment")
+        with patch.object(model_config, "BUSINESS_STORAGE_BACKEND", "postgres"), \
+             patch.object(model_config, "POSTGRES_DSN", "postgresql://demo"), \
+             patch.object(model_config, "SESSION_HISTORY_ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8")), \
+             patch.object(model_config, "POSTGRES_POOL_MIN_SIZE", 6), \
+             patch.object(model_config, "POSTGRES_POOL_MAX_SIZE", 5), \
+            patch("importlib.util.find_spec", return_value=object()):
+            with self.assertRaisesRegex(RuntimeError, "POSTGRES_POOL_MIN_SIZE"):
+                validate_storage_configuration()
+
+    def test_postgres_backend_requires_psycopg_pool(self):
+        try:
+            from cryptography.fernet import Fernet
+        except Exception:
+            self.skipTest("cryptography not installed in current test environment")
+        with patch.object(model_config, "BUSINESS_STORAGE_BACKEND", "postgres"), \
+             patch.object(model_config, "POSTGRES_DSN", "postgresql://demo"), \
+             patch.object(model_config, "SESSION_HISTORY_ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8")), \
+             patch("importlib.util.find_spec", return_value=None):
+            with self.assertRaisesRegex(RuntimeError, "psycopg_pool"):
+                validate_storage_configuration()
 
     def test_minio_backend_requires_credentials(self):
         with patch.object(model_config, "OBJECT_STORAGE_BACKEND", "minio"), \

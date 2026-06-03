@@ -19,6 +19,6 @@ tzdata
 pandas
 PyJWT
 pytest
-psycopg[binary]
+psycopg[binary,pool]
 minio
 cryptography

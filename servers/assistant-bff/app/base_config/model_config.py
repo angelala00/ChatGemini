@@ -48,6 +48,8 @@ ASSISTANT_MODEL_GLM5: str = os.getenv("ASSISTANT_MODEL_GLM5", "glm-5")
 FILE_BASE: str = os.getenv("FILE_BASE", "/tmp")
 LOG_BASE: str = os.getenv("LOG_BASE", "/tmp")
 POSTGRES_DSN: str = os.getenv("POSTGRES_DSN", "").strip()
+POSTGRES_POOL_MIN_SIZE: int = _parse_int_env(os.getenv("POSTGRES_POOL_MIN_SIZE"), 1)
+POSTGRES_POOL_MAX_SIZE: int = _parse_int_env(os.getenv("POSTGRES_POOL_MAX_SIZE"), 5)
 SESSION_HISTORY_ENCRYPTION_KEY: str = os.getenv("SESSION_HISTORY_ENCRYPTION_KEY", "").strip()
 BUSINESS_STORAGE_BACKEND: str = os.getenv(
     "BUSINESS_STORAGE_BACKEND",

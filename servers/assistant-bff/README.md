@@ -30,6 +30,8 @@
 - `ASSISTANT_BFF_PORT`: 服务端口，默认 `5008`。
 - `BUSINESS_STORAGE_BACKEND`: 业务数据存储后端。生产建议 `postgres`，本地开发可用 `sqlite`。
 - `POSTGRES_DSN`: Postgres 连接串；当 `BUSINESS_STORAGE_BACKEND=postgres` 时必填。
+- `POSTGRES_POOL_MIN_SIZE`: Postgres 连接池最小连接数，默认 `1`。
+- `POSTGRES_POOL_MAX_SIZE`: Postgres 连接池最大连接数，默认 `5`。
 - `SESSION_HISTORY_ENCRYPTION_KEY`: 会话历史加密密钥。当前要求在 `BUSINESS_STORAGE_BACKEND=postgres` 时必填，格式为 `Fernet` key。
 - `OBJECT_STORAGE_BACKEND`: 文件存储后端。生产建议 `minio`，本地开发可用 `filesystem`。
 - `MINIO_ENDPOINT`: MinIO 地址，例如 `minio.example.com:9000`。
@@ -54,6 +56,7 @@
 - 启动阶段会校验存储配置。
 - 当 `BUSINESS_STORAGE_BACKEND=postgres` 且缺少 `POSTGRES_DSN` 时，服务会直接启动失败。
 - 当 `BUSINESS_STORAGE_BACKEND=postgres` 且缺少 `SESSION_HISTORY_ENCRYPTION_KEY` 时，服务会直接启动失败。
+- 当 `BUSINESS_STORAGE_BACKEND=postgres` 且连接池大小配置不合法时，服务会直接启动失败。
 - 当 `OBJECT_STORAGE_BACKEND=minio` 且缺少 `MINIO_*` 关键配置时，服务会直接启动失败。
 
 ## 存储分层

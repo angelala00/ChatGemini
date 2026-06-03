@@ -22,7 +22,7 @@ from app.routes.voice_lab_routes import router as voice_lab_router
 from app.metrics import init_metrics_storage
 from app.metrics.events import cleanup_usage_events
 from app.tracing import cleanup_trace_storage, init_trace_storage
-from app.storage.business_store import business_storage_health, init_business_storage
+from app.storage.business_store import business_storage_health, close_business_storage, init_business_storage
 from app.storage.config_validation import validate_storage_configuration
 from app.storage.object_store import cleanup_local_cache
 from app.storage.object_store import init_object_store, object_storage_health
@@ -77,6 +77,7 @@ async def _startup() -> None:
 @app.on_event("shutdown")
 async def _shutdown() -> None:
     stop_file_retention_scheduler()
+    close_business_storage()
     if maintenance_scheduler.running:
         maintenance_scheduler.shutdown(wait=False)
 

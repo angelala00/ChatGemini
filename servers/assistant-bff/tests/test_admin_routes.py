@@ -47,6 +47,7 @@ class AdminRoutesTests(unittest.IsolatedAsyncioTestCase):
             self.feature_flag_patcher,
         ):
             patcher.stop()
+        business_store.close_business_storage()
         business_store._INITIALIZED = False
         self.temp_dir.cleanup()
 
