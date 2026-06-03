@@ -10,6 +10,7 @@ import {
     ChevronDownIcon,
     EllipsisHorizontalIcon,
     ClockIcon,
+    Cog6ToothIcon,
     MicrophoneIcon,
     PencilSquareIcon,
     PlusCircleIcon,
@@ -47,22 +48,22 @@ interface SidebarProps {
     readonly onToggleSidebar: () => void;
 }
 
-const APP_VERSION = "v1.3.0";
+const APP_VERSION = "v1.2.1";
 
 const releaseHistory = [
     {
-        version: "v1.3.0",
+        version: "v1.2.1",
         date: "2026.06",
-        type: "minor",
-        zhTitle: "GPTS 配置总览",
+        type: "patch",
+        zhTitle: "默认中文与语言切换",
         zhChanges: [
-            "管理员后台新增 GPTS 配置总览页，集中展示总开关、生效范围、白名单和管理用户。",
-            "Postgres 会话历史加密密钥会在启动配置校验阶段检查格式，避免运行中才暴露历史读写异常。",
+            "新用户默认进入中文界面。",
+            "账号菜单新增系统设置入口，可在设置中切换界面语言。",
         ],
-        enTitle: "GPTS Configuration Overview",
+        enTitle: "Default Chinese and Language Switcher",
         enChanges: [
-            "Added a GPTS configuration overview in the admin console for the feature switch, effective scope, whitelist, and manager users.",
-            "Validate the Postgres session-history encryption key during startup configuration checks to catch invalid keys before runtime history reads or writes.",
+            "New users now enter the app in Simplified Chinese by default.",
+            "Added System Settings to the account menu, with language switching available in the settings dialog.",
         ],
     },
     {
@@ -71,19 +72,13 @@ const releaseHistory = [
         type: "minor",
         zhTitle: "管理员配置页",
         zhChanges: [
-            "侧边栏账号菜单新增管理员入口，仅对有权限账号显示。",
-            "新增独立的管理员配置页面，可集中维护模型能力、权限分配和功能开关。",
-            "管理员区已拆成模型、权限、功能开关、审计四个独立页面，并采用独立后台布局。",
-            "支持新增、编辑和删除核心业务配置，主助手默认模型、可见模型和思考开关也已收成结构化表单。",
-            "聊天历史开始优先从服务端会话数据读取，刷新页面后的历史连续性更稳定。",
+            "增加管理后台能力，支持有权限的管理员统一维护模型、权限、功能开关等核心配置。",
+            "聊天历史重构，由存浏览器改成存服务端，并且进行加密存储。",
         ],
         enTitle: "Admin Configuration Console",
         enChanges: [
-            "Added an admin entry to the account menu, visible only to authorized users.",
-            "Added a dedicated admin page for managing model capabilities, permissions, and feature flags.",
-            "Split the admin area into dedicated models, permissions, feature flags, and audit pages with a separate admin workspace layout.",
-            "Enabled create, update, and delete flows for core business configuration, including structured forms for the main assistant defaults.",
-            "Switched chat history to prefer the server-side session store so history continuity is more stable after refresh.",
+            "Added admin console capabilities so authorized administrators can centrally maintain models, permissions, feature switches, and other core settings.",
+            "Reworked chat history from browser storage to encrypted server-side storage.",
         ],
     },
     {
@@ -92,30 +87,22 @@ const releaseHistory = [
         type: "patch",
         zhTitle: "附件交互修复",
         zhChanges: [
-            "修复空文本被前端拦截时仍清空已上传附件的问题。",
-            "调整输入区提交逻辑，仅在真正进入发送流程后清空输入和附件。",
-            "上传图片后，输入区待发送附件恢复为缩略图展示。",
-            "将输入区图片缩略图调整为更紧凑的正方形裁切，保持与其它附件卡片一致的高度节奏。",
-            "恢复历史聊天记录中图片附件的缩略图展示和点击预览。",
-            "补充 PPT/PPTX 历史附件的类型标识，避免统一显示为普通文件。",
-            "按文件类型细化附件图标配色，提升 Word、Excel、PDF、PPT 等文档的识别度。",
-            "输入区在未填写正文时禁用发送按钮，减少无效点击和误触发提示。",
-            "修复点击预置问题后输入框已填充但发送按钮仍保持置灰的问题。",
-            "统一预置问题填充链路，确保输入框高度和发送状态与手动输入保持一致。",
+            "修复未输入正文时误清空已上传附件的问题。",
+            "优化发送前后的输入区状态，减少附件和文本被误清空的情况。",
+            "上传图片和查看历史图片时，缩略图与预览体验更稳定。",
+            "PPT、Word、Excel、PDF 等附件的类型展示更清晰。",
+            "未填写正文时会禁用发送按钮，减少无效点击。",
+            "点击预置问题后，输入框和发送按钮状态会正确同步。",
             "修复制度问答助手无法正常发起提问的问题，提升问答稳定性。",
         ],
         enTitle: "Attachment Interaction Fixes",
         enChanges: [
-            "Fixed an issue where uploaded attachments were cleared when empty-text sends were blocked on the client.",
-            "Updated composer submission so text and attachments are cleared only after a send is actually accepted.",
-            "Restored thumbnail previews for pending image attachments in the composer after upload.",
-            "Adjusted composer image thumbnails to a tighter square crop while keeping their height aligned with other attachment cards.",
-            "Restored thumbnail display and click-to-preview behavior for image attachments in chat history.",
-            "Added explicit PPT/PPTX labeling for history attachments instead of showing them as generic files.",
-            "Refined attachment icon colors by file type to improve recognition for Word, Excel, PDF, PPT, and similar documents.",
-            "Disabled the composer send button until message text is entered to reduce no-op clicks and avoid unnecessary warnings.",
-            "Fixed an issue where clicking a preset prompt filled the composer but left the send button disabled.",
-            "Unified preset prompt insertion so composer height and send availability stay in sync with manual typing.",
+            "Fixed an issue where attachments could be cleared when no message text was entered.",
+            "Improved composer state before and after sending to reduce accidental text or attachment clearing.",
+            "Made image thumbnails and history image previews more reliable.",
+            "Improved file type display for PPT, Word, Excel, PDF, and similar attachments.",
+            "Disabled sending until message text is entered to reduce invalid clicks.",
+            "Kept the composer and send button in sync after selecting preset prompts.",
             "Fixed an issue that could prevent the regulation assistant from starting a request successfully, improving answer stability.",
         ],
     },
@@ -154,12 +141,12 @@ const releaseHistory = [
         zhTitle: "聊天界面交互细节优化",
         zhChanges: [
             "优化侧边栏会话、用户菜单、模型选择和新建会话页的交互细节。",
-            "新增默认新建会话页 mock logo 展示，并保留助手专属新建页文案。",
+            "优化新建会话页展示，让默认助手和专属助手的欢迎信息更清晰。",
         ],
         enTitle: "Chat UI Interaction Polish",
         enChanges: [
             "Polished sidebar session items, profile menu, model selector, and new chat interactions.",
-            "Added a mock logo treatment for the default new chat page while preserving assistant-specific welcome copy.",
+            "Improved the new chat welcome page so default and dedicated assistants are easier to distinguish.",
         ],
     },
     {
@@ -198,17 +185,16 @@ const releaseHistory = [
         type: "minor",
         zhTitle: "诊断与链路优化",
         zhChanges: [
-            "引入链路诊断工具、Trace 查看器及模型原始输入日志。",
-            "GPT 助手 chat-v2 流程重构，统一采用 tool-first 附件链路。",
-            "支持通过环境变量动态配置模型 ID，增加 GPTS 访问白名单机制。",
-            "提高文件上传大小限制，增加工具调用进度和附件预处理状态展示。",
+            "优化 GPT 助手的附件处理流程，提升文档分析稳定性。",
+            "增加助手访问控制能力，未授权用户不会看到对应入口。",
+            "提高文件上传上限，并展示附件处理和工具调用进度。",
         ],
         enTitle: "Diagnostics And Flow Improvements",
         enChanges: [
-            "Added trace diagnostics, Trace Inspector, and raw model input logs.",
-            "Refactored the GPT assistant chat-v2 flow around a tool-first attachment pipeline.",
-            "Added environment-driven model IDs and GPTS access whitelist support.",
-            "Raised upload limits and added live tool progress plus attachment preprocessing status.",
+            "Added diagnostic tools to help troubleshoot complex chats and attachment processing.",
+            "Improved GPT assistant attachment handling for more stable document analysis.",
+            "Added assistant access controls so unauthorized users do not see restricted entries.",
+            "Raised upload limits and added visible progress for attachment processing and tool calls.",
         ],
     },
     {
@@ -217,49 +203,33 @@ const releaseHistory = [
         type: "minor",
         zhTitle: "架构重构与交互升级",
         zhChanges: [
-            "引入 llm kernel 基础架构，解耦模型处理逻辑。",
-            "上线 gptassistant v2 附件处理流程，优化文档工具响应速度。",
+            "升级底层对话处理能力，让不同模型和助手接入更稳定。",
+            "优化附件处理流程，提升文档读取和分析速度。",
             "重构聊天窗口滚动容器，解决流式输出时的阅读干扰问题。",
-            "美化附件展示样式和侧边栏交互，优化 Thinking 兼容输出。",
+            "优化附件展示、侧边栏交互和思考内容显示效果。",
         ],
         enTitle: "Architecture Refactor And Interaction Upgrade",
         enChanges: [
-            "Introduced the llm kernel foundation to decouple model handling.",
-            "Released the gptassistant v2 attachment flow for faster document tooling.",
+            "Upgraded the underlying chat processing for more stable model and assistant integrations.",
+            "Improved attachment handling for faster document reading and analysis.",
             "Refactored chat scrolling to reduce reading disruption during streaming output.",
-            "Improved attachment display, sidebar interactions, and Thinking compatibility.",
-        ],
-    },
-    {
-        version: "2026.02",
-        date: "2026.02",
-        type: "minor",
-        zhTitle: "扩展与统计",
-        zhChanges: [
-            "增加 Claude 模型接入文档，更新 model_tool 功能。",
-            "上线项目维度用量统计，支持多模型占比分析。",
-        ],
-        enTitle: "Extensions And Usage Analytics",
-        enChanges: [
-            "Added Claude integration documentation and updated model_tool.",
-            "Added project-level usage analytics with multi-model share analysis.",
+            "Improved attachment display, sidebar interactions, and reasoning content rendering.",
         ],
     },
     {
         version: "2026.01",
         date: "2026.01",
         type: "minor",
-        zhTitle: "LLM Platform 上线",
+        zhTitle: "模型服务管理上线",
         zhChanges: [
-            "新增 platform 页面，支持管理 API Key 和 Token 消耗监控。",
-            "增加一键部署脚本及构建流程优化。",
-            "敏感配置在前端进行掩码处理。",
+            "优化部署和构建流程，提升发布效率。",
+            "敏感配置默认做隐藏展示，降低误泄露风险。",
         ],
-        enTitle: "LLM Platform Launch",
+        enTitle: "Model Service Management Launch",
         enChanges: [
-            "Added the platform page for API key management and token usage monitoring.",
-            "Added one-click deployment scripts and build flow improvements.",
-            "Masked sensitive configuration values in the frontend.",
+            "Added a model service management page for API keys and usage monitoring.",
+            "Improved deployment and build flows for more efficient releases.",
+            "Masked sensitive configuration values by default to reduce leakage risk.",
         ],
     },
     {
@@ -268,13 +238,13 @@ const releaseHistory = [
         type: "patch",
         zhTitle: "细节打磨",
         zhChanges: [
-            "前端项目全面迁移至 Vite，提升开发和编译速度。",
-            "修复思考模式标签在部分流式场景下的闭合问题。",
+            "优化页面构建和加载体验。",
+            "修复部分流式回答中思考内容显示不完整的问题。",
         ],
         enTitle: "Polish",
         enChanges: [
-            "Migrated frontend projects to Vite for faster development and builds.",
-            "Fixed Thinking tag closing behavior in some streaming scenarios.",
+            "Improved page build and loading experience.",
+            "Fixed incomplete reasoning display in some streaming responses.",
         ],
     },
     {
@@ -283,13 +253,12 @@ const releaseHistory = [
         type: "patch",
         zhTitle: "功能完善",
         zhChanges: [
-            "引入待办事项等辅助开发功能。",
-            "修复数据大屏时间筛选器在特定时区下失效的问题。",
+            "修复数据大屏在部分时区下时间筛选不准确的问题。",
         ],
         enTitle: "Feature Completion",
         enChanges: [
-            "Added TODO helpers for development workflows.",
-            "Fixed dashboard time filters in specific time zones.",
+            "Added internal task management helpers.",
+            "Fixed inaccurate dashboard time filtering in some time zones.",
         ],
     },
     {
@@ -298,17 +267,16 @@ const releaseHistory = [
         type: "major",
         zhTitle: "架构重构与数据大屏",
         zhChanges: [
-            "项目拆分为 assistant-web、assistant-dashboard 和 assistant-metrics-api。",
+            "完成应用结构升级，为聊天、数据看板和统计服务分别优化。",
             "上线 GPT 助手核心指标总览页面。",
             "实现会话级模型偏好记忆和模型相关上传文件类型限制。",
-            "优化 WebSocket 稳定性，修复 VPN 环境下跨服务响应问题。",
         ],
         enTitle: "Architecture Refactor And Metrics Dashboard",
         enChanges: [
-            "Split the project into assistant-web, assistant-dashboard, and assistant-metrics-api.",
+            "Upgraded the app structure to better support chat, dashboards, and metrics services.",
             "Added the GPT assistant metrics overview dashboard.",
             "Added per-session model preference memory and model-specific upload restrictions.",
-            "Improved WebSocket stability and cross-service responses in VPN environments.",
+            "Improved connection stability and response behavior in VPN environments.",
         ],
     },
     {
@@ -317,17 +285,17 @@ const releaseHistory = [
         type: "minor",
         zhTitle: "GPTs 平台化",
         zhChanges: [
-            "上线 GPTs 创建与管理 API，支持自定义系统提示词和示例问题。",
-            "增加 GPTS 访问白名单，非授权用户隐藏管理入口。",
-            "完成 GPTs 相关页面中英文国际化适配。",
-            "后端存储迁移至 SQLite 数据库。",
+            "上线 GPTs 创建与管理能力，支持自定义提示词和示例问题。",
+            "增加 GPTS 访问控制，非授权用户不会看到管理入口。",
+            "GPTs 相关页面支持中英文显示。",
+            "优化后台数据存储方式，提升本地部署便利性。",
         ],
         enTitle: "GPTs Platformization",
         enChanges: [
-            "Added GPTs creation and management APIs with custom prompts and examples.",
-            "Added a GPTS access whitelist and hid management entry points for unauthorized users.",
-            "Localized GPTs pages in Chinese and English.",
-            "Moved backend persistence to SQLite.",
+            "Added GPTs creation and management with custom prompts and example questions.",
+            "Added GPTS access control so unauthorized users do not see management entry points.",
+            "Added Chinese and English display support for GPTs pages.",
+            "Improved backend data storage for easier local deployment.",
         ],
     },
     {
@@ -404,6 +372,7 @@ export const Sidebar = (props: SidebarProps) => {
     } | null>(null);
     const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false);
     const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isHistoryCollapsed, setIsHistoryCollapsed] = useState(false);
     const profileMenuRef = useRef<HTMLDivElement>(null);
     const historyLongPressTimerRef = useRef<number | null>(null);
@@ -471,6 +440,21 @@ export const Sidebar = (props: SidebarProps) => {
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
     }, [isVersionHistoryOpen]);
+
+    useEffect(() => {
+        if (!isSettingsOpen) {
+            return;
+        }
+
+        const handleKeyDown = ({ key }: KeyboardEvent) => {
+            if (key === "Escape") {
+                setIsSettingsOpen(false);
+            }
+        };
+
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [isSettingsOpen]);
 
     useEffect(() => {
         if (!isProfileMenuOpen) {
@@ -947,6 +931,19 @@ export const Sidebar = (props: SidebarProps) => {
                                 <span className="text-xs font-medium text-[#87919d]">实验</span>
                             </button>
                         )}
+                        <button
+                            type="button"
+                            className="inline-flex min-h-9 items-center justify-between gap-2 rounded-[10px] px-2.5 text-left text-[13px] font-normal text-[rgba(56,67,79,0.96)] transition-colors hover:bg-[rgba(229,234,239,0.82)]"
+                            onClick={() => {
+                                setIsProfileMenuOpen(false);
+                                setIsSettingsOpen(true);
+                            }}
+                        >
+                            <span className="inline-flex items-center gap-2 text-[#2f3a46]">
+                                <Cog6ToothIcon className="size-4 text-[#87919d]" strokeWidth={1.8} />
+                                {t("components.Sidebar.system_settings")}
+                            </span>
+                        </button>
                         <div className="inline-flex min-h-9 items-center justify-between gap-2 rounded-[10px] px-2.5 text-[13px] font-normal text-[rgba(56,67,79,0.96)]">
                             <span className="text-[#87919d]">技术支持</span>
                             <span className="min-w-0 truncate font-medium text-[#2f3a46]">
@@ -1049,6 +1046,82 @@ export const Sidebar = (props: SidebarProps) => {
                                     );
                                 })}
                             </div>
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
+            {isSettingsOpen && createPortal(
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 px-4"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="system-settings-title"
+                    onClick={() => setIsSettingsOpen(false)}
+                >
+                    <div
+                        className="w-full max-w-[520px] overflow-hidden rounded-2xl bg-white shadow-2xl"
+                        onClick={(event) => event.stopPropagation()}
+                    >
+                        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+                            <div>
+                                <h2
+                                    id="system-settings-title"
+                                    className="text-base font-semibold text-slate-900"
+                                >
+                                    {t("components.Sidebar.system_settings")}
+                                </h2>
+                                <p className="mt-1 text-xs font-normal text-slate-500">
+                                    {t("components.Sidebar.system_settings_subtitle")}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                className="rounded-md p-2 transition-colors hover:bg-slate-100"
+                                aria-label={t("components.Sidebar.close_system_settings")}
+                                onClick={() => setIsSettingsOpen(false)}
+                            >
+                                <img src={closeIcon} alt="" className="size-4" />
+                            </button>
+                        </div>
+                        <div className="grid gap-4 px-5 py-5">
+                            <section className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-4">
+                                <div className="flex flex-col gap-1">
+                                    <h3 className="text-sm font-semibold text-slate-900">
+                                        {t("components.Sidebar.language")}
+                                    </h3>
+                                    <p className="text-xs leading-5 text-slate-500">
+                                        {t("components.Sidebar.language_hint")}
+                                    </p>
+                                </div>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                    {Object.entries(locales).map(([locale, label]) => {
+                                        const isActive = currentLocale === locale;
+                                        return (
+                                            <button
+                                                key={locale}
+                                                type="button"
+                                                className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                                                    isActive
+                                                        ? "border-[#7fb7c5] bg-[#e8f4f7] text-[#276675]"
+                                                        : "border-slate-200 bg-white text-slate-600 hover:bg-slate-100"
+                                                }`}
+                                                onClick={() => onSwitchLocale(locale)}
+                                            >
+                                                {label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </section>
+                            <section className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-4">
+                                <h3 className="text-sm font-semibold text-slate-900">
+                                    {t("components.Sidebar.future_preferences")}
+                                </h3>
+                                <p className="mt-1 text-xs leading-5 text-slate-500">
+                                    {t("components.Sidebar.future_preferences_hint")}
+                                </p>
+                            </section>
                         </div>
                     </div>
                 </div>,

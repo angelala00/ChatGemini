@@ -4,7 +4,7 @@ import zhCN from "../locales/zh-CN.json";
 
 export const i18nConfig = {
     key: "i18n",
-    fallback: "en-US",
+    fallback: "zh-CN",
     resources: {
         "en-US": { label: "US English", translation: enUS },
         "zh-CN": { label: "简体中文", translation: zhCN },

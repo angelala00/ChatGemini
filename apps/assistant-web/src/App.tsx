@@ -233,7 +233,8 @@ const App = () => {
     const setCurrentLocaleToState = async () =>
         setCurrentLocale(await getCurrentLocale(i18n));
 
-    const handleSwitchLocale = (locale: string) => setUserLocale(i18n, locale);
+    const handleSwitchLocale = (locale: string) =>
+        setUserLocale(i18n, locale).then(() => setCurrentLocale(locale));
 
 
     const [fileUploadEnabled, setFileUploadEnabled] = useState(false);
