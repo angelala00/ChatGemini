@@ -47,9 +47,24 @@ interface SidebarProps {
     readonly onToggleSidebar: () => void;
 }
 
-const APP_VERSION = "v1.2.0";
+const APP_VERSION = "v1.3.0";
 
 const releaseHistory = [
+    {
+        version: "v1.3.0",
+        date: "2026.06",
+        type: "minor",
+        zhTitle: "GPTS 配置总览",
+        zhChanges: [
+            "管理员后台新增 GPTS 配置总览页，集中展示总开关、生效范围、白名单和管理用户。",
+            "Postgres 会话历史加密密钥会在启动配置校验阶段检查格式，避免运行中才暴露历史读写异常。",
+        ],
+        enTitle: "GPTS Configuration Overview",
+        enChanges: [
+            "Added a GPTS configuration overview in the admin console for the feature switch, effective scope, whitelist, and manager users.",
+            "Validate the Postgres session-history encryption key during startup configuration checks to catch invalid keys before runtime history reads or writes.",
+        ],
+    },
     {
         version: "v1.2.0",
         date: "2026.06",

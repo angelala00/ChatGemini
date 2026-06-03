@@ -365,6 +365,23 @@ class ConfigValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "SESSION_HISTORY_ENCRYPTION_KEY"):
                 validate_storage_configuration()
 
+    def test_postgres_backend_requires_valid_session_history_encryption_key(self):
+        with patch.object(model_config, "BUSINESS_STORAGE_BACKEND", "postgres"), \
+             patch.object(model_config, "POSTGRES_DSN", "postgresql://demo"), \
+             patch.object(model_config, "SESSION_HISTORY_ENCRYPTION_KEY", "not-a-fernet-key"):
+            with self.assertRaisesRegex(RuntimeError, "valid Fernet key"):
+                validate_storage_configuration()
+
+    def test_postgres_backend_accepts_valid_session_history_encryption_key(self):
+        try:
+            from cryptography.fernet import Fernet
+        except Exception:
+            self.skipTest("cryptography not installed in current test environment")
+        with patch.object(model_config, "BUSINESS_STORAGE_BACKEND", "postgres"), \
+             patch.object(model_config, "POSTGRES_DSN", "postgresql://demo"), \
+             patch.object(model_config, "SESSION_HISTORY_ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8")):
+            validate_storage_configuration()
+
     def test_minio_backend_requires_credentials(self):
         with patch.object(model_config, "OBJECT_STORAGE_BACKEND", "minio"), \
              patch.object(model_config, "MINIO_ENDPOINT", ""), \

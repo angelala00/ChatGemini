@@ -1104,6 +1104,7 @@ const App = () => {
     const adminRoutes = [
         "admin_index",
         "admin",
+        "admin_gpts",
         "admin_permissions",
         "admin_flags",
         "admin_audit",

@@ -261,6 +261,30 @@ class AdminRoutesTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(flags_by_key["gpts_feature_enabled"]["config_key"], "gpts_feature_enabled")
         self.assertEqual(flags_by_key["gpts_feature_enabled"]["config_value"], True)
 
+    async def test_gpts_overview_summarizes_switch_scope_and_manage_users(self):
+        conn = self._conn()
+        try:
+            conn.execute("DELETE FROM admin_user_permissions")
+            conn.commit()
+        finally:
+            conn.close()
+        self._seed_permission("admin@example.com", "admin.access")
+        self._seed_permission("manager@example.com", "gpts.manage")
+
+        with patch.object(access_control.model_config, "GPTS_WHITE_LIST", {"admin@example.com", "user@example.com"}):
+            result = await admin_routes.admin_gpts_overview(self.user)
+
+        self.assertTrue(result["feature_enabled"])
+        self.assertEqual(result["visible_scope"], "whitelist")
+        self.assertEqual(result["whitelist_users"], ["admin@example.com", "user@example.com"])
+        self.assertIn("manager@example.com", result["explicit_manage_users"])
+        self.assertEqual(
+            set(result["effective_manage_users"]),
+            {"admin@example.com", "manager@example.com", "user@example.com"},
+        )
+        self.assertTrue(result["current_user_allowed"])
+        self.assertTrue(result["current_user_manage_allowed"])
+
     async def test_admin_write_endpoints_upsert_and_delete(self):
         self._seed_permission("admin@example.com", "admin.access")
         self._seed_permission("admin@example.com", "models.manage")

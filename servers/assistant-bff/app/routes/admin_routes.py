@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from app.admin.access_control import resolve_user_permissions
 from app.auth.auth_routes import get_current_user
+from app.base_config import model_config
 from app.storage.business_store import (
     delete_admin_feature_flag,
     delete_admin_model_config,
@@ -195,6 +196,20 @@ def _normalize_feature_flag_payload(payload: AdminFeatureFlagPayload) -> dict[st
     }
 
 
+def _gpts_feature_enabled() -> bool:
+    item = get_admin_feature_flag("gpts_feature_enabled")
+    if item is None:
+        return bool(model_config.GPTS_FEATURE_ENABLED)
+    value = item.get("config_value")
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(model_config.GPTS_FEATURE_ENABLED)
+
+
 @router.get("/permission")
 async def admin_permission(user: dict = Depends(get_current_user)) -> dict[str, object]:
     permissions = resolve_user_permissions(user)
@@ -239,6 +254,43 @@ async def admin_audit_logs(
     permissions = ensure_admin_access(user)
     return {
         "items": list_admin_audit_logs(limit),
+        "permissions": sorted(permissions),
+    }
+
+
+@router.get("/gpts-overview")
+async def admin_gpts_overview(user: dict = Depends(get_current_user)) -> dict[str, object]:
+    permissions = ensure_admin_access(user)
+    feature_enabled = _gpts_feature_enabled()
+    whitelist_users = sorted(
+        str(item).strip() for item in model_config.GPTS_WHITE_LIST if str(item).strip()
+    )
+    permission_items = list_admin_user_permissions()
+    explicit_manage_users = sorted(
+        {
+            str(item.get("user_key") or "").strip()
+            for item in permission_items
+            if item.get("enabled")
+            and item.get("permission_code") == "gpts.manage"
+            and str(item.get("user_key") or "").strip()
+        }
+    )
+    fallback_manage_users = [item for item in whitelist_users if item not in explicit_manage_users]
+    visible_scope = "all" if not whitelist_users else "whitelist"
+    current_permissions = resolve_user_permissions(user)
+    current_user_allowed = feature_enabled and (
+        not whitelist_users or user.get("email") in whitelist_users or user.get("sub") in whitelist_users
+    )
+    return {
+        "feature_enabled": feature_enabled,
+        "visible_scope": visible_scope,
+        "whitelist_users": whitelist_users,
+        "explicit_manage_users": explicit_manage_users,
+        "fallback_manage_users": fallback_manage_users,
+        "effective_manage_users": sorted(set(explicit_manage_users) | set(fallback_manage_users)),
+        "current_user_allowed": current_user_allowed,
+        "current_user_manage_allowed": "gpts.manage" in current_permissions,
+        "compat_note": "GPTS_WHITE_LIST users receive fallback admin.access and gpts.manage permissions.",
         "permissions": sorted(permissions),
     }
 

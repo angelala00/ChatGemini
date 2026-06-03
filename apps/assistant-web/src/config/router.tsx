@@ -53,6 +53,7 @@ export const routerConfig: RouterConfig = {
         voice_lab: { prefix: "/voice-lab", uri: "", suffix: "", element: VoiceLab },
         admin_index: { prefix: "/admin", uri: "", suffix: "", element: AdminIndex },
         admin: { prefix: "/admin/models", uri: "", suffix: "", element: AdminConfig },
+        admin_gpts: { prefix: "/admin/gpts", uri: "", suffix: "", element: AdminConfig },
         admin_permissions: {
             prefix: "/admin/permissions",
             uri: "",

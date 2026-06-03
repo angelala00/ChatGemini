@@ -70,6 +70,18 @@ interface AdminAuditLog {
     readonly created_at: string;
 }
 
+interface AdminGptsOverview {
+    readonly feature_enabled: boolean;
+    readonly visible_scope: string;
+    readonly whitelist_users: string[];
+    readonly explicit_manage_users: string[];
+    readonly fallback_manage_users: string[];
+    readonly effective_manage_users: string[];
+    readonly current_user_allowed: boolean;
+    readonly current_user_manage_allowed: boolean;
+    readonly compat_note: string;
+}
+
 interface AdminModelDraft {
     readonly model_id: string;
     readonly display_name: string;
@@ -113,7 +125,7 @@ interface ProductFlagsDraft {
 }
 
 type LoadState = "loading" | "ready" | "error";
-type AdminSectionId = "models" | "permissions" | "flags" | "audit";
+type AdminSectionId = "models" | "gpts" | "permissions" | "flags" | "audit";
 
 const NEW_MODEL_KEY = "__new_model__";
 const NEW_PERMISSION_KEY = "__new_permission__";
@@ -126,6 +138,7 @@ const STRUCTURED_FLAG_KEYS = new Set([
 ]);
 const ADMIN_SECTION_ROUTES: Record<AdminSectionId, string> = {
     models: "/admin/models",
+    gpts: "/admin/gpts",
     permissions: "/admin/permissions",
     flags: "/admin/flags",
     audit: "/admin/audit",
@@ -288,6 +301,7 @@ const AdminConfig = () => {
     const [userPermissions, setUserPermissions] = useState<AdminPermission[]>([]);
     const [featureFlags, setFeatureFlags] = useState<AdminFeatureFlag[]>([]);
     const [auditLogs, setAuditLogs] = useState<AdminAuditLog[]>([]);
+    const [gptsOverview, setGptsOverview] = useState<AdminGptsOverview | null>(null);
     const [busyKey, setBusyKey] = useState("");
     const [editingModelKey, setEditingModelKey] = useState<string | null>(null);
     const [modelDraft, setModelDraft] = useState<AdminModelDraft>(createEmptyModelDraft());
@@ -357,12 +371,18 @@ const AdminConfig = () => {
         setErrorMessage("");
         return Promise.all([
             handleRequest("GET", getFullPath("/api/admin/models")),
+            handleRequest("GET", getFullPath("/api/admin/gpts-overview")),
             handleRequest("GET", getFullPath("/api/admin/permissions")),
             handleRequest("GET", getFullPath("/api/admin/feature-flags")),
             handleRequest("GET", getFullPath("/api/admin/audit-logs?limit=20")),
         ])
-            .then(([modelsResponse, permissionsResponse, flagsResponse, auditResponse]) => {
+            .then(([modelsResponse, gptsResponse, permissionsResponse, flagsResponse, auditResponse]) => {
                 setModels(Array.isArray(modelsResponse.items) ? modelsResponse.items : []);
+                setGptsOverview(
+                    typeof gptsResponse === "object" && gptsResponse !== null
+                        ? (gptsResponse as AdminGptsOverview)
+                        : null,
+                );
                 setUserPermissions(
                     Array.isArray(permissionsResponse.items) ? permissionsResponse.items : [],
                 );
@@ -428,6 +448,12 @@ const AdminConfig = () => {
                 icon: SparklesIcon,
             },
             {
+                id: "gpts" as const,
+                label: t("views.Admin.gpts_title"),
+                count: gptsOverview?.effective_manage_users.length ?? 0,
+                icon: SparklesIcon,
+            },
+            {
                 id: "permissions" as const,
                 label: t("views.Admin.permissions_title"),
                 count: userPermissions.length,
@@ -446,9 +472,19 @@ const AdminConfig = () => {
                 icon: EyeIcon,
             },
         ],
-        [auditLogs.length, featureFlags.length, models.length, t, userPermissions.length],
+        [
+            auditLogs.length,
+            featureFlags.length,
+            gptsOverview?.effective_manage_users.length,
+            models.length,
+            t,
+            userPermissions.length,
+        ],
     );
     const activeSection = useMemo<AdminSectionId>(() => {
+        if (location.pathname.startsWith(ADMIN_SECTION_ROUTES.gpts)) {
+            return "gpts";
+        }
         if (location.pathname.startsWith(ADMIN_SECTION_ROUTES.permissions)) {
             return "permissions";
         }
@@ -531,6 +567,13 @@ const AdminConfig = () => {
         {
             label: t("views.Admin.summary.models"),
             value: `${enabledModelCount}/${models.length}`,
+            icon: SparklesIcon,
+        },
+        {
+            label: t("views.Admin.summary.gpts"),
+            value: gptsOverview?.feature_enabled
+                ? t("views.Admin.gpts_status_enabled")
+                : t("views.Admin.gpts_status_disabled"),
             icon: SparklesIcon,
         },
         {
@@ -1624,6 +1667,136 @@ const AdminConfig = () => {
                                 ))}
                             </div>
                         </section>
+                        )}
+
+                        {activeSection === "gpts" && (
+                            <section
+                                id="admin-section-gpts"
+                                className="scroll-mt-28 rounded-[22px] border border-[rgba(223,231,236,0.96)] bg-white/95 px-5 py-5 shadow-[0_14px_30px_rgba(23,28,38,0.045)]"
+                            >
+                                <div className="border-b border-[rgba(231,237,242,0.95)] pb-4">
+                                    <h2 className="text-lg font-semibold text-[#25313c]">
+                                        {t("views.Admin.gpts_title")}
+                                    </h2>
+                                    <p className="mt-1 text-sm leading-6 text-[#66717d]">
+                                        {t("views.Admin.gpts_subtitle")}
+                                    </p>
+                                </div>
+
+                                {gptsOverview ? (
+                                    <>
+                                        <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                                            <article className="rounded-[20px] border border-[rgba(213,223,229,0.98)] bg-[rgba(248,251,252,0.98)] px-4 py-4">
+                                                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8a95]">
+                                                    {t("views.Admin.gpts_feature_status")}
+                                                </p>
+                                                <div className="mt-3 flex items-center gap-2">
+                                                    {gptsOverview.feature_enabled ? (
+                                                        <CheckCircleIcon className="size-5 text-[#2f8f6a]" />
+                                                    ) : (
+                                                        <XCircleIcon className="size-5 text-[#a34f4f]" />
+                                                    )}
+                                                    <span className="text-lg font-semibold text-[#25313c]">
+                                                        {gptsOverview.feature_enabled
+                                                            ? t("views.Admin.gpts_status_enabled")
+                                                            : t("views.Admin.gpts_status_disabled")}
+                                                    </span>
+                                                </div>
+                                                <p className="mt-2 text-sm leading-6 text-[#66717d]">
+                                                    {t("views.Admin.gpts_feature_status_hint")}
+                                                </p>
+                                            </article>
+                                            <article className="rounded-[20px] border border-[rgba(213,223,229,0.98)] bg-[rgba(248,251,252,0.98)] px-4 py-4">
+                                                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8a95]">
+                                                    {t("views.Admin.gpts_visible_scope")}
+                                                </p>
+                                                <div className="mt-3 text-lg font-semibold text-[#25313c]">
+                                                    {gptsOverview.visible_scope === "all"
+                                                        ? t("views.Admin.gpts_scope_all")
+                                                        : t("views.Admin.gpts_scope_whitelist", {
+                                                              count: gptsOverview.whitelist_users.length,
+                                                          })}
+                                                </div>
+                                                <p className="mt-2 text-sm leading-6 text-[#66717d]">
+                                                    {t("views.Admin.gpts_visible_scope_hint")}
+                                                </p>
+                                            </article>
+                                            <article className="rounded-[20px] border border-[rgba(213,223,229,0.98)] bg-[rgba(248,251,252,0.98)] px-4 py-4">
+                                                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8a95]">
+                                                    {t("views.Admin.gpts_current_user")}
+                                                </p>
+                                                <div className="mt-3 flex flex-wrap gap-2">
+                                                    <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${supportToneClass(gptsOverview.current_user_allowed)}`}>
+                                                        {t("views.Admin.gpts_current_visible")}:{" "}
+                                                        {gptsOverview.current_user_allowed
+                                                            ? t("views.Admin.enabled")
+                                                            : t("views.Admin.disabled")}
+                                                    </span>
+                                                    <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${supportToneClass(gptsOverview.current_user_manage_allowed)}`}>
+                                                        {t("views.Admin.gpts_current_manage")}:{" "}
+                                                        {gptsOverview.current_user_manage_allowed
+                                                            ? t("views.Admin.enabled")
+                                                            : t("views.Admin.disabled")}
+                                                    </span>
+                                                </div>
+                                            </article>
+                                        </div>
+
+                                        <div className="mt-4 grid gap-4 xl:grid-cols-3">
+                                            {[
+                                                {
+                                                    title: t("views.Admin.gpts_whitelist_users"),
+                                                    items: gptsOverview.whitelist_users,
+                                                    empty: t("views.Admin.gpts_empty_all_users"),
+                                                },
+                                                {
+                                                    title: t("views.Admin.gpts_manage_users"),
+                                                    items: gptsOverview.explicit_manage_users,
+                                                    empty: t("views.Admin.gpts_empty_no_users"),
+                                                },
+                                                {
+                                                    title: t("views.Admin.gpts_fallback_manage_users"),
+                                                    items: gptsOverview.fallback_manage_users,
+                                                    empty: t("views.Admin.gpts_empty_no_users"),
+                                                },
+                                            ].map((group) => (
+                                                <article
+                                                    key={group.title}
+                                                    className="rounded-[20px] border border-[rgba(223,231,236,0.96)] bg-white px-4 py-4"
+                                                >
+                                                    <h3 className="text-sm font-semibold text-[#25313c]">
+                                                        {group.title}
+                                                    </h3>
+                                                    <div className="mt-3 flex flex-wrap gap-2">
+                                                        {group.items.length ? (
+                                                            group.items.map((item) => (
+                                                                <span
+                                                                    key={item}
+                                                                    className="rounded-full border border-[rgba(203,221,229,0.98)] bg-[rgba(241,247,249,0.96)] px-3 py-1 text-xs font-medium text-[#3b4b59]"
+                                                                >
+                                                                    {item}
+                                                                </span>
+                                                            ))
+                                                        ) : (
+                                                            <span className="text-sm text-[#8a95a0]">
+                                                                {group.empty}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </article>
+                                            ))}
+                                        </div>
+
+                                        <div className="mt-4 rounded-[18px] border border-[rgba(251,214,163,0.98)] bg-[rgba(255,248,236,0.98)] px-4 py-3 text-sm leading-6 text-[#8a5a17]">
+                                            {t("views.Admin.gpts_compat_note")}
+                                        </div>
+                                    </>
+                                ) : (
+                                    <p className="mt-4 text-sm text-[#8a95a0]">
+                                        {t("views.Admin.gpts_overview_empty")}
+                                    </p>
+                                )}
+                            </section>
                         )}
 
                         {activeSection === "permissions" && (
