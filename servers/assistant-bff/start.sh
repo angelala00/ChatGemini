@@ -50,6 +50,8 @@ fi
 if [[ "${BUSINESS_STORAGE_BACKEND:-}" == "postgres" || -n "${POSTGRES_DSN:-}" ]]; then
   echo "assistant-bff: migrating local sqlite business data to Postgres"
   python "${SCRIPT_DIR}/migrate_local_sqlite_to_postgres.py"
+  echo "assistant-bff: local sqlite business data migration finished"
+  export ASSISTANT_BFF_SKIP_STARTUP_SQLITE_MIGRATION=1
 fi
 
 mkdir -p "${LOG_DIR}"

@@ -12,7 +12,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from app.base_config import model_config
-from app.auth.provider import resolve_auth_provider
+from app.auth.auth_routes import resolve_auth_provider
 from app.metrics import events as metrics_events
 from app.storage import business_store, object_store
 from app.storage.config_validation import validate_storage_configuration

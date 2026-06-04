@@ -10,7 +10,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, Iterator
 
-from app.auth.provider import DEFAULT_AUTH_PROVIDER
+from app.auth.auth_routes import DEFAULT_AUTH_PROVIDER
 from app.base_config import model_config
 
 try:
@@ -599,6 +599,8 @@ def _migrate_sqlite_file_mapping_source_to_postgres(source_path: Path) -> dict[s
 def _migrate_sqlite_file_mapping_to_postgres_if_needed() -> None:
     if not _use_postgres():
         return
+    if _skip_startup_sqlite_migration():
+        return
     totals = {"total": 0, "inserted": 0, "skipped": 0}
     migrated_sources: list[str] = []
     for source_path in sqlite_business_source_paths():
@@ -616,7 +618,8 @@ def _migrate_sqlite_file_mapping_to_postgres_if_needed() -> None:
     print(
         "sqlite_file_mapping_migration_done "
         f"sources={migrated_sources} total={totals['total']} "
-        f"inserted={totals['inserted']} skipped={totals['skipped']}"
+        f"inserted={totals['inserted']} skipped={totals['skipped']}",
+        flush=True,
     )
 
 
@@ -698,6 +701,8 @@ def _migrate_sqlite_light_business_tables_source_to_postgres(source_path: Path) 
 def _migrate_sqlite_light_business_tables_to_postgres_if_needed() -> None:
     if not _use_postgres():
         return
+    if _skip_startup_sqlite_migration():
+        return
     totals = {
         "custom_gpts": 0,
         "user_gpts_state": 0,
@@ -719,8 +724,18 @@ def _migrate_sqlite_light_business_tables_to_postgres_if_needed() -> None:
         "sqlite_light_business_migration_done "
         f"sources={migrated_sources} custom_gpts={totals['custom_gpts']} "
         f"user_gpts_state={totals['user_gpts_state']} "
-        f"user_config_version={totals['user_config_version']}"
+        f"user_config_version={totals['user_config_version']}",
+        flush=True,
     )
+
+
+def _skip_startup_sqlite_migration() -> bool:
+    return os.getenv("ASSISTANT_BFF_SKIP_STARTUP_SQLITE_MIGRATION", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 def ensure_initialized() -> None:
@@ -1417,7 +1432,8 @@ def init_business_storage() -> None:
     _ensure_session_history_meta_auth_provider_column()
     _migrate_sqlite_file_mapping_to_postgres_if_needed()
     _migrate_sqlite_light_business_tables_to_postgres_if_needed()
-    _backfill_session_history_meta_from_existing_history()
+    if not _skip_startup_sqlite_migration():
+        _backfill_session_history_meta_from_existing_history()
     _INITIALIZED = True
 
 

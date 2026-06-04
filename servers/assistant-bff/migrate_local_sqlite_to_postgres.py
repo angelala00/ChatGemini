@@ -3,12 +3,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from app.auth.provider import DEFAULT_AUTH_PROVIDER
+from app.auth.auth_routes import DEFAULT_AUTH_PROVIDER
 from app.base_config import model_config
 from app.storage import business_store
 
@@ -457,7 +458,9 @@ def main() -> int:
         raise RuntimeError("psycopg is required to run this migration script") from exc
 
     original_backend = model_config.BUSINESS_STORAGE_BACKEND
+    original_skip_startup_migration = os.environ.get("ASSISTANT_BFF_SKIP_STARTUP_SQLITE_MIGRATION")
     model_config.BUSINESS_STORAGE_BACKEND = "postgres"
+    os.environ["ASSISTANT_BFF_SKIP_STARTUP_SQLITE_MIGRATION"] = "1"
     business_store._INITIALIZED = False
     business_store.init_business_storage()
 
@@ -515,6 +518,10 @@ def main() -> int:
                     totals[key] += value
     finally:
         model_config.BUSINESS_STORAGE_BACKEND = original_backend
+        if original_skip_startup_migration is None:
+            os.environ.pop("ASSISTANT_BFF_SKIP_STARTUP_SQLITE_MIGRATION", None)
+        else:
+            os.environ["ASSISTANT_BFF_SKIP_STARTUP_SQLITE_MIGRATION"] = original_skip_startup_migration
         business_store._INITIALIZED = False
 
     print(
