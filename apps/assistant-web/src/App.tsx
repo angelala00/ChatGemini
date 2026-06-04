@@ -230,6 +230,7 @@ const App = () => {
     >({});
     const legacySessionRecordsRef = useRef<Record<string, LegacySessionRecord>>({});
     const legacySessionGraceExpiresAtRef = useRef<number | null>(null);
+    const legacySessionImportPendingRef = useRef(false);
     const legacySessionImportStartedRef = useRef(false);
     const coverageReportedRef = useRef(false);
     const loadingSessionDetailsRef = useRef<Set<string>>(new Set());
@@ -606,6 +607,7 @@ const App = () => {
                 );
 
             void (async () => {
+                legacySessionImportPendingRef.current = true;
                 await localForage.setItem(LEGACY_SESSION_MIGRATION_STATE_KEY, {
                     importedAt,
                     expiresAt,
@@ -629,7 +631,9 @@ const App = () => {
                     completedAt: Date.now(),
                     status: "completed",
                 } satisfies LegacySessionMigrationState);
+                legacySessionImportPendingRef.current = false;
             })().catch((error) => {
+                legacySessionImportPendingRef.current = false;
                 legacySessionImportStartedRef.current = false;
                 console.warn("Legacy session import failed; will retry on next login.", error);
             });
@@ -651,6 +655,7 @@ const App = () => {
             setLegacySessionRecords({});
             legacySessionRecordsRef.current = {};
             legacySessionGraceExpiresAtRef.current = null;
+            legacySessionImportPendingRef.current = false;
             legacySessionImportStartedRef.current = false;
             return false;
         }
@@ -727,6 +732,7 @@ const App = () => {
             setLegacySessionRecords({});
             legacySessionRecordsRef.current = {};
             legacySessionGraceExpiresAtRef.current = null;
+            legacySessionImportPendingRef.current = false;
             legacySessionImportStartedRef.current = false;
             return false;
         }
@@ -745,6 +751,7 @@ const App = () => {
             setLegacySessionRecords({});
             legacySessionRecordsRef.current = {};
             legacySessionGraceExpiresAtRef.current = null;
+            legacySessionImportPendingRef.current = false;
             legacySessionImportStartedRef.current = false;
             return false;
         }
@@ -780,6 +787,7 @@ const App = () => {
             (Boolean(migrationState?.expiresAt) && !migrationState?.status);
         if (migrationState?.expiresAt && migrationState.expiresAt > now && migrationCompleted) {
             legacySessionGraceExpiresAtRef.current = migrationState.expiresAt;
+            legacySessionImportPendingRef.current = false;
             return true;
         }
 
@@ -827,11 +835,43 @@ const App = () => {
 
     const loadSessionDetail = useCallback(
         async (sessionId: string, conversationId: string) => {
+            const applyLegacySessionDetail = (fallbackRecord: LegacySessionRecord) => {
+                dispatch(
+                    updateSessions({
+                        ...sessions,
+                        [sessionId]: fallbackRecord.history,
+                    }),
+                );
+                dispatch(
+                    updateMappings({
+                        ...mappings,
+                        [sessionId]: conversationId,
+                    }),
+                );
+                dispatch(
+                    updateSessionExtensions({
+                        ...sessionExtensions,
+                        [sessionId]: {
+                            ...(sessionExtensions[sessionId] || {}),
+                            conversationId,
+                            gid: fallbackRecord.gid || "",
+                            selectedModel: sessionExtensions[sessionId]?.selectedModel || "",
+                            reasoningEnabled: sessionExtensions[sessionId]?.reasoningEnabled,
+                        },
+                    }),
+                );
+                loadedSessionDetailsRef.current[sessionId] = conversationId;
+            };
             const loadedConversationId = loadedSessionDetailsRef.current[sessionId];
             if (loadedConversationId === conversationId) {
                 return;
             }
             if (loadingSessionDetailsRef.current.has(sessionId)) {
+                return;
+            }
+            const localFallbackRecord = legacySessionRecordsRef.current[conversationId];
+            if (legacySessionImportPendingRef.current && localFallbackRecord) {
+                applyLegacySessionDetail(localFallbackRecord);
                 return;
             }
             loadingSessionDetailsRef.current.add(sessionId);
@@ -878,30 +918,7 @@ const App = () => {
                     loadedSessionDetailsRef.current[sessionId] = conversationId;
                     return;
                 }
-                dispatch(
-                    updateSessions({
-                        ...sessions,
-                        [sessionId]: fallbackRecord.history,
-                    }),
-                );
-                dispatch(
-                    updateMappings({
-                        ...mappings,
-                        [sessionId]: conversationId,
-                    }),
-                );
-                dispatch(
-                    updateSessionExtensions({
-                        ...sessionExtensions,
-                        [sessionId]: {
-                            ...(sessionExtensions[sessionId] || {}),
-                            conversationId,
-                            gid: fallbackRecord.gid || "",
-                            selectedModel: sessionExtensions[sessionId]?.selectedModel || "",
-                            reasoningEnabled: sessionExtensions[sessionId]?.reasoningEnabled,
-                        },
-                    }),
-                );
+                applyLegacySessionDetail(fallbackRecord);
                 handleRequest(
                     "POST",
                     getFullPath("/api/sessions/coverage-report"),
@@ -924,7 +941,6 @@ const App = () => {
                     }),
                     { "Content-Type": "application/json" },
                 ).catch(() => {});
-                loadedSessionDetailsRef.current[sessionId] = conversationId;
             } finally {
                 loadingSessionDetailsRef.current.delete(sessionId);
             }
