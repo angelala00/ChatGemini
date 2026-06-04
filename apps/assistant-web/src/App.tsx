@@ -46,6 +46,8 @@ const LEGACY_PERSISTED_MAPPINGS_KEY = "persist:mappings";
 const LEGACY_PERSISTED_SESSION_EXTENSIONS_KEY = "persist:sessionExtensions";
 const LEGACY_SESSION_MIGRATION_STATE_KEY = "chatgemini:legacy-session-migration-state";
 const LEGACY_SESSION_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
+const LEGACY_SESSION_IMPORT_BATCH_SIZE = 10;
+const LEGACY_SESSION_IMPORT_BATCH_DELAY_MS = 80;
 
 interface LegacySessionMessage {
     readonly role: string;
@@ -65,6 +67,8 @@ interface LegacySessionRecord {
 interface LegacySessionMigrationState {
     readonly importedAt: number;
     readonly expiresAt: number;
+    readonly completedAt?: number;
+    readonly status?: "pending" | "completed";
 }
 
 const readPreferredModel = () => {
@@ -226,6 +230,7 @@ const App = () => {
     >({});
     const legacySessionRecordsRef = useRef<Record<string, LegacySessionRecord>>({});
     const legacySessionGraceExpiresAtRef = useRef<number | null>(null);
+    const legacySessionImportStartedRef = useRef(false);
     const coverageReportedRef = useRef(false);
     const loadingSessionDetailsRef = useRef<Set<string>>(new Set());
     const loadedSessionDetailsRef = useRef<Record<string, string>>({});
@@ -328,7 +333,7 @@ const App = () => {
                 let renderedParts = parts;
                 if (!!attachment?.data.length) {
                     const { data, mimeType } = attachment;
-                    const attachmentItems = await resolveAttachmentViewItems(data);
+                    const attachmentItems = await resolveAttachmentViewItems(data, mimeType);
                     renderedParts += buildAttachmentPostscriptHtml(attachmentItems, mimeType);
                 }
                 const timeString = new Date(timestamp).toLocaleString();
@@ -580,6 +585,58 @@ const App = () => {
         return items;
     }, []);
 
+    const importLegacySessionsInBackground = useCallback(
+        (
+            items: Array<{
+                readonly session_id: string;
+                readonly conversation_id: string;
+                readonly gid: string;
+                readonly history: LegacySessionMessage[];
+            }>,
+            importedAt: number,
+            expiresAt: number,
+        ) => {
+            if (legacySessionImportStartedRef.current) {
+                return;
+            }
+            legacySessionImportStartedRef.current = true;
+            const waitForNextBatch = () =>
+                new Promise((resolve) =>
+                    window.setTimeout(resolve, LEGACY_SESSION_IMPORT_BATCH_DELAY_MS),
+                );
+
+            void (async () => {
+                await localForage.setItem(LEGACY_SESSION_MIGRATION_STATE_KEY, {
+                    importedAt,
+                    expiresAt,
+                    status: "pending",
+                } satisfies LegacySessionMigrationState);
+
+                for (let index = 0; index < items.length; index += LEGACY_SESSION_IMPORT_BATCH_SIZE) {
+                    const batch = items.slice(index, index + LEGACY_SESSION_IMPORT_BATCH_SIZE);
+                    await handleRequest(
+                        "POST",
+                        getFullPath("/api/sessions/import-local"),
+                        JSON.stringify({ items: batch }),
+                        { "Content-Type": "application/json" },
+                    );
+                    await waitForNextBatch();
+                }
+
+                await localForage.setItem(LEGACY_SESSION_MIGRATION_STATE_KEY, {
+                    importedAt,
+                    expiresAt,
+                    completedAt: Date.now(),
+                    status: "completed",
+                } satisfies LegacySessionMigrationState);
+            })().catch((error) => {
+                legacySessionImportStartedRef.current = false;
+                console.warn("Legacy session import failed; will retry on next login.", error);
+            });
+        },
+        [],
+    );
+
     const migrateLegacyPersistedSessions = useCallback(async () => {
         const [rawSessions, rawMappings, rawSessionExtensions] = await Promise.all([
             localForage.getItem(LEGACY_PERSISTED_SESSIONS_KEY),
@@ -594,6 +651,7 @@ const App = () => {
             setLegacySessionRecords({});
             legacySessionRecordsRef.current = {};
             legacySessionGraceExpiresAtRef.current = null;
+            legacySessionImportStartedRef.current = false;
             return false;
         }
         const persistedMappings =
@@ -669,6 +727,7 @@ const App = () => {
             setLegacySessionRecords({});
             legacySessionRecordsRef.current = {};
             legacySessionGraceExpiresAtRef.current = null;
+            legacySessionImportStartedRef.current = false;
             return false;
         }
 
@@ -686,6 +745,7 @@ const App = () => {
             setLegacySessionRecords({});
             legacySessionRecordsRef.current = {};
             legacySessionGraceExpiresAtRef.current = null;
+            legacySessionImportStartedRef.current = false;
             return false;
         }
 
@@ -714,26 +774,21 @@ const App = () => {
         setLegacySessionRecords(nextLegacyRecords);
         legacySessionRecordsRef.current = nextLegacyRecords;
 
-        if (migrationState?.expiresAt && migrationState.expiresAt > now) {
+        const migrationCompleted =
+            migrationState?.status === "completed" ||
+            Boolean(migrationState?.completedAt) ||
+            (Boolean(migrationState?.expiresAt) && !migrationState?.status);
+        if (migrationState?.expiresAt && migrationState.expiresAt > now && migrationCompleted) {
             legacySessionGraceExpiresAtRef.current = migrationState.expiresAt;
             return true;
         }
 
-        await handleRequest(
-            "POST",
-            getFullPath("/api/sessions/import-local"),
-            JSON.stringify({ items }),
-            { "Content-Type": "application/json" },
-        );
         const importedAt = migrationState?.importedAt || now;
         const expiresAt = migrationState?.expiresAt || importedAt + LEGACY_SESSION_GRACE_MS;
-        await localForage.setItem(LEGACY_SESSION_MIGRATION_STATE_KEY, {
-            importedAt,
-            expiresAt,
-        } satisfies LegacySessionMigrationState);
         legacySessionGraceExpiresAtRef.current = expiresAt;
+        importLegacySessionsInBackground(items, importedAt, expiresAt);
         return true;
-    }, []);
+    }, [importLegacySessionsInBackground]);
 
     const reportSessionCoverage = useCallback(
         async (serverItems: SessionSummary[]) => {
@@ -1135,6 +1190,7 @@ const App = () => {
             setLegacySessionRecords({});
             legacySessionRecordsRef.current = {};
             legacySessionGraceExpiresAtRef.current = null;
+            legacySessionImportStartedRef.current = false;
             coverageReportedRef.current = false;
             loadingSessionDetailsRef.current.clear();
             loadedSessionDetailsRef.current = {};

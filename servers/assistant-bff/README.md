@@ -15,7 +15,7 @@
 - [`.env.example`](./.env.example): 环境变量模板
 - [`sql/business_schema.postgres.sql`](./sql/business_schema.postgres.sql): 业务轻量表的显式 Postgres 建表 SQL
 - [`verify_storage.sh`](./verify_storage.sh): 启动服务后检查 `/healthz`、`/healthz/dependencies`、`/readyz`
-- [`migrate_local_sqlite_to_postgres.py`](./migrate_local_sqlite_to_postgres.py): 将节点本地 sqlite 会话历史幂等迁移到 Postgres
+- [`migrate_local_sqlite_to_postgres.py`](./migrate_local_sqlite_to_postgres.py): 将节点本地 sqlite 会话历史、`file_mapping`、GPTs 配置与用户状态幂等迁移到 Postgres；`start.sh` 在 Postgres 模式启动前会自动执行一次
 
 ## 测试
 
@@ -66,6 +66,8 @@
     - 库内存储为密文，读取时由服务端自动解密
   - `session_history_client`
     - 库内存储为密文，读取时由服务端自动解密
+  - `session_history_meta`
+    - 会按登录用户和服务端解析出的登录端 Provider 隔离历史列表，适用于同一套后端服务多个登录端但历史互不串的场景
   - `custom_gpts`
   - `user_gpts_state`
   - `user_config_version`
@@ -87,10 +89,11 @@
    - `BUSINESS_STORAGE_BACKEND=postgres`
    - `POSTGRES_DSN=...`
    - `OBJECT_STORAGE_BACKEND=filesystem`
-3. 在目标节点执行本地 sqlite 会话迁移：
+3. 在目标节点检查本地 sqlite 表结构和待迁移数据；正式启动时 `start.sh` 会自动执行迁移，也可手动提前执行：
 
 ```bash
 cd servers/assistant-bff
+.venv/bin/python migrate_local_sqlite_to_postgres.py --inspect
 .venv/bin/python migrate_local_sqlite_to_postgres.py --dry-run
 .venv/bin/python migrate_local_sqlite_to_postgres.py
 ```
@@ -111,16 +114,22 @@ curl http://localhost:5008/readyz
 
 ### 迁移脚本当前范围
 
-当前迁移脚本默认只迁会话历史相关数据：
+当前迁移脚本默认迁移以下本地 sqlite 业务数据：
 
 - `session_history`
 - `session_history_client`
 - `session_history_meta`
+- `file_mapping`
+- `custom_gpts`
+- `user_gpts_state`
+- `user_config_version`
 
-脚本会按 `updated_at` 幂等合并，适合在多节点上重复执行。
+会话历史会按 `updated_at` 幂等合并，`file_mapping` 会按 `file_id` 幂等插入，适合在多节点上重复执行。
+`custom_gpts` 和 `user_config_version` 会按主键 upsert，`user_gpts_state` 会按 `(user_id, gpts_id)` 插入忽略。
+脚本会默认扫描 `FILE_BASE/gptassistant/business-dev.db`、`FILE_BASE/gptassistant/pins.db` 和 `servers/assistant-bff/app.db`；旧版 `pins.db` 中 `file_mapping(file_id, filename, fileExtension, path, uploadTime, gid)` 会映射到新版 `file_mapping` 表结构。
+老库中的会话元信息如果没有 `auth_provider` 字段，会统一按默认 Provider 写入；新请求会按当前请求上下文自动解析 Provider。
 
 ### 暂不处理的内容
 
 - 本地上传文件目录：当前接受两周过渡期风险，待 `MinIO` 就绪后再处理。
 - `usage_events` / `chat_traces` / `chat_trace_events`：不迁移。
-- `custom_gpts` / `user_gpts_state` / `user_config_version`：本次默认不做逐机历史迁移，避免旧节点陈旧状态反向覆盖 `Postgres`。

@@ -270,22 +270,28 @@ const Chat = (props: RouterComponentProps) => {
     useEffect(() => {
         let cancelled = false;
         const attachmentDataValues = Array.from(
-            new Set(
-                chat
-                    .map((item) => item.attachment?.data)
-                    .filter((value): value is string => typeof value === "string" && !!value.length),
-            ),
+            chat
+                .map((item) => item.attachment)
+                .filter(
+                    (value): value is { data: string; mimeType: string } =>
+                        typeof value?.data === "string" && !!value.data.length,
+                )
+                .reduce(
+                    (acc, item) => acc.set(item.data, item),
+                    new Map<string, { data: string; mimeType: string }>(),
+                )
+                .values(),
         );
 
-        const missingValues = attachmentDataValues.filter((value) => !(value in attachmentItemsByData));
+        const missingValues = attachmentDataValues.filter(({ data }) => !(data in attachmentItemsByData));
         if (!missingValues.length) {
             return;
         }
 
         Promise.all(
-            missingValues.map(async (value) => ({
-                key: value,
-                items: await resolveAttachmentViewItems(value),
+            missingValues.map(async ({ data, mimeType }) => ({
+                key: data,
+                items: await resolveAttachmentViewItems(data, mimeType),
             })),
         ).then((resolvedItems) => {
             if (cancelled) {
@@ -328,7 +334,7 @@ const Chat = (props: RouterComponentProps) => {
                         data: "",
                     };
                     const attachmentItems =
-                        attachmentItemsByData[data] ?? getAttachmentViewItems(data);
+                        attachmentItemsByData[data] ?? getAttachmentViewItems(data, mimeType);
                     const attachmentPostscriptHtml = buildAttachmentPostscriptHtml(
                         attachmentItems,
                         mimeType,

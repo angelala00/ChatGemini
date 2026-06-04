@@ -47,6 +47,11 @@ else
   fi
 fi
 
+if [[ "${BUSINESS_STORAGE_BACKEND:-}" == "postgres" || -n "${POSTGRES_DSN:-}" ]]; then
+  echo "assistant-bff: migrating local sqlite business data to Postgres"
+  python "${SCRIPT_DIR}/migrate_local_sqlite_to_postgres.py"
+fi
+
 mkdir -p "${LOG_DIR}"
 nohup uvicorn app.main:app --host 0.0.0.0 --port "${ASSISTANT_BFF_PORT:-5008}" \
   > "${LOG_FILE}" 2>&1 &

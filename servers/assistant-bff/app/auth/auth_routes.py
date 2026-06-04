@@ -8,7 +8,8 @@ a dependency that returns a dummy user.  This allows other routes to use
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
+from app.auth.provider import normalize_auth_provider, resolve_auth_provider
 
 
 # All authentication-related mock routes live under ``/api/auth`` so the
@@ -23,9 +24,9 @@ async def status() -> dict[str, str]:
 
 
 @router.get("/get-provider")
-async def get_provider() -> dict[str, dict[str, str]]:
+async def get_provider(request: Request) -> dict[str, dict[str, str]]:
     """Return a dummy OAuth provider description."""
-    return {"provider": {"name": "MockSSO", "param": "mock"}}
+    return {"provider": {"name": "MockSSO", "param": resolve_auth_provider(request)}}
 
 
 @router.get("/oauth-login/{provider}")
@@ -46,7 +47,7 @@ async def login() -> dict[str, str]:
     return {"access_token": "mock-token"}
 
 
-def get_current_user() -> dict[str, str]:
+def get_current_user(request: Request) -> dict[str, str]:
     """Return a dummy user for dependency injection.
 
     In production this function would verify a token or session and
@@ -55,7 +56,21 @@ def get_current_user() -> dict[str, str]:
     setup.
     """
 
-    return {"sub": "user2-claude@nu.com", "email": "user2-claude@nu.com", "group": "CN=jc,OU=平台组,OU=平台运维,OU=nuuser,DC=nu,DC=com"}
+    return {
+        "sub": "user2-claude@nu.com",
+        "email": "user2-claude@nu.com",
+        "group": "CN=jc,OU=平台组,OU=平台运维,OU=nuuser,DC=nu,DC=com",
+        "auth_provider": resolve_auth_provider(request),
+    }
 
 
-__all__ = ["router", "get_current_user"]
+def get_current_auth_provider(user: dict[str, str]) -> str:
+    provider = (
+        user.get("auth_provider")
+        or user.get("provider")
+        or user.get("provider_param")
+    )
+    return normalize_auth_provider(provider)
+
+
+__all__ = ["router", "get_current_user", "get_current_auth_provider"]

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import mimetypes
 import os
 import sqlite3
 from contextlib import contextmanager
@@ -9,6 +10,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, Iterator
 
+from app.auth.provider import DEFAULT_AUTH_PROVIDER
 from app.base_config import model_config
 
 try:
@@ -30,6 +32,34 @@ _INITIALIZE_LOCK = Lock()
 _FERNET: Any = None
 _POSTGRES_POOL: Any = None
 _POSTGRES_POOL_DSN = ""
+FILE_MAPPING_REQUIRED_COLUMNS = {
+    "file_id",
+    "filename",
+    "file_extension",
+    "content_type",
+    "bucket",
+    "object_key",
+    "storage_backend",
+    "size_bytes",
+    "upload_time",
+    "gid",
+}
+LEGACY_FILE_MAPPING_REQUIRED_COLUMNS = {
+    "file_id",
+    "filename",
+    "fileExtension",
+    "path",
+    "uploadTime",
+}
+
+
+def sqlite_business_source_paths() -> list[Path]:
+    data_dir = Path(model_config.FILE_BASE) / "gptassistant"
+    return [
+        data_dir / "business-dev.db",
+        data_dir / "pins.db",
+        Path(__file__).resolve().parents[2] / "app.db",
+    ]
 
 
 def business_storage_backend() -> str:
@@ -403,7 +433,294 @@ def _backfill_session_history_meta_from_existing_history() -> None:
             user_email=str(identity.get("user_email") or "").strip(),
             gid=str(identity.get("gid") or "gptassistant").strip() or "gptassistant",
             title=title,
+            auth_provider=DEFAULT_AUTH_PROVIDER,
         )
+
+
+def _ensure_session_history_meta_auth_provider_column() -> None:
+    provider = DEFAULT_AUTH_PROVIDER
+    with _connect() as conn:
+        if _use_postgres():
+            conn.execute("ALTER TABLE session_history_meta ADD COLUMN IF NOT EXISTS auth_provider TEXT")
+            conn.execute(
+                """
+                UPDATE session_history_meta
+                   SET auth_provider=%s
+                 WHERE auth_provider IS NULL OR auth_provider=''
+                """,
+                (provider,),
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_session_history_meta_user_provider_updated
+                  ON session_history_meta(user_id, auth_provider, updated_at DESC)
+                """
+            )
+        else:
+            columns = _sqlite_columns(conn, "session_history_meta")
+            if "auth_provider" not in columns:
+                conn.execute("ALTER TABLE session_history_meta ADD COLUMN auth_provider TEXT")
+            conn.execute(
+                """
+                UPDATE session_history_meta
+                   SET auth_provider=?
+                 WHERE auth_provider IS NULL OR auth_provider=''
+                """,
+                (provider,),
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_session_history_meta_user_provider_updated
+                  ON session_history_meta(user_id, auth_provider, updated_at DESC)
+                """
+            )
+        conn.commit()
+
+
+def _sqlite_table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+        (table_name,),
+    ).fetchone()
+    return row is not None
+
+
+def _sqlite_columns(conn: sqlite3.Connection, table_name: str) -> set[str]:
+    return {
+        str(row["name"])
+        for row in conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+    }
+
+
+def _normalize_sqlite_file_mapping_row(item: dict[str, Any], columns: set[str]) -> dict[str, Any] | None:
+    if FILE_MAPPING_REQUIRED_COLUMNS.issubset(columns):
+        return {
+            "file_id": item.get("file_id"),
+            "filename": item.get("filename"),
+            "file_extension": item.get("file_extension"),
+            "content_type": item.get("content_type"),
+            "bucket": item.get("bucket"),
+            "object_key": item.get("object_key"),
+            "storage_backend": item.get("storage_backend"),
+            "size_bytes": item.get("size_bytes"),
+            "upload_time": item.get("upload_time") or _now_iso(),
+            "gid": item.get("gid") or "gptassistant",
+        }
+    if LEGACY_FILE_MAPPING_REQUIRED_COLUMNS.issubset(columns):
+        object_key = str(item.get("path") or "").strip()
+        filename = str(item.get("filename") or "").strip()
+        content_type, _ = mimetypes.guess_type(filename or object_key)
+        size_bytes = None
+        if object_key:
+            try:
+                size_bytes = Path(object_key).stat().st_size
+            except OSError:
+                size_bytes = None
+        return {
+            "file_id": item.get("file_id"),
+            "filename": filename,
+            "file_extension": item.get("fileExtension"),
+            "content_type": content_type,
+            "bucket": "",
+            "object_key": object_key,
+            "storage_backend": "filesystem",
+            "size_bytes": size_bytes,
+            "upload_time": item.get("uploadTime") or _now_iso(),
+            "gid": item.get("gid") or "gptassistant",
+        }
+    return None
+
+
+def _migrate_sqlite_file_mapping_source_to_postgres(source_path: Path) -> dict[str, int]:
+    try:
+        sqlite_conn = sqlite3.connect(source_path)
+        sqlite_conn.row_factory = sqlite3.Row
+        try:
+            if not _sqlite_table_exists(sqlite_conn, "file_mapping"):
+                return {"total": 0, "inserted": 0, "skipped": 0}
+            columns = _sqlite_columns(sqlite_conn, "file_mapping")
+            if not (
+                FILE_MAPPING_REQUIRED_COLUMNS.issubset(columns)
+                or LEGACY_FILE_MAPPING_REQUIRED_COLUMNS.issubset(columns)
+            ):
+                print(
+                    f"sqlite_file_mapping_migration_skipped source={source_path} "
+                    f"reason=unsupported_columns columns={','.join(sorted(columns))}"
+                )
+                return {"total": 0, "inserted": 0, "skipped": 0}
+            rows = sqlite_conn.execute("SELECT * FROM file_mapping").fetchall()
+        finally:
+            sqlite_conn.close()
+    except sqlite3.Error as exc:
+        print(f"sqlite_file_mapping_migration_skipped source={source_path} error={exc}")
+        return {"total": 0, "inserted": 0, "skipped": 0}
+    if not rows:
+        return {"total": 0, "inserted": 0, "skipped": 0}
+
+    inserted = 0
+    skipped = 0
+    with _connect() as conn:
+        for row in rows:
+            item = _normalize_row(row)
+            normalized = _normalize_sqlite_file_mapping_row(item, columns)
+            if normalized is None:
+                skipped += 1
+                continue
+            result = conn.execute(
+                """
+                INSERT INTO file_mapping(
+                    file_id, filename, file_extension, content_type, bucket,
+                    object_key, storage_backend, size_bytes, upload_time, gid
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (file_id) DO NOTHING
+                RETURNING file_id
+                """,
+                (
+                    normalized.get("file_id"),
+                    normalized.get("filename"),
+                    normalized.get("file_extension"),
+                    normalized.get("content_type"),
+                    normalized.get("bucket"),
+                    normalized.get("object_key"),
+                    normalized.get("storage_backend"),
+                    normalized.get("size_bytes"),
+                    normalized.get("upload_time") or _now_iso(),
+                    normalized.get("gid") or "gptassistant",
+                ),
+            ).fetchone()
+            if result:
+                inserted += 1
+            else:
+                skipped += 1
+        conn.commit()
+    return {"total": len(rows), "inserted": inserted, "skipped": skipped}
+
+
+def _migrate_sqlite_file_mapping_to_postgres_if_needed() -> None:
+    if not _use_postgres():
+        return
+    totals = {"total": 0, "inserted": 0, "skipped": 0}
+    migrated_sources: list[str] = []
+    for source_path in sqlite_business_source_paths():
+        if not source_path.exists():
+            continue
+        summary = _migrate_sqlite_file_mapping_source_to_postgres(source_path)
+        if summary["total"] <= 0:
+            continue
+        migrated_sources.append(str(source_path))
+        totals["total"] += summary["total"]
+        totals["inserted"] += summary["inserted"]
+        totals["skipped"] += summary["skipped"]
+    if not migrated_sources:
+        return
+    print(
+        "sqlite_file_mapping_migration_done "
+        f"sources={migrated_sources} total={totals['total']} "
+        f"inserted={totals['inserted']} skipped={totals['skipped']}"
+    )
+
+
+def _migrate_sqlite_light_business_tables_source_to_postgres(source_path: Path) -> dict[str, int]:
+    summary = {
+        "custom_gpts": 0,
+        "user_gpts_state": 0,
+        "user_config_version": 0,
+    }
+    try:
+        sqlite_conn = sqlite3.connect(source_path)
+        sqlite_conn.row_factory = sqlite3.Row
+        try:
+            with _connect() as conn:
+                if _sqlite_table_exists(sqlite_conn, "custom_gpts"):
+                    for row in sqlite_conn.execute("SELECT gid, config FROM custom_gpts").fetchall():
+                        item = _normalize_row(row)
+                        gid = str(item.get("gid") or "").strip()
+                        config = item.get("config")
+                        if not gid or not isinstance(config, str) or not config.strip():
+                            continue
+                        conn.execute(
+                            """
+                            INSERT INTO custom_gpts(gid, config)
+                            VALUES (%s, %s::jsonb)
+                            ON CONFLICT (gid) DO UPDATE SET config=EXCLUDED.config
+                            """,
+                            (gid, config),
+                        )
+                        summary["custom_gpts"] += 1
+
+                if _sqlite_table_exists(sqlite_conn, "user_gpts_state"):
+                    for row in sqlite_conn.execute(
+                        "SELECT user_id, gpts_id, pinned_at FROM user_gpts_state"
+                    ).fetchall():
+                        item = _normalize_row(row)
+                        user_id = str(item.get("user_id") or "").strip()
+                        gpts_id = str(item.get("gpts_id") or "").strip()
+                        pinned_at = str(item.get("pinned_at") or "").strip() or _now_iso()
+                        if not user_id or not gpts_id:
+                            continue
+                        conn.execute(
+                            """
+                            INSERT INTO user_gpts_state(user_id, gpts_id, pinned_at)
+                            VALUES (%s, %s, %s)
+                            ON CONFLICT (user_id, gpts_id) DO NOTHING
+                            """,
+                            (user_id, gpts_id, pinned_at),
+                        )
+                        summary["user_gpts_state"] += 1
+
+                if _sqlite_table_exists(sqlite_conn, "user_config_version"):
+                    for row in sqlite_conn.execute(
+                        "SELECT user_id, version FROM user_config_version"
+                    ).fetchall():
+                        item = _normalize_row(row)
+                        user_id = str(item.get("user_id") or "").strip()
+                        version = str(item.get("version") or "").strip()
+                        if not user_id or not version:
+                            continue
+                        conn.execute(
+                            """
+                            INSERT INTO user_config_version(user_id, version)
+                            VALUES (%s, %s)
+                            ON CONFLICT (user_id) DO UPDATE SET version=EXCLUDED.version
+                            """,
+                            (user_id, version),
+                        )
+                        summary["user_config_version"] += 1
+                conn.commit()
+        finally:
+            sqlite_conn.close()
+    except sqlite3.Error as exc:
+        print(f"sqlite_light_business_migration_skipped source={source_path} error={exc}")
+        return summary
+    return summary
+
+
+def _migrate_sqlite_light_business_tables_to_postgres_if_needed() -> None:
+    if not _use_postgres():
+        return
+    totals = {
+        "custom_gpts": 0,
+        "user_gpts_state": 0,
+        "user_config_version": 0,
+    }
+    migrated_sources: list[str] = []
+    for source_path in sqlite_business_source_paths():
+        if not source_path.exists():
+            continue
+        summary = _migrate_sqlite_light_business_tables_source_to_postgres(source_path)
+        if not any(summary.values()):
+            continue
+        migrated_sources.append(str(source_path))
+        for key, value in summary.items():
+            totals[key] += value
+    if not migrated_sources:
+        return
+    print(
+        "sqlite_light_business_migration_done "
+        f"sources={migrated_sources} custom_gpts={totals['custom_gpts']} "
+        f"user_gpts_state={totals['user_gpts_state']} "
+        f"user_config_version={totals['user_config_version']}"
+    )
 
 
 def ensure_initialized() -> None:
@@ -816,6 +1133,7 @@ def init_business_storage() -> None:
                   conversation_id TEXT PRIMARY KEY,
                   user_id TEXT NOT NULL,
                   user_email TEXT,
+                  auth_provider TEXT NOT NULL DEFAULT 'c',
                   gid TEXT NOT NULL DEFAULT 'gptassistant',
                   title TEXT,
                   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -988,6 +1306,7 @@ def init_business_storage() -> None:
                   conversation_id TEXT PRIMARY KEY,
                   user_id TEXT NOT NULL,
                   user_email TEXT,
+                  auth_provider TEXT NOT NULL DEFAULT 'c',
                   gid TEXT NOT NULL DEFAULT 'gptassistant',
                   title TEXT,
                   created_at TEXT NOT NULL,
@@ -1095,6 +1414,9 @@ def init_business_storage() -> None:
     _seed_admin_model_configs_if_empty()
     _seed_admin_user_permissions_if_empty()
     _seed_admin_feature_flags_if_empty()
+    _ensure_session_history_meta_auth_provider_column()
+    _migrate_sqlite_file_mapping_to_postgres_if_needed()
+    _migrate_sqlite_light_business_tables_to_postgres_if_needed()
     _backfill_session_history_meta_from_existing_history()
     _INITIALIZED = True
 
@@ -1162,7 +1484,7 @@ def get_session_history_meta(conversation_id: str) -> dict[str, Any] | None:
         if _use_postgres():
             row = conn.execute(
                 """
-                SELECT conversation_id, user_id, user_email, gid, title, created_at, updated_at
+                SELECT conversation_id, user_id, user_email, auth_provider, gid, title, created_at, updated_at
                   FROM session_history_meta
                  WHERE conversation_id=%s
                 """,
@@ -1171,7 +1493,7 @@ def get_session_history_meta(conversation_id: str) -> dict[str, Any] | None:
         else:
             row = conn.execute(
                 """
-                SELECT conversation_id, user_id, user_email, gid, title, created_at, updated_at
+                SELECT conversation_id, user_id, user_email, auth_provider, gid, title, created_at, updated_at
                   FROM session_history_meta
                  WHERE conversation_id=?
                 """,
@@ -1184,6 +1506,7 @@ def get_session_history_meta(conversation_id: str) -> dict[str, Any] | None:
         "conversation_id": str(item.get("conversation_id") or ""),
         "user_id": str(item.get("user_id") or ""),
         "user_email": str(item.get("user_email") or ""),
+        "auth_provider": str(item.get("auth_provider") or DEFAULT_AUTH_PROVIDER),
         "gid": str(item.get("gid") or "gptassistant"),
         "title": str(item.get("title") or ""),
         "created_at": str(item.get("created_at") or ""),
@@ -1191,37 +1514,38 @@ def get_session_history_meta(conversation_id: str) -> dict[str, Any] | None:
     }
 
 
-def list_session_history_meta(*, user_id: str, limit: int = 100) -> list[dict[str, Any]]:
+def list_session_history_meta(*, user_id: str, auth_provider: str, limit: int = 100) -> list[dict[str, Any]]:
     ensure_initialized()
     normalized_limit = max(1, min(limit, 500))
     with _connect() as conn:
         if _use_postgres():
             rows = conn.execute(
                 """
-                SELECT conversation_id, user_id, user_email, gid, title, created_at, updated_at
+                SELECT conversation_id, user_id, user_email, auth_provider, gid, title, created_at, updated_at
                   FROM session_history_meta
-                 WHERE user_id=%s
+                 WHERE user_id=%s AND auth_provider=%s
                  ORDER BY updated_at DESC
                  LIMIT %s
                 """,
-                (user_id, normalized_limit),
+                (user_id, auth_provider, normalized_limit),
             ).fetchall()
         else:
             rows = conn.execute(
                 """
-                SELECT conversation_id, user_id, user_email, gid, title, created_at, updated_at
+                SELECT conversation_id, user_id, user_email, auth_provider, gid, title, created_at, updated_at
                   FROM session_history_meta
-                 WHERE user_id=?
+                 WHERE user_id=? AND auth_provider=?
                  ORDER BY updated_at DESC
                  LIMIT ?
                 """,
-                (user_id, normalized_limit),
+                (user_id, auth_provider, normalized_limit),
             ).fetchall()
     return [
         {
             "conversation_id": str(item.get("conversation_id") or ""),
             "user_id": str(item.get("user_id") or ""),
             "user_email": str(item.get("user_email") or ""),
+            "auth_provider": str(item.get("auth_provider") or DEFAULT_AUTH_PROVIDER),
             "gid": str(item.get("gid") or "gptassistant"),
             "title": str(item.get("title") or ""),
             "created_at": str(item.get("created_at") or ""),
@@ -1236,6 +1560,7 @@ def _upsert_session_history_meta_raw(
     conversation_id: str,
     user_id: str,
     user_email: str,
+    auth_provider: str,
     gid: str,
     title: str,
 ) -> None:
@@ -1245,11 +1570,12 @@ def _upsert_session_history_meta_raw(
             conn.execute(
                 """
                 INSERT INTO session_history_meta(
-                    conversation_id, user_id, user_email, gid, title, created_at, updated_at
-                ) VALUES (%s, %s, %s, %s, %s, NOW(), NOW())
+                    conversation_id, user_id, user_email, auth_provider, gid, title, created_at, updated_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, NOW(), NOW())
                 ON CONFLICT (conversation_id) DO UPDATE
                    SET user_id=EXCLUDED.user_id,
                        user_email=EXCLUDED.user_email,
+                       auth_provider=EXCLUDED.auth_provider,
                        gid=EXCLUDED.gid,
                        title=CASE
                            WHEN COALESCE(session_history_meta.title, '') = '' AND COALESCE(EXCLUDED.title, '') <> ''
@@ -1258,18 +1584,19 @@ def _upsert_session_history_meta_raw(
                        END,
                        updated_at=NOW()
                 """,
-                (conversation_id, user_id, user_email, gid, normalized_title),
+                (conversation_id, user_id, user_email, auth_provider, gid, normalized_title),
             )
         else:
             now_iso = _now_iso()
             conn.execute(
                 """
                 INSERT INTO session_history_meta(
-                    conversation_id, user_id, user_email, gid, title, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    conversation_id, user_id, user_email, auth_provider, gid, title, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(conversation_id) DO UPDATE
                    SET user_id=excluded.user_id,
                        user_email=excluded.user_email,
+                       auth_provider=excluded.auth_provider,
                        gid=excluded.gid,
                        title=CASE
                            WHEN IFNULL(session_history_meta.title, '') = '' AND IFNULL(excluded.title, '') <> ''
@@ -1282,6 +1609,7 @@ def _upsert_session_history_meta_raw(
                     conversation_id,
                     user_id,
                     user_email,
+                    auth_provider,
                     gid,
                     normalized_title,
                     now_iso,
@@ -1296,6 +1624,7 @@ def upsert_session_history_meta(
     conversation_id: str,
     user_id: str,
     user_email: str,
+    auth_provider: str,
     gid: str,
     title: str,
 ) -> None:
@@ -1304,6 +1633,7 @@ def upsert_session_history_meta(
         conversation_id=conversation_id,
         user_id=user_id,
         user_email=user_email,
+        auth_provider=auth_provider,
         gid=gid,
         title=title,
     )

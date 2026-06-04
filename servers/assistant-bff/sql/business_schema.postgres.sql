@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS session_history_meta (
   conversation_id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
   user_email TEXT,
+  auth_provider TEXT NOT NULL DEFAULT 'c',
   gid TEXT NOT NULL,
   title TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -22,6 +23,9 @@ CREATE TABLE IF NOT EXISTS session_history_meta (
 
 CREATE INDEX IF NOT EXISTS idx_session_history_meta_user_updated
   ON session_history_meta(user_id, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_session_history_meta_user_provider_updated
+  ON session_history_meta(user_id, auth_provider, updated_at DESC);
 
 CREATE TABLE IF NOT EXISTS custom_gpts (
   gid TEXT PRIMARY KEY,

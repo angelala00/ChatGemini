@@ -8,9 +8,11 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from app.base_config import model_config
+from app.auth.provider import resolve_auth_provider
 from app.metrics import events as metrics_events
 from app.storage import business_store, object_store
 from app.storage.config_validation import validate_storage_configuration
@@ -104,6 +106,31 @@ class StorageBackendFallbackTests(unittest.TestCase):
         business_store._INITIALIZED = False
         business_store.init_business_storage()
         self.assertTrue(business_store._INITIALIZED)
+
+    def test_legacy_file_mapping_row_normalizes_to_business_schema(self):
+        legacy_path = str(Path(self.file_base) / "gptassistant" / "uploads" / "file-1")
+        Path(legacy_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(legacy_path).write_bytes(b"demo")
+
+        normalized = business_store._normalize_sqlite_file_mapping_row(
+            {
+                "file_id": "file-1",
+                "filename": "demo.pdf",
+                "fileExtension": ".pdf",
+                "path": legacy_path,
+                "uploadTime": "2026-01-01T00:00:00",
+                "gid": "gptassistant",
+            },
+            {"file_id", "filename", "fileExtension", "path", "uploadTime", "gid"},
+        )
+
+        self.assertIsNotNone(normalized)
+        assert normalized is not None
+        self.assertEqual(normalized["file_extension"], ".pdf")
+        self.assertEqual(normalized["content_type"], "application/pdf")
+        self.assertEqual(normalized["object_key"], legacy_path)
+        self.assertEqual(normalized["storage_backend"], "filesystem")
+        self.assertEqual(normalized["size_bytes"], 4)
 
     def test_business_store_encrypts_session_history_when_key_configured(self):
         try:
@@ -201,6 +228,7 @@ class StorageBackendFallbackTests(unittest.TestCase):
             conversation_id=conversation_id,
             user_id="user-1",
             user_email="user@example.com",
+            auth_provider="c",
             gid="gptassistant",
             title="你好",
         )
@@ -218,6 +246,45 @@ class StorageBackendFallbackTests(unittest.TestCase):
         self.assertEqual(
             business_store.load_session_client_history(conversation_id)[1]["parts"],
             "你好，有什么可以帮你？",
+        )
+
+    def test_session_meta_list_is_scoped_by_auth_provider(self) -> None:
+        business_store.upsert_session_history_meta(
+            conversation_id="cid-provider-a",
+            user_id="user-1",
+            user_email="user@example.com",
+            auth_provider="portal-a",
+            gid="gptassistant",
+            title="A",
+        )
+        business_store.upsert_session_history_meta(
+            conversation_id="cid-provider-b",
+            user_id="user-1",
+            user_email="user@example.com",
+            auth_provider="portal-b",
+            gid="gptassistant",
+            title="B",
+        )
+
+        items = business_store.list_session_history_meta(
+            user_id="user-1",
+            auth_provider="portal-a",
+        )
+
+        self.assertEqual([item["conversation_id"] for item in items], ["cid-provider-a"])
+
+    def test_auth_provider_resolves_from_request_context(self) -> None:
+        self.assertEqual(
+            resolve_auth_provider(SimpleNamespace(headers={"user-agent": "client aaaa"})),
+            "a",
+        )
+        self.assertEqual(
+            resolve_auth_provider(SimpleNamespace(headers={"x-forwarded-for": "10.0.0.1, ip2"})),
+            "b",
+        )
+        self.assertEqual(
+            resolve_auth_provider(SimpleNamespace(headers={})),
+            "c",
         )
 
     def test_stream_completion_persists_client_history_from_runtime_history(self):

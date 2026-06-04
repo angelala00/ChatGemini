@@ -6,7 +6,8 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from app.auth.auth_routes import get_current_user
+from starlette.concurrency import run_in_threadpool
+from app.auth.auth_routes import get_current_auth_provider, get_current_user
 from app.storage.business_store import (
     delete_session_history,
     get_session_history_meta,
@@ -315,7 +316,11 @@ async def list_sessions(
     limit: int = Query(100, ge=1, le=500),
     user: dict = Depends(get_current_user),
 ):
-    items = list_session_history_meta(user_id=user.get("sub", "unknown"), limit=limit)
+    items = list_session_history_meta(
+        user_id=user.get("sub", "unknown"),
+        auth_provider=get_current_auth_provider(user),
+        limit=limit,
+    )
     return {"items": items}
 
 
@@ -324,8 +329,13 @@ async def get_session(
     conversation_id: str,
     user: dict = Depends(get_current_user),
 ):
+    auth_provider = get_current_auth_provider(user)
     meta = get_session_history_meta(conversation_id)
-    if not meta or meta.get("user_id") != user.get("sub", "unknown"):
+    if (
+        not meta
+        or meta.get("user_id") != user.get("sub", "unknown")
+        or meta.get("auth_provider") != auth_provider
+    ):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "session not found")
     client_history = load_session_client_history(conversation_id)
     if not client_history:
@@ -349,8 +359,13 @@ async def update_session_title(
     request: SessionTitleUpdateRequest,
     user: dict = Depends(get_current_user),
 ):
+    auth_provider = get_current_auth_provider(user)
     meta = get_session_history_meta(conversation_id)
-    if not meta or meta.get("user_id") != user.get("sub", "unknown"):
+    if (
+        not meta
+        or meta.get("user_id") != user.get("sub", "unknown")
+        or meta.get("auth_provider") != auth_provider
+    ):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "session not found")
     update_session_history_title(conversation_id, request.title)
     updated = get_session_history_meta(conversation_id)
@@ -362,14 +377,77 @@ async def delete_session(
     conversation_id: str,
     user: dict = Depends(get_current_user),
 ):
+    auth_provider = get_current_auth_provider(user)
     meta = get_session_history_meta(conversation_id)
-    if not meta or meta.get("user_id") != user.get("sub", "unknown"):
+    if (
+        not meta
+        or meta.get("user_id") != user.get("sub", "unknown")
+        or meta.get("auth_provider") != auth_provider
+    ):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "session not found")
     runtime_key = _runtime_history_key(conversation_id, meta.get("gid") or "gptassistant")
     if runtime_key != conversation_id:
         delete_session_history(runtime_key)
     delete_session_history(conversation_id)
     return {"ok": True}
+
+
+def _import_local_sessions_batch(
+    items: list[LocalSessionImportItem],
+    user_email: str,
+    user_id: str,
+    auth_provider: str,
+) -> dict[str, int]:
+    imported = 0
+    skipped = 0
+    try:
+        for item in items:
+            conversation_id = (item.conversation_id or item.session_id or "").strip()
+            if not conversation_id or not item.history:
+                skipped += 1
+                continue
+            gid = (item.gid or "gptassistant").strip() or "gptassistant"
+            client_history = [history_item.model_dump() for history_item in item.history]
+            runtime_history = _legacy_client_history_to_runtime_history(item.history, gid)
+            title = ""
+            for history_item in item.history:
+                if history_item.title and history_item.title.strip():
+                    title = history_item.title.strip()
+                    break
+            if not title:
+                title = _derive_session_title(item.history[0].parts or conversation_id)
+            save_session_client_history(conversation_id, client_history)
+            if runtime_history and not _load_runtime_history(conversation_id, gid):
+                save_session_history(_runtime_history_key(conversation_id, gid), runtime_history)
+            upsert_session_history_meta(
+                conversation_id=conversation_id,
+                user_id=user_id,
+                user_email=user_email,
+                auth_provider=auth_provider,
+                gid=gid,
+                title=title,
+            )
+            imported += 1
+    except Exception as exc:  # pragma: no cover - logged for production diagnosis
+        gpt_logger.exception(
+            "path=import_local_sessions_failed user=%s user_id=%s imported=%s skipped=%s error=%s at=%s",
+            user_email,
+            user_id,
+            imported,
+            skipped,
+            exc,
+            time.strftime("%Y-%m-%d %H:%M:%S"),
+        )
+        raise
+    gpt_logger.info(
+        "path=import_local_sessions_done user=%s user_id=%s imported=%s skipped=%s at=%s",
+        user_email,
+        user_id,
+        imported,
+        skipped,
+        time.strftime("%Y-%m-%d %H:%M:%S"),
+    )
+    return {"imported": imported, "skipped": skipped}
 
 
 @router.post("/sessions/import-local")
@@ -379,50 +457,23 @@ async def import_local_sessions(
 ):
     user_email = user.get("email", "")
     user_id = user.get("sub", "unknown")
+    auth_provider = get_current_auth_provider(user)
     gpt_logger.info(
-        "path=import_local_sessions user=%s user_id=%s items=%s at=%s",
+        "path=import_local_sessions_accepted user=%s user_id=%s auth_provider=%s items=%s at=%s",
         user_email,
         user_id,
+        auth_provider,
         len(request.items),
         time.strftime("%Y-%m-%d %H:%M:%S"),
     )
-    imported = 0
-    skipped = 0
-    for item in request.items:
-        conversation_id = (item.conversation_id or item.session_id or "").strip()
-        if not conversation_id or not item.history:
-            skipped += 1
-            continue
-        gid = (item.gid or "gptassistant").strip() or "gptassistant"
-        client_history = [history_item.model_dump() for history_item in item.history]
-        runtime_history = _legacy_client_history_to_runtime_history(item.history, gid)
-        title = ""
-        for history_item in item.history:
-            if history_item.title and history_item.title.strip():
-                title = history_item.title.strip()
-                break
-        if not title:
-            title = _derive_session_title(item.history[0].parts or conversation_id)
-        save_session_client_history(conversation_id, client_history)
-        if runtime_history and not _load_runtime_history(conversation_id, gid):
-            save_session_history(_runtime_history_key(conversation_id, gid), runtime_history)
-        upsert_session_history_meta(
-            conversation_id=conversation_id,
-            user_id=user_id,
-            user_email=user_email,
-            gid=gid,
-            title=title,
-        )
-        imported += 1
-    gpt_logger.info(
-        "path=import_local_sessions_done user=%s user_id=%s imported=%s skipped=%s at=%s",
+    result = await run_in_threadpool(
+        _import_local_sessions_batch,
+        request.items,
         user_email,
         user_id,
-        imported,
-        skipped,
-        time.strftime("%Y-%m-%d %H:%M:%S"),
+        auth_provider,
     )
-    return {"ok": True, "imported": imported, "skipped": skipped}
+    return {"ok": True, "accepted": len(request.items), **result}
 
 
 @router.post("/sessions/coverage-report")
@@ -509,6 +560,7 @@ async def chat_with_gpt_assistant(request: QueryRequest, user: dict = Depends(ge
         conversation_id=cid,
         user_id=user.get("sub", "unknown"),
         user_email=user.get("email", ""),
+        auth_provider=get_current_auth_provider(user),
         gid="gptassistant",
         title=_derive_session_title(request.query),
     )
@@ -617,6 +669,7 @@ async def chat_with_gpt_assistant_v2(request: QueryRequest, user: dict = Depends
         conversation_id=cid,
         user_id=user.get("sub", "unknown"),
         user_email=user.get("email", ""),
+        auth_provider=get_current_auth_provider(user),
         gid="gptassistant",
         title=_derive_session_title(request.query),
     )
@@ -707,6 +760,7 @@ async def chat_with_gpts(request: QueryRequest, gid: str, user: dict = Depends(g
         conversation_id=cid,
         user_id=user.get("sub", "unknown"),
         user_email=user.get("email", ""),
+        auth_provider=get_current_auth_provider(user),
         gid=gid,
         title=_derive_session_title(request.query),
     )
