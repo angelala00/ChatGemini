@@ -15,6 +15,7 @@ from app.storage.business_store import load_custom_gpts
 builtin_gpts: Dict[str, Dict[str, Any]] = {}
 
 BUILTIN_GIDS = set(builtin_gpts.keys())
+_DEFER_REFRESH = False
 
 
 def fetch_gpts() -> Dict[str, Dict[str, Any]]:
@@ -33,14 +34,19 @@ def refresh_gpts() -> None:
     gpts.update(fetch_gpts())
 
 
-refresh_gpts()
+def set_defer_refresh(enabled: bool) -> None:
+    global _DEFER_REFRESH
+    _DEFER_REFRESH = enabled
 
 
-__all__ = ["gpts", "fetch_gpts", "refresh_gpts", "BUILTIN_GIDS"]
+__all__ = ["gpts", "fetch_gpts", "refresh_gpts", "set_defer_refresh", "BUILTIN_GIDS"]
 
 
 def register_gpt(config):
     """Register built-in GPT definitions and refresh cached state."""
 
     builtin_gpts.update(config)
+    gpts.update(config)
+    if _DEFER_REFRESH:
+        return
     refresh_gpts()

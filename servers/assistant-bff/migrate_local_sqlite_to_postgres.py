@@ -15,6 +15,12 @@ from app.storage import business_store
 
 
 KERNEL_HISTORY_PREFIX = "llm_kernel:gptassistant:"
+PROGRESS_EVERY = 100
+
+
+def _log(message: str) -> None:
+    print(message, flush=True)
+
 
 def _candidate_source_paths() -> list[Path]:
     return business_store.sqlite_business_source_paths()
@@ -39,6 +45,11 @@ def _load_sqlite_rows(conn: sqlite3.Connection, table_name: str) -> list[dict[st
     return [dict(row) for row in conn.execute(f"SELECT * FROM {table_name}").fetchall()]
 
 
+def _iter_sqlite_rows(conn: sqlite3.Connection, table_name: str):
+    for row in conn.execute(f"SELECT * FROM {table_name}"):
+        yield dict(row)
+
+
 def _sqlite_tables(conn: sqlite3.Connection) -> list[str]:
     return [
         str(row["name"])
@@ -51,6 +62,62 @@ def _sqlite_tables(conn: sqlite3.Connection) -> list[str]:
 def _sqlite_table_count(conn: sqlite3.Connection, table_name: str) -> int:
     row = conn.execute(f"SELECT COUNT(*) AS total FROM {table_name}").fetchone()
     return int(row["total"] or 0)
+
+
+def _source_fingerprint(source_path: Path) -> tuple[int, int]:
+    stat = source_path.stat()
+    return int(stat.st_size), int(stat.st_mtime_ns)
+
+
+def _ensure_migration_state_table(conn) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sqlite_migration_state (
+          source_path TEXT PRIMARY KEY,
+          source_size BIGINT NOT NULL,
+          source_mtime_ns BIGINT NOT NULL,
+          completed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          summary JSONB NOT NULL DEFAULT '{}'::jsonb
+        )
+        """
+    )
+
+
+def _is_source_already_migrated(conn, source_path: Path) -> bool:
+    source_size, source_mtime_ns = _source_fingerprint(source_path)
+    row = conn.execute(
+        """
+        SELECT source_size, source_mtime_ns
+          FROM sqlite_migration_state
+         WHERE source_path=%s
+        """,
+        (str(source_path),),
+    ).fetchone()
+    if not row:
+        return False
+    return int(row[0]) == source_size and int(row[1]) == source_mtime_ns
+
+
+def _mark_source_migrated(conn, source_path: Path, summary: dict[str, int]) -> None:
+    source_size, source_mtime_ns = _source_fingerprint(source_path)
+    conn.execute(
+        """
+        INSERT INTO sqlite_migration_state(
+            source_path, source_size, source_mtime_ns, completed_at, summary
+        ) VALUES (%s, %s, %s, NOW(), %s::jsonb)
+        ON CONFLICT (source_path) DO UPDATE SET
+            source_size=EXCLUDED.source_size,
+            source_mtime_ns=EXCLUDED.source_mtime_ns,
+            completed_at=EXCLUDED.completed_at,
+            summary=EXCLUDED.summary
+        """,
+        (str(source_path), source_size, source_mtime_ns, json.dumps(summary, ensure_ascii=False)),
+    )
+
+
+def _log_table_progress(source_path: Path, table_name: str, current: int, total: int) -> None:
+    if current == 1 or current == total or current % PROGRESS_EVERY == 0:
+        _log(f"[migrating] source={source_path} table={table_name} rows={current}/{total}")
 
 
 def _inspect_source_db(source_path: Path) -> None:
@@ -190,7 +257,10 @@ def _migrate_session_history_tables(
                 for row in _load_sqlite_rows(source_conn, "session_history_meta"):
                     source_meta_rows[str(row.get("conversation_id") or "")] = row
 
-            for row in _load_sqlite_rows(source_conn, "session_history"):
+            total_rows = _sqlite_table_count(source_conn, "session_history")
+            _log(f"[migrating] source={source_path} table=session_history rows=0/{total_rows}")
+            for row in _iter_sqlite_rows(source_conn, "session_history"):
+                _log_table_progress(source_path, "session_history", summary["session_history_rows"] + 1, total_rows)
                 conversation_id = str(row.get("conversation_id") or "").strip()
                 if not conversation_id:
                     continue
@@ -251,7 +321,15 @@ def _migrate_session_history_tables(
 
         if _sqlite_table_exists(source_conn, "session_history_client"):
             columns = _sqlite_columns(source_conn, "session_history_client")
-            for row in _load_sqlite_rows(source_conn, "session_history_client"):
+            total_rows = _sqlite_table_count(source_conn, "session_history_client")
+            _log(f"[migrating] source={source_path} table=session_history_client rows=0/{total_rows}")
+            for row in _iter_sqlite_rows(source_conn, "session_history_client"):
+                _log_table_progress(
+                    source_path,
+                    "session_history_client",
+                    summary["session_history_client_rows"] + 1,
+                    total_rows,
+                )
                 conversation_id = str(row.get("conversation_id") or "").strip()
                 if not conversation_id:
                     continue
@@ -298,8 +376,11 @@ def _migrate_file_mapping_table(
                 f"reason=unsupported_columns columns={','.join(sorted(columns))}"
             )
             return summary
-        for row in _load_sqlite_rows(source_conn, "file_mapping"):
+        total_rows = _sqlite_table_count(source_conn, "file_mapping")
+        _log(f"[migrating] source={source_path} table=file_mapping rows=0/{total_rows}")
+        for row in _iter_sqlite_rows(source_conn, "file_mapping"):
             summary["file_mapping_rows"] += 1
+            _log_table_progress(source_path, "file_mapping", summary["file_mapping_rows"], total_rows)
             normalized = business_store._normalize_sqlite_file_mapping_row(row, columns)
             if normalized is None:
                 summary["file_mapping_skipped"] += 1
@@ -352,12 +433,15 @@ def _migrate_light_business_tables(
     source_conn.row_factory = sqlite3.Row
     try:
         if _sqlite_table_exists(source_conn, "custom_gpts"):
-            for row in _load_sqlite_rows(source_conn, "custom_gpts"):
+            total_rows = _sqlite_table_count(source_conn, "custom_gpts")
+            _log(f"[migrating] source={source_path} table=custom_gpts rows=0/{total_rows}")
+            for row in _iter_sqlite_rows(source_conn, "custom_gpts"):
                 gid = str(row.get("gid") or "").strip()
                 config = row.get("config")
                 if not gid or not isinstance(config, str) or not config.strip():
                     continue
                 summary["custom_gpts"] += 1
+                _log_table_progress(source_path, "custom_gpts", summary["custom_gpts"], total_rows)
                 if dry_run:
                     continue
                 target_conn.execute(
@@ -370,13 +454,16 @@ def _migrate_light_business_tables(
                 )
 
         if _sqlite_table_exists(source_conn, "user_gpts_state"):
-            for row in _load_sqlite_rows(source_conn, "user_gpts_state"):
+            total_rows = _sqlite_table_count(source_conn, "user_gpts_state")
+            _log(f"[migrating] source={source_path} table=user_gpts_state rows=0/{total_rows}")
+            for row in _iter_sqlite_rows(source_conn, "user_gpts_state"):
                 user_id = str(row.get("user_id") or "").strip()
                 gpts_id = str(row.get("gpts_id") or "").strip()
                 pinned_at = str(row.get("pinned_at") or "").strip() or datetime.now(timezone.utc).isoformat()
                 if not user_id or not gpts_id:
                     continue
                 summary["user_gpts_state"] += 1
+                _log_table_progress(source_path, "user_gpts_state", summary["user_gpts_state"], total_rows)
                 if dry_run:
                     continue
                 target_conn.execute(
@@ -389,12 +476,15 @@ def _migrate_light_business_tables(
                 )
 
         if _sqlite_table_exists(source_conn, "user_config_version"):
-            for row in _load_sqlite_rows(source_conn, "user_config_version"):
+            total_rows = _sqlite_table_count(source_conn, "user_config_version")
+            _log(f"[migrating] source={source_path} table=user_config_version rows=0/{total_rows}")
+            for row in _iter_sqlite_rows(source_conn, "user_config_version"):
                 user_id = str(row.get("user_id") or "").strip()
                 version = str(row.get("version") or "").strip()
                 if not user_id or not version:
                     continue
                 summary["user_config_version"] += 1
+                _log_table_progress(source_path, "user_config_version", summary["user_config_version"], total_rows)
                 if dry_run:
                     continue
                 target_conn.execute(
@@ -479,7 +569,14 @@ def main() -> int:
 
     try:
         with psycopg.connect(model_config.POSTGRES_DSN) as target_conn:
+            _ensure_migration_state_table(target_conn)
+            if not args.dry_run:
+                target_conn.commit()
             for source_path in source_paths:
+                if not args.dry_run and _is_source_already_migrated(target_conn, source_path):
+                    _log(f"[skipped] source={source_path} reason=already_migrated")
+                    continue
+                _log(f"[migrating] source={source_path} status=started")
                 summary = _migrate_session_history_tables(
                     source_path,
                     target_conn,
@@ -495,9 +592,16 @@ def main() -> int:
                     target_conn,
                     dry_run=args.dry_run,
                 )
+                source_total = {
+                    **summary,
+                    **file_mapping_summary,
+                    **light_business_summary,
+                }
+                if not args.dry_run:
+                    _mark_source_migrated(target_conn, source_path, source_total)
                 if not args.dry_run:
                     target_conn.commit()
-                print(
+                _log(
                     f"[migrated] source={source_path} "
                     f"session_history={summary['session_history_rows']} "
                     f"session_history_client={summary['session_history_client_rows']} "

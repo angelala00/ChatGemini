@@ -21,6 +21,7 @@ from app.routes.runtime_routes import router as runtime_router
 from app.routes.voice_lab_routes import router as voice_lab_router
 from app.metrics import init_metrics_storage
 from app.metrics.events import cleanup_usage_events
+from app.gpts.config_gpts import refresh_gpts
 from app.tracing import cleanup_trace_storage, init_trace_storage
 from app.storage.business_store import business_storage_health, close_business_storage, init_business_storage
 from app.storage.config_validation import validate_storage_configuration
@@ -62,6 +63,7 @@ app.include_router(voice_lab_router, prefix="")
 async def _startup() -> None:
     validate_storage_configuration()
     init_business_storage()
+    refresh_gpts()
     init_object_store()
     init_metrics_storage()
     init_trace_storage()
