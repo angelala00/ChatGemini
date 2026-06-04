@@ -16,6 +16,7 @@ from app.storage import business_store
 
 KERNEL_HISTORY_PREFIX = "llm_kernel:gptassistant:"
 PROGRESS_EVERY = 100
+BATCH_SIZE = 500
 
 
 def _log(message: str) -> None:
@@ -164,66 +165,63 @@ def _strip_kernel_prefix(conversation_id: str) -> tuple[str, str]:
     return conversation_id, ""
 
 
-def _upsert_session_history_row(
+def _flush_session_history_batch(
     conn,
     *,
     table_name: str,
-    conversation_id: str,
-    history_payload: str,
-    updated_at: str,
+    rows: list[tuple[str, str, str]],
     dry_run: bool,
 ) -> None:
-    if dry_run:
+    if dry_run or not rows:
+        rows.clear()
         return
-    conn.execute(
-        f"""
-        INSERT INTO {table_name}(conversation_id, history, updated_at)
-        VALUES (%s, %s::jsonb, %s::timestamptz)
-        ON CONFLICT (conversation_id) DO UPDATE
-           SET history=EXCLUDED.history,
-               updated_at=EXCLUDED.updated_at
-         WHERE {table_name}.updated_at IS NULL
-            OR {table_name}.updated_at < EXCLUDED.updated_at
-        """,
-        (conversation_id, history_payload, updated_at),
-    )
+    with conn.cursor() as cursor:
+        cursor.executemany(
+            f"""
+            INSERT INTO {table_name}(conversation_id, history, updated_at)
+            VALUES (%s, %s::jsonb, %s::timestamptz)
+            ON CONFLICT (conversation_id) DO UPDATE
+               SET history=EXCLUDED.history,
+                   updated_at=EXCLUDED.updated_at
+             WHERE {table_name}.updated_at IS NULL
+                OR {table_name}.updated_at < EXCLUDED.updated_at
+            """,
+            rows,
+        )
+    rows.clear()
 
 
-def _upsert_session_meta_row(
+def _flush_session_meta_batch(
     conn,
     *,
-    conversation_id: str,
-    user_id: str,
-    user_email: str,
-    auth_provider: str,
-    gid: str,
-    title: str,
-    created_at: str,
-    updated_at: str,
+    rows: list[tuple[str, str, str, str, str, str, str, str]],
     dry_run: bool,
 ) -> None:
-    if dry_run:
+    if dry_run or not rows:
+        rows.clear()
         return
-    conn.execute(
-        """
-        INSERT INTO session_history_meta(
-            conversation_id, user_id, user_email, auth_provider, gid, title, created_at, updated_at
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s::timestamptz, %s::timestamptz)
-        ON CONFLICT (conversation_id) DO UPDATE
-           SET user_id=EXCLUDED.user_id,
-               user_email=EXCLUDED.user_email,
-               auth_provider=EXCLUDED.auth_provider,
-               gid=EXCLUDED.gid,
-               title=CASE
-                   WHEN COALESCE(EXCLUDED.title, '') <> '' THEN EXCLUDED.title
-                   ELSE session_history_meta.title
-               END,
-               updated_at=EXCLUDED.updated_at
-         WHERE session_history_meta.updated_at IS NULL
-            OR session_history_meta.updated_at < EXCLUDED.updated_at
-        """,
-        (conversation_id, user_id, user_email, auth_provider, gid, title, created_at, updated_at),
-    )
+    with conn.cursor() as cursor:
+        cursor.executemany(
+            """
+            INSERT INTO session_history_meta(
+                conversation_id, user_id, user_email, auth_provider, gid, title, created_at, updated_at
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s::timestamptz, %s::timestamptz)
+            ON CONFLICT (conversation_id) DO UPDATE
+               SET user_id=EXCLUDED.user_id,
+                   user_email=EXCLUDED.user_email,
+                   auth_provider=EXCLUDED.auth_provider,
+                   gid=EXCLUDED.gid,
+                   title=CASE
+                       WHEN COALESCE(EXCLUDED.title, '') <> '' THEN EXCLUDED.title
+                       ELSE session_history_meta.title
+                   END,
+                   updated_at=EXCLUDED.updated_at
+             WHERE session_history_meta.updated_at IS NULL
+                OR session_history_meta.updated_at < EXCLUDED.updated_at
+            """,
+            rows,
+        )
+    rows.clear()
 
 
 def _migrate_session_history_tables(
@@ -240,6 +238,9 @@ def _migrate_session_history_tables(
     }
     source_conn = sqlite3.connect(source_path)
     source_conn.row_factory = sqlite3.Row
+    history_batch: list[tuple[str, str, str]] = []
+    history_client_batch: list[tuple[str, str, str]] = []
+    meta_batch: list[tuple[str, str, str, str, str, str, str, str]] = []
     try:
         source_mtime = source_path.stat().st_mtime
         fallback_timestamp = datetime.fromtimestamp(
@@ -267,34 +268,42 @@ def _migrate_session_history_tables(
                 history_payload = row.get("history")
                 updated_at = _normalize_timestamp(row.get("updated_at") if "updated_at" in columns else None, fallback_timestamp)
                 normalized_history = _normalize_history_payload(history_payload)
-                _upsert_session_history_row(
-                    target_conn,
-                    table_name="session_history",
-                    conversation_id=conversation_id,
-                    history_payload=business_store._encode_history_payload(normalized_history),
-                    updated_at=updated_at,
-                    dry_run=dry_run,
+                history_batch.append(
+                    (
+                        conversation_id,
+                        business_store._encode_history_payload(normalized_history),
+                        updated_at,
+                    )
                 )
+                if len(history_batch) >= BATCH_SIZE:
+                    _flush_session_history_batch(
+                        target_conn,
+                        table_name="session_history",
+                        rows=history_batch,
+                        dry_run=dry_run,
+                    )
                 summary["session_history_rows"] += 1
 
                 source_meta = source_meta_rows.get(conversation_id)
                 if source_meta:
-                    _upsert_session_meta_row(
-                        target_conn,
-                        conversation_id=conversation_id,
-                        user_id=str(source_meta.get("user_id") or "").strip(),
-                        user_email=str(source_meta.get("user_email") or "").strip(),
-                        auth_provider=(
-                            str(source_meta.get("auth_provider") or "").strip()
-                            if "auth_provider" in source_meta_columns
-                            else ""
-                        ) or DEFAULT_AUTH_PROVIDER,
-                        gid=str(source_meta.get("gid") or "gptassistant").strip() or "gptassistant",
-                        title=str(source_meta.get("title") or "").strip(),
-                        created_at=_normalize_timestamp(source_meta.get("created_at"), updated_at),
-                        updated_at=_normalize_timestamp(source_meta.get("updated_at"), updated_at),
-                        dry_run=dry_run,
+                    meta_batch.append(
+                        (
+                            conversation_id,
+                            str(source_meta.get("user_id") or "").strip(),
+                            str(source_meta.get("user_email") or "").strip(),
+                            (
+                                str(source_meta.get("auth_provider") or "").strip()
+                                if "auth_provider" in source_meta_columns
+                                else ""
+                            ) or DEFAULT_AUTH_PROVIDER,
+                            str(source_meta.get("gid") or "gptassistant").strip() or "gptassistant",
+                            str(source_meta.get("title") or "").strip(),
+                            _normalize_timestamp(source_meta.get("created_at"), updated_at),
+                            _normalize_timestamp(source_meta.get("updated_at"), updated_at),
+                        )
                     )
+                    if len(meta_batch) >= BATCH_SIZE:
+                        _flush_session_meta_batch(target_conn, rows=meta_batch, dry_run=dry_run)
                     summary["session_history_meta_rows"] += 1
                     continue
 
@@ -305,19 +314,28 @@ def _migrate_session_history_tables(
                 title = business_store._derive_session_title_from_history(normalized_history)
                 if not title:
                     title = base_conversation_id
-                _upsert_session_meta_row(
-                    target_conn,
-                    conversation_id=base_conversation_id,
-                    user_id=str(identity.get("user_id") or "").strip(),
-                    user_email=str(identity.get("user_email") or "").strip(),
-                    auth_provider=DEFAULT_AUTH_PROVIDER,
-                    gid=inferred_gid or str(identity.get("gid") or "gptassistant").strip() or "gptassistant",
-                    title=title,
-                    created_at=updated_at,
-                    updated_at=updated_at,
-                    dry_run=dry_run,
+                meta_batch.append(
+                    (
+                        base_conversation_id,
+                        str(identity.get("user_id") or "").strip(),
+                        str(identity.get("user_email") or "").strip(),
+                        DEFAULT_AUTH_PROVIDER,
+                        inferred_gid or str(identity.get("gid") or "gptassistant").strip() or "gptassistant",
+                        title,
+                        updated_at,
+                        updated_at,
+                    )
                 )
+                if len(meta_batch) >= BATCH_SIZE:
+                    _flush_session_meta_batch(target_conn, rows=meta_batch, dry_run=dry_run)
                 summary["session_history_meta_backfilled"] += 1
+            _flush_session_history_batch(
+                target_conn,
+                table_name="session_history",
+                rows=history_batch,
+                dry_run=dry_run,
+            )
+            _flush_session_meta_batch(target_conn, rows=meta_batch, dry_run=dry_run)
 
         if _sqlite_table_exists(source_conn, "session_history_client"):
             columns = _sqlite_columns(source_conn, "session_history_client")
@@ -335,15 +353,27 @@ def _migrate_session_history_tables(
                     continue
                 updated_at = _normalize_timestamp(row.get("updated_at") if "updated_at" in columns else None, fallback_timestamp)
                 normalized_history = _normalize_history_payload(row.get("history"))
-                _upsert_session_history_row(
-                    target_conn,
-                    table_name="session_history_client",
-                    conversation_id=conversation_id,
-                    history_payload=business_store._encode_history_payload(normalized_history),
-                    updated_at=updated_at,
-                    dry_run=dry_run,
+                history_client_batch.append(
+                    (
+                        conversation_id,
+                        business_store._encode_history_payload(normalized_history),
+                        updated_at,
+                    )
                 )
+                if len(history_client_batch) >= BATCH_SIZE:
+                    _flush_session_history_batch(
+                        target_conn,
+                        table_name="session_history_client",
+                        rows=history_client_batch,
+                        dry_run=dry_run,
+                    )
                 summary["session_history_client_rows"] += 1
+            _flush_session_history_batch(
+                target_conn,
+                table_name="session_history_client",
+                rows=history_client_batch,
+                dry_run=dry_run,
+            )
     finally:
         source_conn.close()
 
