@@ -448,6 +448,69 @@ def _migrate_file_mapping_table(
     return summary
 
 
+def _flush_custom_gpts_batch(
+    conn,
+    *,
+    rows: list[tuple[str, str]],
+    dry_run: bool,
+) -> None:
+    if dry_run or not rows:
+        rows.clear()
+        return
+    with conn.cursor() as cursor:
+        cursor.executemany(
+            """
+            INSERT INTO custom_gpts(gid, config)
+            VALUES (%s, %s::jsonb)
+            ON CONFLICT (gid) DO UPDATE SET config=EXCLUDED.config
+            """,
+            rows,
+        )
+    rows.clear()
+
+
+def _flush_user_gpts_state_batch(
+    conn,
+    *,
+    rows: list[tuple[str, str, str]],
+    dry_run: bool,
+) -> None:
+    if dry_run or not rows:
+        rows.clear()
+        return
+    with conn.cursor() as cursor:
+        cursor.executemany(
+            """
+            INSERT INTO user_gpts_state(user_id, gpts_id, pinned_at)
+            VALUES (%s, %s, %s::timestamptz)
+            ON CONFLICT (user_id, gpts_id) DO NOTHING
+            """,
+            rows,
+        )
+    rows.clear()
+
+
+def _flush_user_config_version_batch(
+    conn,
+    *,
+    rows: list[tuple[str, str]],
+    dry_run: bool,
+) -> None:
+    if dry_run or not rows:
+        rows.clear()
+        return
+    with conn.cursor() as cursor:
+        cursor.executemany(
+            """
+            INSERT INTO user_config_version(user_id, version)
+            VALUES (%s, %s)
+            ON CONFLICT (user_id) DO UPDATE SET version=EXCLUDED.version
+            """,
+            rows,
+        )
+    rows.clear()
+
+
 def _migrate_light_business_tables(
     source_path: Path,
     target_conn,
@@ -461,6 +524,9 @@ def _migrate_light_business_tables(
     }
     source_conn = sqlite3.connect(source_path)
     source_conn.row_factory = sqlite3.Row
+    custom_gpts_batch: list[tuple[str, str]] = []
+    user_gpts_state_batch: list[tuple[str, str, str]] = []
+    user_config_version_batch: list[tuple[str, str]] = []
     try:
         if _sqlite_table_exists(source_conn, "custom_gpts"):
             total_rows = _sqlite_table_count(source_conn, "custom_gpts")
@@ -472,16 +538,10 @@ def _migrate_light_business_tables(
                     continue
                 summary["custom_gpts"] += 1
                 _log_table_progress(source_path, "custom_gpts", summary["custom_gpts"], total_rows)
-                if dry_run:
-                    continue
-                target_conn.execute(
-                    """
-                    INSERT INTO custom_gpts(gid, config)
-                    VALUES (%s, %s::jsonb)
-                    ON CONFLICT (gid) DO UPDATE SET config=EXCLUDED.config
-                    """,
-                    (gid, config),
-                )
+                custom_gpts_batch.append((gid, config))
+                if len(custom_gpts_batch) >= BATCH_SIZE:
+                    _flush_custom_gpts_batch(target_conn, rows=custom_gpts_batch, dry_run=dry_run)
+            _flush_custom_gpts_batch(target_conn, rows=custom_gpts_batch, dry_run=dry_run)
 
         if _sqlite_table_exists(source_conn, "user_gpts_state"):
             total_rows = _sqlite_table_count(source_conn, "user_gpts_state")
@@ -494,16 +554,10 @@ def _migrate_light_business_tables(
                     continue
                 summary["user_gpts_state"] += 1
                 _log_table_progress(source_path, "user_gpts_state", summary["user_gpts_state"], total_rows)
-                if dry_run:
-                    continue
-                target_conn.execute(
-                    """
-                    INSERT INTO user_gpts_state(user_id, gpts_id, pinned_at)
-                    VALUES (%s, %s, %s::timestamptz)
-                    ON CONFLICT (user_id, gpts_id) DO NOTHING
-                    """,
-                    (user_id, gpts_id, pinned_at),
-                )
+                user_gpts_state_batch.append((user_id, gpts_id, pinned_at))
+                if len(user_gpts_state_batch) >= BATCH_SIZE:
+                    _flush_user_gpts_state_batch(target_conn, rows=user_gpts_state_batch, dry_run=dry_run)
+            _flush_user_gpts_state_batch(target_conn, rows=user_gpts_state_batch, dry_run=dry_run)
 
         if _sqlite_table_exists(source_conn, "user_config_version"):
             total_rows = _sqlite_table_count(source_conn, "user_config_version")
@@ -515,16 +569,14 @@ def _migrate_light_business_tables(
                     continue
                 summary["user_config_version"] += 1
                 _log_table_progress(source_path, "user_config_version", summary["user_config_version"], total_rows)
-                if dry_run:
-                    continue
-                target_conn.execute(
-                    """
-                    INSERT INTO user_config_version(user_id, version)
-                    VALUES (%s, %s)
-                    ON CONFLICT (user_id) DO UPDATE SET version=EXCLUDED.version
-                    """,
-                    (user_id, version),
-                )
+                user_config_version_batch.append((user_id, version))
+                if len(user_config_version_batch) >= BATCH_SIZE:
+                    _flush_user_config_version_batch(
+                        target_conn,
+                        rows=user_config_version_batch,
+                        dry_run=dry_run,
+                    )
+            _flush_user_config_version_batch(target_conn, rows=user_config_version_batch, dry_run=dry_run)
     finally:
         source_conn.close()
     return summary

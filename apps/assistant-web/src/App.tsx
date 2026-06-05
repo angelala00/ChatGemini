@@ -48,6 +48,7 @@ const LEGACY_SESSION_MIGRATION_STATE_KEY = "chatgemini:legacy-session-migration-
 const LEGACY_SESSION_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
 const LEGACY_SESSION_IMPORT_BATCH_SIZE = 10;
 const LEGACY_SESSION_IMPORT_BATCH_DELAY_MS = 80;
+const STREAM_SESSION_DISPATCH_INTERVAL_MS = 80;
 
 interface LegacySessionMessage {
     readonly role: string;
@@ -1008,8 +1009,33 @@ const App = () => {
                 },
             ],
         };
+        let pendingSessionDispatchTimer: number | undefined;
+        let lastSessionDispatchAt = 0;
+        const flushSessionDispatch = (nextSessions = _sessions) => {
+            if (pendingSessionDispatchTimer !== undefined) {
+                window.clearTimeout(pendingSessionDispatchTimer);
+                pendingSessionDispatchTimer = undefined;
+            }
+            lastSessionDispatchAt = Date.now();
+            dispatch(updateSessions(nextSessions));
+        };
+        const scheduleSessionDispatch = (nextSessions = _sessions) => {
+            const now = Date.now();
+            const elapsed = now - lastSessionDispatchAt;
+            if (elapsed >= STREAM_SESSION_DISPATCH_INTERVAL_MS) {
+                flushSessionDispatch(nextSessions);
+                return;
+            }
+            if (pendingSessionDispatchTimer !== undefined) {
+                return;
+            }
+            pendingSessionDispatchTimer = window.setTimeout(() => {
+                pendingSessionDispatchTimer = undefined;
+                flushSessionDispatch(_sessions);
+            }, STREAM_SESSION_DISPATCH_INTERVAL_MS - elapsed);
+        };
         dispatch(updateAI({ ...ai, busy: true }));
-        dispatch(updateSessions(_sessions));
+        flushSessionDispatch(_sessions);
         const previousExtension = sessionExtensions[id];
         const nextSessionExtensions = {
             ...sessionExtensions,
@@ -1044,7 +1070,7 @@ const App = () => {
                     const nextSessions = { ..._sessions, [convId]: _sessions[previousId] };
                     delete nextSessions[previousId];
                     _sessions = nextSessions;
-                    dispatch(updateSessions(nextSessions));
+                    flushSessionDispatch(nextSessions);
 
                     const nextMappings = { ...mappings, [convId]: convId };
                     delete nextMappings[previousId];
@@ -1104,9 +1130,10 @@ const App = () => {
                     },
                 ],
             };
-            dispatch(updateSessions(_sessions));
-            if (!end) {
-                dispatch(updateAI({ ...ai, busy: true }));
+            if (end) {
+                flushSessionDispatch(_sessions);
+            } else {
+                scheduleSessionDispatch(_sessions);
             }
         };
         // console.log("ddddd:" + selectedModel)
@@ -1130,6 +1157,7 @@ const App = () => {
                 console.error(err)
             }
         }
+        flushSessionDispatch(_sessions);
         setUploadInlineData({ data: "", mimeType: "" });
         return true;
     };
