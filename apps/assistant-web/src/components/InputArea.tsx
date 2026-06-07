@@ -19,6 +19,7 @@ const CATEGORY_EXTENSION_MAP: Record<UploadCategory, string[]> = {
 };
 
 const DEFAULT_UPLOAD_CATEGORIES: UploadCategory[] = ["document", "image"];
+const MAX_CHAT_ATTACHMENTS = 10;
 
 interface InputAreaProps {
     readonly busy: boolean;
@@ -480,7 +481,20 @@ export const InputArea = forwardRef(
                                             const { files } = currentTarget;
                                             if (files && files.length > 0) {
                                                 const nextItems: AttachmentCardItem[] = [];
-                                                for (const file of Array.from(files)) {
+                                                const remainingSlots = Math.max(
+                                                    0,
+                                                    MAX_CHAT_ATTACHMENTS - attachmentItemsRef.current.length,
+                                                );
+                                                const selectedFiles = Array.from(files).slice(0, remainingSlots);
+                                                if (files.length > remainingSlots) {
+                                                    sendUserAlert(
+                                                        t("components.InputArea.checkAttachment.too_many", {
+                                                            count: MAX_CHAT_ATTACHMENTS,
+                                                        }),
+                                                        true,
+                                                    );
+                                                }
+                                                for (const file of selectedFiles) {
                                                     if (checkAttachment(file)) {
                                                         const presentation = resolveAttachmentPresentation(file);
                                                         const uploaded = await onUpload(file);

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import io
+import os
+import shutil
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 from app.base_config import model_config
 
@@ -98,6 +101,53 @@ def store_bytes(
     }
 
 
+def store_file(
+    *,
+    file_id: str,
+    filename: str,
+    content_file: BinaryIO,
+    length: int,
+    content_type: str | None = None,
+) -> dict[str, object]:
+    init_object_store()
+    suffix = Path(filename).suffix
+    if _use_minio():
+        client = _get_minio_client()
+        date_part = datetime.now(timezone.utc).strftime("%Y/%m/%d")
+        prefix = model_config.MINIO_BASE_PREFIX.strip("/")
+        object_key = "/".join(
+            part for part in (prefix, date_part, f"{file_id}{suffix}") if part
+        )
+        client.put_object(
+            model_config.MINIO_BUCKET,
+            object_key,
+            content_file,
+            length=length,
+            content_type=content_type or "application/octet-stream",
+        )
+        return {
+            "bucket": model_config.MINIO_BUCKET,
+            "object_key": object_key,
+            "storage_backend": "minio",
+            "size_bytes": length,
+        }
+
+    target = LOCAL_UPLOAD_ROOT / file_id
+    try:
+        with target.open("wb") as output_file:
+            shutil.copyfileobj(content_file, output_file, length=1024 * 1024)
+    except Exception:
+        if target.exists():
+            target.unlink()
+        raise
+    return {
+        "bucket": "",
+        "object_key": str(target),
+        "storage_backend": "filesystem",
+        "size_bytes": length,
+    }
+
+
 def ensure_local_path(entry: dict[str, object]) -> str:
     init_object_store()
     storage_backend = str(entry.get("storageBackend") or entry.get("storage_backend") or "")
@@ -106,15 +156,32 @@ def ensure_local_path(entry: dict[str, object]) -> str:
         return object_key
 
     cache_path = _local_cache_path(entry)
+    expected_size = entry.get("sizeBytes")
+    if expected_size is None:
+        expected_size = entry.get("size_bytes")
     if cache_path.exists():
-        return str(cache_path)
+        if not isinstance(expected_size, int) or cache_path.stat().st_size == expected_size:
+            cache_path.touch()
+            return str(cache_path)
+        cache_path.unlink()
 
     client = _get_minio_client()
-    client.fget_object(
-        str(entry.get("bucket") or model_config.MINIO_BUCKET),
-        object_key,
-        str(cache_path),
-    )
+    temporary_path = cache_path.with_name(f".{cache_path.name}.{uuid.uuid4().hex}.part")
+    try:
+        client.fget_object(
+            str(entry.get("bucket") or model_config.MINIO_BUCKET),
+            object_key,
+            str(temporary_path),
+        )
+        if isinstance(expected_size, int) and temporary_path.stat().st_size != expected_size:
+            raise RuntimeError(
+                f"Downloaded object size mismatch: expected {expected_size} bytes, "
+                f"got {temporary_path.stat().st_size}"
+            )
+        os.replace(temporary_path, cache_path)
+    finally:
+        if temporary_path.exists():
+            temporary_path.unlink()
     return str(cache_path)
 
 
@@ -195,5 +262,6 @@ __all__ = [
     "local_cache_path",
     "object_storage_backend",
     "object_storage_health",
+    "store_file",
     "store_bytes",
 ]

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import io
 import json
 import os
 import sqlite3
@@ -106,6 +107,24 @@ class StorageBackendFallbackTests(unittest.TestCase):
         business_store._INITIALIZED = False
         business_store.init_business_storage()
         self.assertTrue(business_store._INITIALIZED)
+
+    def test_business_storage_health_reports_unowned_file_mappings(self):
+        business_store.insert_file_mapping(
+            "legacy-file",
+            filename="legacy.txt",
+            file_extension=".txt",
+            content_type="text/plain",
+            bucket="",
+            object_key="/tmp/legacy-file",
+            storage_backend="filesystem",
+            size_bytes=5,
+        )
+
+        health = business_store.business_storage_health()
+
+        self.assertTrue(health["healthy"])
+        self.assertEqual(health["unowned_file_mappings"], 1)
+        self.assertIn("warning", health)
 
     def test_legacy_file_mapping_row_normalizes_to_business_schema(self):
         legacy_path = str(Path(self.file_base) / "gptassistant" / "uploads" / "file-1")
@@ -346,6 +365,297 @@ class StorageBackendFallbackTests(unittest.TestCase):
         )
         self.assertTrue(Path(path).exists())
         self.assertEqual(Path(path).read_text(encoding="utf-8"), "hello world")
+
+    def test_object_store_stream_round_trip_uses_filesystem_fallback(self):
+        payload = object_store.store_file(
+            file_id="file-stream",
+            filename="demo.txt",
+            content_file=io.BytesIO(b"streamed content"),
+            length=len(b"streamed content"),
+            content_type="text/plain",
+        )
+        self.assertEqual(payload["storage_backend"], "filesystem")
+        self.assertEqual(Path(str(payload["object_key"])).read_bytes(), b"streamed content")
+
+    def test_minio_cache_download_is_published_atomically(self):
+        cache_path = Path(object_store.LOCAL_CACHE_ROOT) / "file-1.pdf"
+        client = SimpleNamespace()
+
+        def download(bucket, object_key, target):
+            Path(target).write_bytes(b"complete")
+
+        client.fget_object = download
+        entry = {
+            "file_id": "file-1",
+            "fileExtension": ".pdf",
+            "storage_backend": "minio",
+            "bucket": "bucket",
+            "object_key": "file-1.pdf",
+            "size_bytes": 8,
+        }
+        with (
+            patch.object(object_store, "init_object_store"),
+            patch.object(object_store, "_get_minio_client", return_value=client),
+        ):
+            result = object_store.ensure_local_path(entry)
+
+        self.assertEqual(result, str(cache_path))
+        self.assertEqual(cache_path.read_bytes(), b"complete")
+        self.assertEqual(list(cache_path.parent.glob("*.part")), [])
+
+    def test_minio_cache_download_failure_does_not_leave_partial_cache(self):
+        cache_path = Path(object_store.LOCAL_CACHE_ROOT) / "file-1.pdf"
+        client = SimpleNamespace()
+
+        def download(bucket, object_key, target):
+            Path(target).write_bytes(b"partial")
+            raise RuntimeError("download failed")
+
+        client.fget_object = download
+        entry = {
+            "file_id": "file-1",
+            "fileExtension": ".pdf",
+            "storage_backend": "minio",
+            "bucket": "bucket",
+            "object_key": "file-1.pdf",
+            "size_bytes": 8,
+        }
+        with (
+            patch.object(object_store, "init_object_store"),
+            patch.object(object_store, "_get_minio_client", return_value=client),
+        ):
+            with self.assertRaises(RuntimeError):
+                object_store.ensure_local_path(entry)
+
+        self.assertFalse(cache_path.exists())
+        self.assertEqual(list(cache_path.parent.glob("*.part")), [])
+
+    def test_minio_cache_download_size_mismatch_is_not_published(self):
+        cache_path = Path(object_store.LOCAL_CACHE_ROOT) / "file-1.pdf"
+        client = SimpleNamespace()
+
+        def download(bucket, object_key, target):
+            Path(target).write_bytes(b"partial")
+
+        client.fget_object = download
+        entry = {
+            "file_id": "file-1",
+            "fileExtension": ".pdf",
+            "storage_backend": "minio",
+            "bucket": "bucket",
+            "object_key": "file-1.pdf",
+            "size_bytes": 8,
+        }
+        with (
+            patch.object(object_store, "init_object_store"),
+            patch.object(object_store, "_get_minio_client", return_value=client),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "Downloaded object size mismatch"):
+                object_store.ensure_local_path(entry)
+
+        self.assertFalse(cache_path.exists())
+        self.assertEqual(list(cache_path.parent.glob("*.part")), [])
+
+    def test_minio_zero_byte_cache_uses_expected_size(self):
+        cache_path = Path(object_store.LOCAL_CACHE_ROOT) / "file-1.txt"
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_path.write_bytes(b"unexpected")
+        client = SimpleNamespace()
+
+        def download(bucket, object_key, target):
+            Path(target).write_bytes(b"")
+
+        client.fget_object = download
+        entry = {
+            "file_id": "file-1",
+            "fileExtension": ".txt",
+            "storage_backend": "minio",
+            "bucket": "bucket",
+            "object_key": "file-1.txt",
+            "size_bytes": 0,
+        }
+        with (
+            patch.object(object_store, "init_object_store"),
+            patch.object(object_store, "_get_minio_client", return_value=client),
+        ):
+            object_store.ensure_local_path(entry)
+
+        self.assertEqual(cache_path.read_bytes(), b"")
+
+    def test_minio_cache_size_mismatch_triggers_redownload(self):
+        cache_path = Path(object_store.LOCAL_CACHE_ROOT) / "file-1.pdf"
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_path.write_bytes(b"bad")
+        client = SimpleNamespace()
+
+        def download(bucket, object_key, target):
+            Path(target).write_bytes(b"complete")
+
+        client.fget_object = download
+        entry = {
+            "file_id": "file-1",
+            "fileExtension": ".pdf",
+            "storage_backend": "minio",
+            "bucket": "bucket",
+            "object_key": "file-1.pdf",
+            "size_bytes": 8,
+        }
+        with (
+            patch.object(object_store, "init_object_store"),
+            patch.object(object_store, "_get_minio_client", return_value=client),
+        ):
+            object_store.ensure_local_path(entry)
+
+        self.assertEqual(cache_path.read_bytes(), b"complete")
+
+    def test_minio_cache_hit_refreshes_last_used_time(self):
+        cache_path = Path(object_store.LOCAL_CACHE_ROOT) / "file-1.pdf"
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_path.write_bytes(b"complete")
+        old_timestamp = 1_000_000
+        os.utime(cache_path, (old_timestamp, old_timestamp))
+        entry = {
+            "file_id": "file-1",
+            "fileExtension": ".pdf",
+            "storage_backend": "minio",
+            "bucket": "bucket",
+            "object_key": "file-1.pdf",
+            "size_bytes": 8,
+        }
+        with patch.object(object_store, "init_object_store"):
+            object_store.ensure_local_path(entry)
+
+        self.assertGreater(cache_path.stat().st_mtime, old_timestamp)
+
+    def test_file_mapping_persists_owner_and_rejects_other_user(self):
+        from fastapi import HTTPException
+        from app.routes import file_routes
+
+        business_store.insert_file_mapping(
+            "owned-file",
+            filename="owned.txt",
+            file_extension=".txt",
+            content_type="text/plain",
+            bucket="",
+            object_key="/tmp/owned-file",
+            storage_backend="filesystem",
+            size_bytes=5,
+            owner_user_id="user-1",
+            owner_user_email="owner@example.com",
+        )
+
+        item = business_store.get_file_mapping("owned-file")
+        self.assertIsNotNone(item)
+        assert item is not None
+        self.assertEqual(item["ownerUserId"], "user-1")
+        self.assertEqual(item["ownerUserEmail"], "owner@example.com")
+        self.assertEqual(
+            business_store.count_file_mappings(
+                "gptassistant",
+                owner_user_id="user-1",
+                owner_user_email="owner@example.com",
+            ),
+            1,
+        )
+        self.assertEqual(
+            business_store.count_file_mappings(
+                "gptassistant",
+                owner_user_id="user-2",
+                owner_user_email="other@example.com",
+            ),
+            0,
+        )
+        self.assertEqual(
+            file_routes.get_owned_file_mapping_or_404(
+                "owned-file",
+                {"sub": "user-1", "email": "owner@example.com"},
+            )["file_id"],
+            "owned-file",
+        )
+        with self.assertRaises(HTTPException) as ctx:
+            file_routes.get_owned_file_mapping_or_404(
+                "owned-file",
+                {"sub": "user-2", "email": "other@example.com"},
+            )
+        self.assertEqual(ctx.exception.status_code, 404)
+
+    def test_file_upload_reservation_enforces_quota_atomically(self):
+        reservation_id = business_store.reserve_file_upload_slot(
+            "gptassistant",
+            owner_user_id="user-1",
+            owner_user_email="owner@example.com",
+            max_user_files=1,
+            max_system_files=10,
+        )
+        self.assertTrue(reservation_id)
+        with self.assertRaises(business_store.FileUploadQuotaExceeded) as ctx:
+            business_store.reserve_file_upload_slot(
+                "gptassistant",
+                owner_user_id="user-1",
+                owner_user_email="owner@example.com",
+                max_user_files=1,
+                max_system_files=10,
+            )
+        self.assertEqual(ctx.exception.scope, "user")
+        business_store.release_file_upload_slot(reservation_id)
+        next_reservation_id = business_store.reserve_file_upload_slot(
+            "gptassistant",
+            owner_user_id="user-1",
+            owner_user_email="owner@example.com",
+            max_user_files=1,
+            max_system_files=10,
+        )
+        self.assertTrue(next_reservation_id)
+        business_store.release_file_upload_slot(next_reservation_id)
+
+    def test_file_upload_reservation_enforces_system_quota_across_users(self):
+        reservation_id = business_store.reserve_file_upload_slot(
+            "gptassistant",
+            owner_user_id="user-1",
+            owner_user_email="owner@example.com",
+            max_user_files=10,
+            max_system_files=1,
+        )
+        with self.assertRaises(business_store.FileUploadQuotaExceeded) as ctx:
+            business_store.reserve_file_upload_slot(
+                "gptassistant",
+                owner_user_id="user-2",
+                owner_user_email="other@example.com",
+                max_user_files=10,
+                max_system_files=1,
+            )
+        self.assertEqual(ctx.exception.scope, "system")
+        business_store.release_file_upload_slot(reservation_id)
+
+    def test_sqlite_distributed_task_lock_prevents_overlapping_process_tasks(self):
+        if business_store.fcntl is None:
+            self.skipTest("fcntl is unavailable")
+        with business_store.distributed_task_lock("cleanup-task") as first_acquired:
+            with business_store.distributed_task_lock("cleanup-task") as second_acquired:
+                self.assertTrue(first_acquired)
+                self.assertFalse(second_acquired)
+
+    def test_legacy_unowned_file_mapping_is_not_accessible(self):
+        from fastapi import HTTPException
+        from app.routes import file_routes
+
+        business_store.insert_file_mapping(
+            "legacy-file",
+            filename="legacy.txt",
+            file_extension=".txt",
+            content_type="text/plain",
+            bucket="",
+            object_key="/tmp/legacy-file",
+            storage_backend="filesystem",
+            size_bytes=5,
+        )
+
+        with self.assertRaises(HTTPException) as ctx:
+            file_routes.get_owned_file_mapping_or_404(
+                "legacy-file",
+                {"sub": "user-1", "email": "owner@example.com"},
+            )
+        self.assertEqual(ctx.exception.status_code, 404)
 
     def test_usage_events_file_persistence_and_cleanup(self):
         tracker = metrics_events.create_usage_event(

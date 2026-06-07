@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import mimetypes
 import os
 import sqlite3
+import uuid
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import Lock
 from typing import Any, Iterator
@@ -24,6 +26,11 @@ try:
     from psycopg_pool import ConnectionPool
 except Exception:  # pragma: no cover - optional dependency in sqlite dev mode
     ConnectionPool = None
+
+try:
+    import fcntl
+except Exception:  # pragma: no cover - non-Unix development environments
+    fcntl = None
 
 DATA_DIR = os.path.join("", f"{model_config.FILE_BASE}/gptassistant")
 DEV_DB_PATH = os.path.join(DATA_DIR, "business-dev.db")
@@ -44,6 +51,12 @@ FILE_MAPPING_REQUIRED_COLUMNS = {
     "upload_time",
     "gid",
 }
+
+
+class FileUploadQuotaExceeded(Exception):
+    def __init__(self, scope: str):
+        super().__init__(scope)
+        self.scope = scope
 LEGACY_FILE_MAPPING_REQUIRED_COLUMNS = {
     "file_id",
     "filename",
@@ -477,6 +490,32 @@ def _ensure_session_history_meta_auth_provider_column() -> None:
         conn.commit()
 
 
+def _ensure_file_mapping_owner_columns() -> None:
+    with _connect() as conn:
+        if _use_postgres():
+            conn.execute("ALTER TABLE file_mapping ADD COLUMN IF NOT EXISTS owner_user_id TEXT")
+            conn.execute("ALTER TABLE file_mapping ADD COLUMN IF NOT EXISTS owner_user_email TEXT")
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_file_mapping_owner
+                  ON file_mapping(owner_user_id, owner_user_email)
+                """
+            )
+        else:
+            columns = _sqlite_columns(conn, "file_mapping")
+            if "owner_user_id" not in columns:
+                conn.execute("ALTER TABLE file_mapping ADD COLUMN owner_user_id TEXT")
+            if "owner_user_email" not in columns:
+                conn.execute("ALTER TABLE file_mapping ADD COLUMN owner_user_email TEXT")
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_file_mapping_owner
+                  ON file_mapping(owner_user_id, owner_user_email)
+                """
+            )
+        conn.commit()
+
+
 def _sqlite_table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
     row = conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
@@ -505,6 +544,8 @@ def _normalize_sqlite_file_mapping_row(item: dict[str, Any], columns: set[str]) 
             "size_bytes": item.get("size_bytes"),
             "upload_time": item.get("upload_time") or _now_iso(),
             "gid": item.get("gid") or "gptassistant",
+            "owner_user_id": item.get("owner_user_id"),
+            "owner_user_email": item.get("owner_user_email"),
         }
     if LEGACY_FILE_MAPPING_REQUIRED_COLUMNS.issubset(columns):
         object_key = str(item.get("path") or "").strip()
@@ -527,6 +568,8 @@ def _normalize_sqlite_file_mapping_row(item: dict[str, Any], columns: set[str]) 
             "size_bytes": size_bytes,
             "upload_time": item.get("uploadTime") or _now_iso(),
             "gid": item.get("gid") or "gptassistant",
+            "owner_user_id": None,
+            "owner_user_email": None,
         }
     return None
 
@@ -570,8 +613,9 @@ def _migrate_sqlite_file_mapping_source_to_postgres(source_path: Path) -> dict[s
                 """
                 INSERT INTO file_mapping(
                     file_id, filename, file_extension, content_type, bucket,
-                    object_key, storage_backend, size_bytes, upload_time, gid
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    object_key, storage_backend, size_bytes, upload_time, gid,
+                    owner_user_id, owner_user_email
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (file_id) DO NOTHING
                 RETURNING file_id
                 """,
@@ -586,6 +630,8 @@ def _migrate_sqlite_file_mapping_source_to_postgres(source_path: Path) -> dict[s
                     normalized.get("size_bytes"),
                     normalized.get("upload_time") or _now_iso(),
                     normalized.get("gid") or "gptassistant",
+                    normalized.get("owner_user_id"),
+                    normalized.get("owner_user_email"),
                 ),
             ).fetchone()
             if result:
@@ -1224,12 +1270,31 @@ def init_business_storage() -> None:
                   storage_backend TEXT NOT NULL,
                   size_bytes BIGINT,
                   upload_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                  gid TEXT NOT NULL
+                  gid TEXT NOT NULL,
+                  owner_user_id TEXT,
+                  owner_user_email TEXT
                 )
                 """
             )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_file_mapping_gid ON file_mapping(gid)"
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS file_upload_reservations (
+                  reservation_id TEXT PRIMARY KEY,
+                  gid TEXT NOT NULL,
+                  owner_user_id TEXT,
+                  owner_user_email TEXT,
+                  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_file_upload_reservations_owner
+                  ON file_upload_reservations(gid, owner_user_id, owner_user_email)
+                """
             )
             conn.execute(
                 """
@@ -1365,9 +1430,20 @@ def init_business_storage() -> None:
                   storage_backend TEXT NOT NULL,
                   size_bytes INTEGER,
                   upload_time TEXT NOT NULL,
-                  gid TEXT NOT NULL
+                  gid TEXT NOT NULL,
+                  owner_user_id TEXT,
+                  owner_user_email TEXT
                 );
                 CREATE INDEX IF NOT EXISTS idx_file_mapping_gid ON file_mapping(gid);
+                CREATE TABLE IF NOT EXISTS file_upload_reservations (
+                  reservation_id TEXT PRIMARY KEY,
+                  gid TEXT NOT NULL,
+                  owner_user_id TEXT,
+                  owner_user_email TEXT,
+                  created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_file_upload_reservations_owner
+                  ON file_upload_reservations(gid, owner_user_id, owner_user_email);
                 CREATE TABLE IF NOT EXISTS admin_model_configs (
                   id INTEGER PRIMARY KEY AUTOINCREMENT,
                   model_id TEXT NOT NULL UNIQUE,
@@ -1430,6 +1506,7 @@ def init_business_storage() -> None:
     _seed_admin_user_permissions_if_empty()
     _seed_admin_feature_flags_if_empty()
     _ensure_session_history_meta_auth_provider_column()
+    _ensure_file_mapping_owner_columns()
     _migrate_sqlite_file_mapping_to_postgres_if_needed()
     _migrate_sqlite_light_business_tables_to_postgres_if_needed()
     if not _skip_startup_sqlite_migration():
@@ -1446,6 +1523,18 @@ def business_storage_health() -> dict[str, Any]:
         ensure_initialized()
         with _connect() as conn:
             conn.execute("SELECT 1").fetchone()
+            unowned_row = conn.execute(
+                """
+                SELECT COUNT(*) AS total
+                  FROM file_mapping
+                 WHERE (owner_user_id IS NULL OR owner_user_id='')
+                   AND (owner_user_email IS NULL OR owner_user_email='')
+                """
+            ).fetchone()
+        unowned_file_mappings = int((_normalize_row(unowned_row) or {}).get("total") or 0)
+        details["unowned_file_mappings"] = unowned_file_mappings
+        if unowned_file_mappings:
+            details["warning"] = "Legacy file mappings without owner identity are not user-accessible"
         if _use_postgres():
             details["dsn_configured"] = bool(model_config.POSTGRES_DSN)
         else:
@@ -2017,7 +2106,8 @@ def list_file_mappings(gid: str | None = None) -> dict[str, dict[str, Any]]:
                 rows = conn.execute(
                     """
                     SELECT file_id, filename, file_extension, content_type, bucket,
-                           object_key, storage_backend, size_bytes, upload_time, gid
+                           object_key, storage_backend, size_bytes, upload_time, gid,
+                           owner_user_id, owner_user_email
                       FROM file_mapping
                      WHERE gid=%s
                     """,
@@ -2027,7 +2117,8 @@ def list_file_mappings(gid: str | None = None) -> dict[str, dict[str, Any]]:
                 rows = conn.execute(
                     """
                     SELECT file_id, filename, file_extension, content_type, bucket,
-                           object_key, storage_backend, size_bytes, upload_time, gid
+                           object_key, storage_backend, size_bytes, upload_time, gid,
+                           owner_user_id, owner_user_email
                       FROM file_mapping
                      WHERE gid=?
                     """,
@@ -2037,7 +2128,8 @@ def list_file_mappings(gid: str | None = None) -> dict[str, dict[str, Any]]:
             rows = conn.execute(
                 """
                 SELECT file_id, filename, file_extension, content_type, bucket,
-                       object_key, storage_backend, size_bytes, upload_time, gid
+                       object_key, storage_backend, size_bytes, upload_time, gid,
+                       owner_user_id, owner_user_email
                   FROM file_mapping
                 """
             ).fetchall()
@@ -2054,6 +2146,8 @@ def list_file_mappings(gid: str | None = None) -> dict[str, dict[str, Any]]:
             "sizeBytes": item.get("size_bytes"),
             "uploadTime": str(item.get("upload_time")),
             "gid": item.get("gid"),
+            "ownerUserId": item.get("owner_user_id"),
+            "ownerUserEmail": item.get("owner_user_email"),
         }
     return result
 
@@ -2066,7 +2160,8 @@ def get_file_mapping(file_id: str, gid: str | None = None) -> dict[str, Any] | N
                 row = conn.execute(
                     """
                     SELECT file_id, filename, file_extension, content_type, bucket,
-                           object_key, storage_backend, size_bytes, upload_time, gid
+                           object_key, storage_backend, size_bytes, upload_time, gid,
+                           owner_user_id, owner_user_email
                       FROM file_mapping
                      WHERE file_id=%s AND gid=%s
                     """,
@@ -2076,7 +2171,8 @@ def get_file_mapping(file_id: str, gid: str | None = None) -> dict[str, Any] | N
                 row = conn.execute(
                     """
                     SELECT file_id, filename, file_extension, content_type, bucket,
-                           object_key, storage_backend, size_bytes, upload_time, gid
+                           object_key, storage_backend, size_bytes, upload_time, gid,
+                           owner_user_id, owner_user_email
                       FROM file_mapping
                      WHERE file_id=? AND gid=?
                     """,
@@ -2087,7 +2183,8 @@ def get_file_mapping(file_id: str, gid: str | None = None) -> dict[str, Any] | N
                 row = conn.execute(
                     """
                     SELECT file_id, filename, file_extension, content_type, bucket,
-                           object_key, storage_backend, size_bytes, upload_time, gid
+                           object_key, storage_backend, size_bytes, upload_time, gid,
+                           owner_user_id, owner_user_email
                       FROM file_mapping
                      WHERE file_id=%s
                     """,
@@ -2097,7 +2194,8 @@ def get_file_mapping(file_id: str, gid: str | None = None) -> dict[str, Any] | N
                 row = conn.execute(
                     """
                     SELECT file_id, filename, file_extension, content_type, bucket,
-                           object_key, storage_backend, size_bytes, upload_time, gid
+                           object_key, storage_backend, size_bytes, upload_time, gid,
+                           owner_user_id, owner_user_email
                       FROM file_mapping
                      WHERE file_id=?
                     """,
@@ -2117,28 +2215,162 @@ def get_file_mapping(file_id: str, gid: str | None = None) -> dict[str, Any] | N
         "sizeBytes": item.get("size_bytes"),
         "uploadTime": str(item.get("upload_time")),
         "gid": item.get("gid"),
+        "ownerUserId": item.get("owner_user_id"),
+        "ownerUserEmail": item.get("owner_user_email"),
     }
 
 
-def count_file_mappings(gid: str | None = None) -> int:
+def count_file_mappings(
+    gid: str | None = None,
+    *,
+    owner_user_id: str | None = None,
+    owner_user_email: str | None = None,
+) -> int:
     ensure_initialized()
+    conditions: list[str] = []
+    params: list[str] = []
+    placeholder = "%s" if _use_postgres() else "?"
+    if gid:
+        conditions.append(f"gid={placeholder}")
+        params.append(gid)
+    if owner_user_id:
+        conditions.append(f"owner_user_id={placeholder}")
+        params.append(owner_user_id)
+    elif owner_user_email:
+        conditions.append(f"owner_user_email={placeholder}")
+        params.append(owner_user_email)
+    where_clause = f" WHERE {' AND '.join(conditions)}" if conditions else ""
     with _connect() as conn:
-        if gid:
-            if _use_postgres():
-                row = conn.execute(
-                    "SELECT COUNT(*) AS total FROM file_mapping WHERE gid=%s",
-                    (gid,),
-                ).fetchone()
-            else:
-                row = conn.execute(
-                    "SELECT COUNT(*) AS total FROM file_mapping WHERE gid=?",
-                    (gid,),
-                ).fetchone()
-        else:
-            row = conn.execute("SELECT COUNT(*) AS total FROM file_mapping").fetchone()
+        row = conn.execute(
+            f"SELECT COUNT(*) AS total FROM file_mapping{where_clause}",
+            tuple(params),
+        ).fetchone()
     item = _normalize_row(row)
     total = item.get("total", 0) if item else 0
     return int(total or 0)
+
+
+def reserve_file_upload_slot(
+    gid: str,
+    *,
+    owner_user_id: str | None,
+    owner_user_email: str | None,
+    max_user_files: int,
+    max_system_files: int,
+) -> str:
+    ensure_initialized()
+    reservation_id = str(uuid.uuid4())
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=15)).isoformat()
+    placeholder = "%s" if _use_postgres() else "?"
+    owner_column = "owner_user_id" if owner_user_id else "owner_user_email"
+    owner_value = owner_user_id or owner_user_email or ""
+    with _connect() as conn:
+        try:
+            if _use_postgres():
+                conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"file-upload:{gid}",))
+            else:
+                conn.execute("BEGIN IMMEDIATE")
+            if _use_postgres():
+                conn.execute(
+                    "DELETE FROM file_upload_reservations WHERE created_at < NOW() - INTERVAL '15 minutes'"
+                )
+            else:
+                conn.execute(
+                    "DELETE FROM file_upload_reservations WHERE created_at < ?",
+                    (cutoff,),
+                )
+            mapping_user_count = conn.execute(
+                f"SELECT COUNT(*) AS total FROM file_mapping WHERE gid={placeholder} AND {owner_column}={placeholder}",
+                (gid, owner_value),
+            ).fetchone()
+            reservation_user_count = conn.execute(
+                f"SELECT COUNT(*) AS total FROM file_upload_reservations WHERE gid={placeholder} AND {owner_column}={placeholder}",
+                (gid, owner_value),
+            ).fetchone()
+            mapping_system_count = conn.execute(
+                f"SELECT COUNT(*) AS total FROM file_mapping WHERE gid={placeholder}",
+                (gid,),
+            ).fetchone()
+            reservation_system_count = conn.execute(
+                f"SELECT COUNT(*) AS total FROM file_upload_reservations WHERE gid={placeholder}",
+                (gid,),
+            ).fetchone()
+            user_total = int(_normalize_row(mapping_user_count).get("total") or 0) + int(
+                _normalize_row(reservation_user_count).get("total") or 0
+            )
+            system_total = int(_normalize_row(mapping_system_count).get("total") or 0) + int(
+                _normalize_row(reservation_system_count).get("total") or 0
+            )
+            if user_total >= max_user_files:
+                raise FileUploadQuotaExceeded("user")
+            if system_total >= max_system_files:
+                raise FileUploadQuotaExceeded("system")
+            now = _now_iso()
+            conn.execute(
+                f"""
+                INSERT INTO file_upload_reservations(
+                    reservation_id, gid, owner_user_id, owner_user_email, created_at
+                ) VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})
+                """,
+                (reservation_id, gid, owner_user_id, owner_user_email, now),
+            )
+            conn.commit()
+            return reservation_id
+        except Exception:
+            conn.rollback()
+            raise
+
+
+def release_file_upload_slot(reservation_id: str | None) -> None:
+    if not reservation_id:
+        return
+    ensure_initialized()
+    with _connect() as conn:
+        placeholder = "%s" if _use_postgres() else "?"
+        conn.execute(
+            f"DELETE FROM file_upload_reservations WHERE reservation_id={placeholder}",
+            (reservation_id,),
+        )
+        conn.commit()
+
+
+@contextmanager
+def distributed_task_lock(lock_name: str) -> Iterator[bool]:
+    ensure_initialized()
+    if not _use_postgres():
+        if fcntl is None:
+            yield True
+            return
+        os.makedirs(DATA_DIR, exist_ok=True)
+        lock_digest = hashlib.sha256(lock_name.encode("utf-8")).hexdigest()[:16]
+        lock_path = Path(DATA_DIR) / f".task-lock-{lock_digest}"
+        with lock_path.open("a+") as lock_file:
+            try:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                yield False
+                return
+            try:
+                yield True
+            finally:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+        return
+
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT pg_try_advisory_lock(hashtext(%s)) AS acquired",
+            (lock_name,),
+        ).fetchone()
+        acquired = bool((_normalize_row(row) or {}).get("acquired"))
+        try:
+            yield acquired
+        finally:
+            if acquired:
+                conn.execute(
+                    "SELECT pg_advisory_unlock(hashtext(%s))",
+                    (lock_name,),
+                )
+                conn.commit()
 
 
 def insert_file_mapping(
@@ -2152,6 +2384,8 @@ def insert_file_mapping(
     storage_backend: str,
     size_bytes: int | None,
     gid: str = "gptassistant",
+    owner_user_id: str | None = None,
+    owner_user_email: str | None = None,
 ) -> None:
     ensure_initialized()
     uploaded_at = _now_iso()
@@ -2161,8 +2395,9 @@ def insert_file_mapping(
                 """
                 INSERT INTO file_mapping(
                     file_id, filename, file_extension, content_type, bucket,
-                    object_key, storage_backend, size_bytes, upload_time, gid
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    object_key, storage_backend, size_bytes, upload_time, gid,
+                    owner_user_id, owner_user_email
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     file_id,
@@ -2175,6 +2410,8 @@ def insert_file_mapping(
                     size_bytes,
                     uploaded_at,
                     gid,
+                    owner_user_id,
+                    owner_user_email,
                 ),
             )
         else:
@@ -2182,8 +2419,9 @@ def insert_file_mapping(
                 """
                 INSERT INTO file_mapping(
                     file_id, filename, file_extension, content_type, bucket,
-                    object_key, storage_backend, size_bytes, upload_time, gid
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    object_key, storage_backend, size_bytes, upload_time, gid,
+                    owner_user_id, owner_user_email
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     file_id,
@@ -2196,6 +2434,8 @@ def insert_file_mapping(
                     size_bytes,
                     uploaded_at,
                     gid,
+                    owner_user_id,
+                    owner_user_email,
                 ),
             )
         conn.commit()
@@ -2815,11 +3055,13 @@ __all__ = [
     "business_storage_health",
     "close_business_storage",
     "count_file_mappings",
+    "FileUploadQuotaExceeded",
     "delete_custom_gpt",
     "delete_admin_feature_flag",
     "delete_admin_model_config",
     "delete_admin_user_permission",
     "delete_file_mapping",
+    "distributed_task_lock",
     "delete_session_history",
     "delete_user_gpt_state_by_gid",
     "ensure_initialized",
@@ -2843,6 +3085,8 @@ __all__ = [
     "list_pinned_gids",
     "list_session_history_meta",
     "list_user_pinned_rows",
+    "release_file_upload_slot",
+    "reserve_file_upload_slot",
     "load_custom_gpts",
     "get_session_history_meta",
     "load_session_history",

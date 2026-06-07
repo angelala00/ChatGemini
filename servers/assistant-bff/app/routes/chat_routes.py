@@ -29,7 +29,7 @@ from .gpts_routes import (
     gpts,
 )
 from app.gpts.model_metadata import resolve_model_configs
-from .file_routes import extract_text_from_file_ids
+from .file_routes import ensure_file_ids_owned_by_user, extract_text_from_file_ids
 from app.logger import gpt_logger
 from app.chat_service import (
     StreamHandledError,
@@ -553,6 +553,7 @@ def _resolve_default_reasoning(assistant_config: dict, gid: str) -> bool:
 @router.post("/chat")
 async def chat_with_gpt_assistant(request: QueryRequest, user: dict = Depends(get_current_user)):
     gpt_logger.info(f"path=chat_with_gpt user={user['email']} at={time.strftime('%Y-%m-%d %H:%M:%S')}")
+    request.file_ids = ensure_file_ids_owned_by_user(request.file_ids, user)
     if not request.conversation_id:
         request.conversation_id = await generate_conversation_id()
     cid = request.conversation_id
@@ -662,6 +663,7 @@ async def chat_with_gpt_assistant(request: QueryRequest, user: dict = Depends(ge
 @router.post("/chat-v2")
 async def chat_with_gpt_assistant_v2(request: QueryRequest, user: dict = Depends(get_current_user)):
     gpt_logger.info(f"path=chat_with_gpt_assistant_v2 user={user['email']} at={time.strftime('%Y-%m-%d %H:%M:%S')}")
+    request.file_ids = ensure_file_ids_owned_by_user(request.file_ids, user)
     if not request.conversation_id:
         request.conversation_id = await generate_conversation_id()
     cid = request.conversation_id
@@ -753,6 +755,7 @@ async def chat_with_gpt_assistant_v2(request: QueryRequest, user: dict = Depends
 @router.post("/{gid}/chat-messages")
 async def chat_with_gpts(request: QueryRequest, gid: str, user: dict = Depends(get_current_user)):
     gpt_logger.info(f"path=chat_with_gpts user={user['email']} at={time.strftime('%Y-%m-%d %H:%M:%S')}")
+    request.file_ids = ensure_file_ids_owned_by_user(request.file_ids, user)
     if not request.conversation_id:
         request.conversation_id = await generate_conversation_id()
     cid = request.conversation_id

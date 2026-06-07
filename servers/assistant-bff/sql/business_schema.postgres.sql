@@ -57,8 +57,24 @@ CREATE TABLE IF NOT EXISTS file_mapping (
   storage_backend TEXT NOT NULL,
   size_bytes BIGINT,
   upload_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  gid TEXT NOT NULL
+  gid TEXT NOT NULL,
+  owner_user_id TEXT,
+  owner_user_email TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_file_mapping_gid
   ON file_mapping(gid);
+
+CREATE INDEX IF NOT EXISTS idx_file_mapping_owner
+  ON file_mapping(owner_user_id, owner_user_email);
+
+CREATE TABLE IF NOT EXISTS file_upload_reservations (
+  reservation_id TEXT PRIMARY KEY,
+  gid TEXT NOT NULL,
+  owner_user_id TEXT,
+  owner_user_email TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_file_upload_reservations_owner
+  ON file_upload_reservations(gid, owner_user_id, owner_user_email);

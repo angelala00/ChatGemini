@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sqlite3
@@ -65,9 +66,13 @@ def _sqlite_table_count(conn: sqlite3.Connection, table_name: str) -> int:
     return int(row["total"] or 0)
 
 
-def _source_fingerprint(source_path: Path) -> tuple[int, int]:
+def _source_fingerprint(source_path: Path) -> tuple[int, int, str]:
     stat = source_path.stat()
-    return int(stat.st_size), int(stat.st_mtime_ns)
+    digest = hashlib.sha256()
+    with source_path.open("rb") as source_file:
+        for chunk in iter(lambda: source_file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return int(stat.st_size), int(stat.st_mtime_ns), digest.hexdigest()
 
 
 def _ensure_migration_state_table(conn) -> None:
@@ -77,18 +82,20 @@ def _ensure_migration_state_table(conn) -> None:
           source_path TEXT PRIMARY KEY,
           source_size BIGINT NOT NULL,
           source_mtime_ns BIGINT NOT NULL,
+          source_sha256 TEXT,
           completed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
           summary JSONB NOT NULL DEFAULT '{}'::jsonb
         )
         """
     )
+    conn.execute("ALTER TABLE sqlite_migration_state ADD COLUMN IF NOT EXISTS source_sha256 TEXT")
 
 
 def _is_source_already_migrated(conn, source_path: Path) -> bool:
-    source_size, source_mtime_ns = _source_fingerprint(source_path)
+    source_size, source_mtime_ns, source_sha256 = _source_fingerprint(source_path)
     row = conn.execute(
         """
-        SELECT source_size, source_mtime_ns
+        SELECT source_size, source_mtime_ns, source_sha256
           FROM sqlite_migration_state
          WHERE source_path=%s
         """,
@@ -96,23 +103,34 @@ def _is_source_already_migrated(conn, source_path: Path) -> bool:
     ).fetchone()
     if not row:
         return False
-    return int(row[0]) == source_size and int(row[1]) == source_mtime_ns
+    return (
+        int(row[0]) == source_size
+        and int(row[1]) == source_mtime_ns
+        and str(row[2] or "") == source_sha256
+    )
 
 
 def _mark_source_migrated(conn, source_path: Path, summary: dict[str, int]) -> None:
-    source_size, source_mtime_ns = _source_fingerprint(source_path)
+    source_size, source_mtime_ns, source_sha256 = _source_fingerprint(source_path)
     conn.execute(
         """
         INSERT INTO sqlite_migration_state(
-            source_path, source_size, source_mtime_ns, completed_at, summary
-        ) VALUES (%s, %s, %s, NOW(), %s::jsonb)
+            source_path, source_size, source_mtime_ns, source_sha256, completed_at, summary
+        ) VALUES (%s, %s, %s, %s, NOW(), %s::jsonb)
         ON CONFLICT (source_path) DO UPDATE SET
             source_size=EXCLUDED.source_size,
             source_mtime_ns=EXCLUDED.source_mtime_ns,
+            source_sha256=EXCLUDED.source_sha256,
             completed_at=EXCLUDED.completed_at,
             summary=EXCLUDED.summary
         """,
-        (str(source_path), source_size, source_mtime_ns, json.dumps(summary, ensure_ascii=False)),
+        (
+            str(source_path),
+            source_size,
+            source_mtime_ns,
+            source_sha256,
+            json.dumps(summary, ensure_ascii=False),
+        ),
     )
 
 
@@ -421,8 +439,9 @@ def _migrate_file_mapping_table(
                 """
                 INSERT INTO file_mapping(
                     file_id, filename, file_extension, content_type, bucket,
-                    object_key, storage_backend, size_bytes, upload_time, gid
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::timestamptz, %s)
+                    object_key, storage_backend, size_bytes, upload_time, gid,
+                    owner_user_id, owner_user_email
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::timestamptz, %s, %s, %s)
                 ON CONFLICT (file_id) DO NOTHING
                 RETURNING file_id
                 """,
@@ -437,6 +456,8 @@ def _migrate_file_mapping_table(
                     normalized.get("size_bytes"),
                     normalized.get("upload_time") or datetime.now(timezone.utc).isoformat(),
                     normalized.get("gid") or "gptassistant",
+                    normalized.get("owner_user_id"),
+                    normalized.get("owner_user_email"),
                 ),
             ).fetchone()
             if result:

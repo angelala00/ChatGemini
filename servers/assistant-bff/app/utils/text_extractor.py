@@ -14,19 +14,31 @@ except ModuleNotFoundError:
     _textract = None
 
 
-def _process_txt(file_path: str, **_: Any) -> str:
+def _read_limit(max_chars: int | None) -> int:
+    return max_chars + 1 if isinstance(max_chars, int) and max_chars > 0 else -1
+
+
+def _reached_limit(length: int, max_chars: int | None) -> bool:
+    return isinstance(max_chars, int) and max_chars > 0 and length > max_chars
+
+
+def _process_txt(file_path: str, *, max_chars: int | None = None, **_: Any) -> str:
     with open(file_path, "r", encoding="utf-8", errors="ignore") as infile:
-        return infile.read()
+        return infile.read(_read_limit(max_chars))
 
 
-def _process_csv(file_path: str, **_: Any) -> str:
+def _process_csv(file_path: str, *, max_chars: int | None = None, **_: Any) -> str:
     rows = []
+    output_length = 0
     with open(file_path, "r", encoding="utf-8-sig", errors="ignore", newline="") as infile:
         reader = csv.reader(infile)
         for row in reader:
             normalized = " ".join(cell.strip() for cell in row).rstrip()
             if normalized:
                 rows.append(normalized)
+                output_length += len(normalized) + 1
+                if _reached_limit(output_length, max_chars):
+                    break
     return "\n".join(rows)
 
 
@@ -36,6 +48,7 @@ def _process_pdf(
     page: int | None = None,
     page_from: int | None = None,
     page_to: int | None = None,
+    max_chars: int | None = None,
     **_: Any,
 ) -> str:
     reader = PdfReader(file_path)
@@ -52,17 +65,29 @@ def _process_pdf(
 
     end_index = min(total_pages, max(start_index + 1, end_index))
     chunks = []
+    output_length = 0
     for current_page_index in range(start_index, end_index):
         current_page = reader.pages[current_page_index]
         text = current_page.extract_text() or ""
         if text:
-            chunks.append(f"[Page {current_page_index + 1}]\n{text}")
+            chunk = f"[Page {current_page_index + 1}]\n{text}"
+            chunks.append(chunk)
+            output_length += len(chunk) + 1
+            if _reached_limit(output_length, max_chars):
+                break
     return "\n".join(chunks)
 
 
-def _process_docx(file_path: str, **_: Any) -> str:
+def _process_docx(file_path: str, *, max_chars: int | None = None, **_: Any) -> str:
     document = Document(file_path)
-    return "\n".join(paragraph.text for paragraph in document.paragraphs)
+    paragraphs = []
+    output_length = 0
+    for paragraph in document.paragraphs:
+        paragraphs.append(paragraph.text)
+        output_length += len(paragraph.text) + 1
+        if _reached_limit(output_length, max_chars):
+            break
+    return "\n".join(paragraphs)
 
 
 def _process_xlsx(
@@ -70,6 +95,7 @@ def _process_xlsx(
     *,
     sheet_name: str | None = None,
     sheet_index: int | None = None,
+    max_chars: int | None = None,
     **_: Any,
 ) -> str:
     with open(file_path, "rb") as infile:
@@ -84,6 +110,7 @@ def _process_xlsx(
             worksheets = []
 
     sheet_chunks = []
+    output_length = 0
     for sheet in worksheets:
         rows = [f"[Sheet: {sheet.title}]"]
         for row in sheet.iter_rows(values_only=True):
@@ -91,7 +118,12 @@ def _process_xlsx(
             normalized = normalized.rstrip()
             if normalized:
                 rows.append(normalized)
+                output_length += len(normalized) + 1
+                if _reached_limit(output_length, max_chars):
+                    break
         sheet_chunks.append("\n".join(rows).rstrip())
+        if _reached_limit(output_length, max_chars):
+            break
     workbook.close()
     return "\n\n".join(chunk for chunk in sheet_chunks if chunk)
 
@@ -112,9 +144,10 @@ def _shape_text(shape: Any) -> list[str]:
     return chunks
 
 
-def _process_pptx(file_path: str, **_: Any) -> str:
+def _process_pptx(file_path: str, *, max_chars: int | None = None, **_: Any) -> str:
     presentation = Presentation(file_path)
     slide_chunks = []
+    output_length = 0
     for index, slide in enumerate(presentation.slides, start=1):
         chunks = [f"[Slide {index}]"]
         for shape in slide.shapes:
@@ -132,6 +165,9 @@ def _process_pptx(file_path: str, **_: Any) -> str:
         slide_text = "\n".join(chunk for chunk in chunks if chunk).rstrip()
         if slide_text != f"[Slide {index}]":
             slide_chunks.append(slide_text)
+            output_length += len(slide_text) + 2
+            if _reached_limit(output_length, max_chars):
+                break
     return "\n\n".join(slide_chunks)
 
 
@@ -166,6 +202,7 @@ def extract_text(
     page_to: int | None = None,
     sheet_name: str | None = None,
     sheet_index: int | None = None,
+    max_chars: int | None = None,
 ) -> str:
     """
     Extract text content from supported files. Falls back to textract (when available)
@@ -185,6 +222,7 @@ def extract_text(
             page_to=page_to,
             sheet_name=sheet_name,
             sheet_index=sheet_index,
+            max_chars=max_chars,
         )
 
     return _extract_with_textract(file_path, ext or None)

@@ -5,7 +5,12 @@ from typing import Optional
 
 from app.llm_kernel import ImageContent, TextContent, UserMessage
 from app.logger import gpt_logger
-from app.routes.file_routes import get_file_paths, load_file_mapping, split_file_ids_by_type
+from app.routes.file_routes import (
+    get_file_paths,
+    load_file_mapping,
+    safe_display_filename,
+    split_file_ids_by_type,
+)
 from app.utils.image_utils import detect_image_mime_type
 
 @dataclass(frozen=True)
@@ -71,7 +76,7 @@ def _render_attachment_manifest_for_model(
             continue
         file_kind = "image" if file_id in image_file_id_set else "document"
         lines.append(
-            f"- name: {item.get('filename')} | type: {file_kind} | file_id: {file_id}"
+            f"- name: {safe_display_filename(item.get('filename'))} | type: {file_kind} | file_id: {file_id}"
         )
     return "\n".join(lines) + "\n"
 

@@ -1,16 +1,16 @@
+import asyncio
 import time
 import os
 import uuid
+import zipfile
 from pathlib import Path
 from apscheduler.schedulers.background import BackgroundScheduler
 from ..utils import extract_text
-from fastapi import APIRouter, Request, Depends, File, UploadFile, HTTPException, status, Form
+from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, status, Form
 from fastapi.responses import JSONResponse, FileResponse
 from datetime import datetime, timezone
-import mimetypes
 from app.auth.auth_routes import get_current_user
 from app.logger import gpt_logger
-from app.base_config import model_config
 from app.gpts.config_gpts import gpts, refresh_gpts
 from app.utils.model_tool import (
     MODEL_NAME_INSTRUCT,
@@ -19,23 +19,40 @@ from app.utils.model_tool import (
 )
 from app.utils.image_utils import detect_image_dimensions_from_bytes, is_image_file
 from app.storage.business_store import (
-    count_file_mappings,
+    FileUploadQuotaExceeded,
     delete_file_mapping,
+    distributed_task_lock,
     get_file_mapping,
     insert_file_mapping,
+    list_admin_model_configs,
     list_file_mappings,
+    release_file_upload_slot,
+    reserve_file_upload_slot,
 )
 from app.storage.object_store import (
     delete_object,
     ensure_local_path,
     local_cache_path,
-    store_bytes,
+    store_file,
 )
 
 router = APIRouter(prefix="/api", tags=["auth"])
 
 DOCUMENT_EXTENSIONS = {"txt", "md", "csv", "pdf", "doc", "docx", "xlsx", "pptx"}
 IMAGE_EXTENSIONS = {"jpg", "jpeg", "png"}
+SAFE_CONTENT_TYPES = {
+    ".txt": "text/plain",
+    ".md": "text/markdown",
+    ".csv": "text/csv",
+    ".pdf": "application/pdf",
+    ".doc": "application/msword",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+}
 
 MODEL_UPLOAD_RULES = {
     "auto": {"documents": True, "images": True},
@@ -47,28 +64,83 @@ FILE_LIFETIME_DAYS = 7  # 可配置的过期时间，单位为天
 DEFAULT_UPLOAD_MAX_BYTES = 10 * 1024 * 1024
 DEFAULT_IMAGE_MAX_BYTES = 8 * 1024 * 1024
 DEFAULT_MAX_ACTIVE_FILES = 2000
+DEFAULT_MAX_ACTIVE_FILES_PER_USER = 200
+DEFAULT_MAX_CHAT_ATTACHMENTS = 10
+DEFAULT_MAX_CHAT_ATTACHMENT_BYTES = 30 * 1024 * 1024
+DEFAULT_MAX_FILE_IDS_FIELD_CHARS = 2048
+DEFAULT_MAX_ATTACHMENT_TEXT_CHARS = 100_000
+DEFAULT_EXTRACTION_TIMEOUT_SECONDS = 60
+DEFAULT_MAX_CONCURRENT_EXTRACTIONS = 4
+DEFAULT_OFFICE_MAX_ENTRIES = 2000
+DEFAULT_OFFICE_MAX_UNCOMPRESSED_BYTES = 100 * 1024 * 1024
+DEFAULT_OFFICE_MAX_COMPRESSION_RATIO = 100
+DEFAULT_UPLOAD_REQUEST_OVERHEAD_BYTES = 1024 * 1024
+DEFAULT_MAX_UPLOAD_FILENAME_CHARS = 255
+DEFAULT_MAX_MODEL_ID_CHARS = 200
+UPLOAD_READ_CHUNK_BYTES = 1024 * 1024
 DEFAULT_IMAGE_MAX_WIDTH = 4096
 DEFAULT_IMAGE_MAX_HEIGHT = 4096
 DEFAULT_IMAGE_MAX_PIXELS = 12_000_000
+_EXTRACTION_SEMAPHORE = asyncio.Semaphore(DEFAULT_MAX_CONCURRENT_EXTRACTIONS)
+_UPLOAD_SEMAPHORE = asyncio.Semaphore(4)
 
 
-def _get_gptassistant_model_ids():
+def _upload_rule_from_types(upload_types: object) -> dict[str, bool]:
+    normalized_types = upload_types if isinstance(upload_types, list) else []
+    return {
+        "documents": "document" in normalized_types,
+        "images": "image" in normalized_types,
+    }
+
+
+def _intersect_upload_rules(first: dict[str, bool], second: dict[str, bool]) -> dict[str, bool]:
+    return {
+        "documents": first["documents"] and second["documents"],
+        "images": first["images"] and second["images"],
+    }
+
+
+def _get_gptassistant_upload_rule(model_id: str) -> dict[str, bool] | None:
     refresh_gpts()
     assistant_config = gpts.get("gptassistant", {})
-    return {
-        item["id"]
-        for item in assistant_config.get("models", [])
-        if isinstance(item, dict) and isinstance(item.get("id"), str)
-    }
+    if not assistant_config.get("file_upload_enabled", False):
+        return {"documents": False, "images": False}
+    global_rule = _upload_rule_from_types(assistant_config.get("upload_file_types"))
 
-
-def _get_gptassistant_upload_rule():
-    assistant_config = gpts.get("gptassistant", {})
-    upload_types = assistant_config.get("upload_file_types", [])
-    return {
-        "documents": "document" in upload_types,
-        "images": "image" in upload_types,
-    }
+    base_model = next(
+        (
+            item
+            for item in assistant_config.get("models", [])
+            if isinstance(item, dict) and item.get("id") == model_id
+        ),
+        None,
+    )
+    admin_model = next(
+        (
+            item
+            for item in list_admin_model_configs()
+            if isinstance(item, dict) and item.get("model_id") == model_id
+        ),
+        None,
+    )
+    if admin_model is not None and not admin_model.get("enabled", False):
+        return None
+    if admin_model is not None and isinstance(admin_model.get("allowed_upload_types"), list):
+        return _intersect_upload_rules(
+            global_rule,
+            _upload_rule_from_types(admin_model["allowed_upload_types"]),
+        )
+    if base_model is not None and isinstance(base_model.get("upload_file_types"), list):
+        return _intersect_upload_rules(
+            global_rule,
+            _upload_rule_from_types(base_model["upload_file_types"]),
+        )
+    if base_model is not None or admin_model is not None:
+        return global_rule
+    if model_id in MODEL_UPLOAD_RULES:
+        compatibility_rule = MODEL_UPLOAD_RULES[model_id]
+        return _intersect_upload_rules(global_rule, compatibility_rule)
+    return None
 
 
 def _get_gptassistant_upload_limits():
@@ -82,18 +154,48 @@ def _get_gptassistant_upload_limits():
         "upload_max_bytes": positive_int("upload_max_bytes", DEFAULT_UPLOAD_MAX_BYTES),
         "image_max_bytes": positive_int("image_max_bytes", DEFAULT_IMAGE_MAX_BYTES),
         "max_active_files": positive_int("max_active_files", DEFAULT_MAX_ACTIVE_FILES),
+        "max_active_files_per_user": positive_int(
+            "max_active_files_per_user",
+            DEFAULT_MAX_ACTIVE_FILES_PER_USER,
+        ),
+        "max_chat_attachments": positive_int("max_chat_attachments", DEFAULT_MAX_CHAT_ATTACHMENTS),
+        "max_chat_attachment_bytes": positive_int(
+            "max_chat_attachment_bytes",
+            DEFAULT_MAX_CHAT_ATTACHMENT_BYTES,
+        ),
+        "max_attachment_text_chars": positive_int(
+            "max_attachment_text_chars",
+            DEFAULT_MAX_ATTACHMENT_TEXT_CHARS,
+        ),
+        "extraction_timeout_seconds": positive_int(
+            "extraction_timeout_seconds",
+            DEFAULT_EXTRACTION_TIMEOUT_SECONDS,
+        ),
+        "office_max_entries": positive_int("office_max_entries", DEFAULT_OFFICE_MAX_ENTRIES),
+        "office_max_uncompressed_bytes": positive_int(
+            "office_max_uncompressed_bytes",
+            DEFAULT_OFFICE_MAX_UNCOMPRESSED_BYTES,
+        ),
+        "office_max_compression_ratio": positive_int(
+            "office_max_compression_ratio",
+            DEFAULT_OFFICE_MAX_COMPRESSION_RATIO,
+        ),
         "image_max_width": positive_int("image_max_width", DEFAULT_IMAGE_MAX_WIDTH),
         "image_max_height": positive_int("image_max_height", DEFAULT_IMAGE_MAX_HEIGHT),
         "image_max_pixels": positive_int("image_max_pixels", DEFAULT_IMAGE_MAX_PIXELS),
     }
 
 
+def get_upload_request_max_bytes() -> int:
+    limits = _get_gptassistant_upload_limits()
+    return max(limits["upload_max_bytes"], limits["image_max_bytes"]) + DEFAULT_UPLOAD_REQUEST_OVERHEAD_BYTES
+
+
 # 判断文件扩展名是否允许
 def _get_allowed_extensions_by_model(model_id: str):
-    if model_id in _get_gptassistant_model_ids():
-        model_rule = _get_gptassistant_upload_rule()
-    else:
-        model_rule = MODEL_UPLOAD_RULES.get(model_id) or MODEL_UPLOAD_RULES["auto"]
+    model_rule = _get_gptassistant_upload_rule(model_id)
+    if model_rule is None:
+        return set(), {}
     allowed_extensions = set()
     if model_rule.get("documents"):
         allowed_extensions.update(DOCUMENT_EXTENSIONS)
@@ -110,26 +212,54 @@ def allowed_file(filename, model_id: str):
     return extension in allowed_extensions, model_rule
 
 
-def _validate_upload_limits(filename: str, file_content: bytes, model_rule: dict) -> None:
-    limits = _get_gptassistant_upload_limits()
-    current_file_count = count_file_mappings("gptassistant")
-    if current_file_count >= limits["max_active_files"]:
-        gpt_logger.warning(
-            "upload_validation_failed reason=max_active_files filename=%s current_file_count=%s limit=%s model_rule=%s",
-            filename,
-            current_file_count,
-            limits["max_active_files"],
-            model_rule,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Too many uploaded files. Limit: {limits['max_active_files']}",
-        )
-
-    file_size = len(file_content)
+def _get_upload_max_bytes(filename: str, model_rule: dict, limits: dict) -> int:
     extension = os.path.splitext(filename)[1].lower()
     is_image = extension.lstrip(".") in IMAGE_EXTENSIONS and model_rule.get("images")
-    max_bytes = limits["image_max_bytes"] if is_image else limits["upload_max_bytes"]
+    return limits["image_max_bytes"] if is_image else limits["upload_max_bytes"]
+
+
+async def _scan_upload(
+    file: UploadFile,
+    filename: str,
+    model_rule: dict,
+    limits: dict,
+) -> tuple[int, bytes | None]:
+    max_bytes = _get_upload_max_bytes(filename, model_rule, limits)
+    extension = os.path.splitext(filename)[1].lower()
+    is_image = extension.lstrip(".") in IMAGE_EXTENSIONS and model_rule.get("images")
+    image_content = bytearray() if is_image else None
+    file_size = 0
+    while True:
+        chunk = await file.read(UPLOAD_READ_CHUNK_BYTES)
+        if not chunk:
+            break
+        file_size += len(chunk)
+        if file_size > max_bytes:
+            gpt_logger.warning(
+                "upload_validation_failed reason=file_too_large filename=%s file_size_over=%s max_bytes=%s",
+                filename,
+                file_size,
+                max_bytes,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                detail=f"File too large. Limit: {max_bytes} bytes",
+            )
+        if image_content is not None:
+            image_content.extend(chunk)
+    return file_size, bytes(image_content) if image_content is not None else None
+
+
+def _validate_upload_content(
+    filename: str,
+    file_size: int,
+    image_content: bytes | None,
+    model_rule: dict,
+    limits: dict,
+) -> None:
+    extension = os.path.splitext(filename)[1].lower()
+    is_image = extension.lstrip(".") in IMAGE_EXTENSIONS and model_rule.get("images")
+    max_bytes = _get_upload_max_bytes(filename, model_rule, limits)
     if file_size > max_bytes:
         gpt_logger.warning(
             "upload_validation_failed reason=file_too_large filename=%s file_size=%s max_bytes=%s is_image=%s model_rule=%s",
@@ -147,7 +277,7 @@ def _validate_upload_limits(filename: str, file_content: bytes, model_rule: dict
     if not is_image:
         return
 
-    dimensions = detect_image_dimensions_from_bytes(file_content)
+    dimensions = detect_image_dimensions_from_bytes(image_content or b"")
     if not dimensions:
         gpt_logger.warning(
             "upload_validation_failed reason=image_dimensions_unreadable filename=%s file_size=%s model_rule=%s",
@@ -191,6 +321,67 @@ def _validate_upload_limits(filename: str, file_content: bytes, model_rule: dict
             ),
         )
 
+
+def _validate_office_archive(content_file, filename: str, limits: dict) -> None:
+    extension = os.path.splitext(filename)[1].lower()
+    if extension not in {".docx", ".xlsx", ".pptx"}:
+        return
+    current_position = content_file.tell()
+    try:
+        content_file.seek(0)
+        with zipfile.ZipFile(content_file) as archive:
+            entries = archive.infolist()
+            total_uncompressed = sum(item.file_size for item in entries)
+            total_compressed = sum(item.compress_size for item in entries)
+    except (OSError, zipfile.BadZipFile) as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid Office document") from exc
+    finally:
+        content_file.seek(current_position)
+
+    compression_ratio = total_uncompressed / max(total_compressed, 1)
+    expected_prefix = {
+        ".docx": "word/",
+        ".xlsx": "xl/",
+        ".pptx": "ppt/",
+    }[extension]
+    if (
+        not any(item.filename.startswith(expected_prefix) for item in entries)
+        or "[Content_Types].xml" not in {item.filename for item in entries}
+        or len(entries) > limits["office_max_entries"]
+        or total_uncompressed > limits["office_max_uncompressed_bytes"]
+        or compression_ratio > limits["office_max_compression_ratio"]
+    ):
+        gpt_logger.warning(
+            "upload_validation_failed reason=unsafe_office_archive filename=%s entries=%s total_uncompressed=%s total_compressed=%s compression_ratio=%.1f",
+            filename,
+            len(entries),
+            total_uncompressed,
+            total_compressed,
+            compression_ratio,
+        )
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Office document is too complex")
+
+
+def _validate_file_signature(content_file, filename: str, image_content: bytes | None) -> None:
+    extension = os.path.splitext(filename)[1].lower()
+    if extension in {".jpg", ".jpeg", ".png"}:
+        if not image_content or not detect_image_dimensions_from_bytes(image_content):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid image file")
+        return
+    current_position = content_file.tell()
+    try:
+        content_file.seek(0)
+        header = content_file.read(4096)
+    finally:
+        content_file.seek(current_position)
+    if extension == ".pdf" and b"%PDF-" not in header[:1024]:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid PDF document")
+    if extension == ".doc" and not header.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid DOC document")
+    if extension in {".txt", ".md", ".csv"} and b"\x00" in header:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid text document")
+
+
 def load_gid_file_mapping(gid):
     return list_file_mappings(gid)
 
@@ -204,6 +395,31 @@ def _normalize_file_extension(value: str | None) -> str:
     if extension and not extension.startswith("."):
         extension = f".{extension}"
     return extension
+
+
+def safe_content_type(filename: str | None = None, file_extension: str | None = None) -> str:
+    extension = _normalize_file_extension(file_extension or os.path.splitext(filename or "")[1])
+    return SAFE_CONTENT_TYPES.get(extension, "application/octet-stream")
+
+
+def safe_display_filename(filename: object, max_chars: int = 200) -> str:
+    normalized = "".join(
+        character if character.isprintable() and character not in "\r\n" else " "
+        for character in str(filename or "")
+    )
+    return " ".join(normalized.split())[:max_chars] or "attachment"
+
+
+def normalize_upload_filename(filename: str) -> str:
+    basename = filename.replace("\\", "/").rsplit("/", 1)[-1]
+    if (
+        not basename
+        or len(basename) > DEFAULT_MAX_UPLOAD_FILENAME_CHARS
+        or any(not character.isprintable() or character in "\r\n" for character in basename)
+        or "." not in basename
+    ):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid upload filename")
+    return basename
 
 
 def classify_file_kind(file_path: str, file_extension: str | None = None) -> str:
@@ -225,15 +441,13 @@ def describe_file_mapping_entry(file_id: str, entry: dict | None) -> dict:
     kind = classify_file_kind(local_path, file_extension) if local_path else "unknown"
     size_bytes = os.path.getsize(local_path) if exists else entry.get("sizeBytes")
     size_kb = round(size_bytes / 1024, 1) if isinstance(size_bytes, int) else None
-    mime_type, _ = mimetypes.guess_type(entry.get("filename") or local_path or "")
     return {
         "file_id": file_id,
         "found": True,
-        "filename": entry.get("filename"),
+        "filename": safe_display_filename(entry.get("filename")),
         "file_extension": file_extension,
-        "path": local_path,
         "upload_time": entry.get("uploadTime"),
-        "mime_type": mime_type or "application/octet-stream",
+        "mime_type": safe_content_type(entry.get("filename"), file_extension),
         "kind": kind,
         "exists": exists,
         "size_bytes": size_bytes,
@@ -258,13 +472,80 @@ def _get_mapping_or_404(file_id: str, gid: str | None = None) -> dict:
     return entry
 
 
+def _is_file_owned_by_user(entry: dict, user: dict) -> bool:
+    owner_user_id = str(entry.get("ownerUserId") or "").strip()
+    owner_user_email = str(entry.get("ownerUserEmail") or "").strip()
+    user_id = str(user.get("sub") or "").strip()
+    user_email = str(user.get("email") or "").strip()
+    if owner_user_id:
+        return bool(user_id and owner_user_id == user_id)
+    if owner_user_email:
+        return bool(user_email and owner_user_email == user_email)
+    return False
+
+
+def get_owned_file_mapping_or_404(file_id: str, user: dict, gid: str | None = None) -> dict:
+    entry = _get_mapping_or_404(file_id, gid)
+    if not _is_file_owned_by_user(entry, user):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found")
+    return entry
+
+
+def ensure_file_ids_owned_by_user(file_ids: str | None, user: dict) -> str | None:
+    if not file_ids:
+        return None
+    if len(file_ids) > DEFAULT_MAX_FILE_IDS_FIELD_CHARS:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Attachment file ID list is too long",
+        )
+    normalized_file_ids = list(
+        dict.fromkeys(file_id.strip() for file_id in file_ids.split(",") if file_id.strip())
+    )
+    max_attachments = _get_gptassistant_upload_limits()["max_chat_attachments"]
+    if len(normalized_file_ids) > max_attachments:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Too many attachments. Limit: {max_attachments}",
+        )
+    total_bytes = 0
+    for current_file_id in normalized_file_ids:
+        entry = get_owned_file_mapping_or_404(current_file_id, user)
+        total_bytes += int(entry.get("sizeBytes") or 0)
+    max_total_bytes = _get_gptassistant_upload_limits()["max_chat_attachment_bytes"]
+    if total_bytes > max_total_bytes:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Attachments are too large. Combined limit: {max_total_bytes} bytes",
+        )
+    return ",".join(normalized_file_ids) or None
+
+
+async def _store_upload_object(**kwargs) -> dict[str, object]:
+    store_task = asyncio.create_task(asyncio.to_thread(store_file, **kwargs))
+    try:
+        return await asyncio.shield(store_task)
+    except asyncio.CancelledError:
+        object_meta = await store_task
+        try:
+            await asyncio.to_thread(delete_object, {"file_id": kwargs["file_id"], **object_meta})
+        except Exception:
+            gpt_logger.exception(
+                "cancelled_upload_orphan_object_delete_failed file_id=%s storage_backend=%s object_key=%s",
+                kwargs["file_id"],
+                object_meta.get("storage_backend"),
+                object_meta.get("object_key"),
+            )
+        raise
+
+
 @router.post("/upload")
 async def upload_file(
     file: UploadFile = File(...),
     model_id: str = Form("auto"),
     user: dict = Depends(get_current_user),
 ):
-    gpt_logger.info(f"path=upload_file user={user['email']} at={time.strftime('%Y-%m-%d %H:%M:%S')}")
+    gpt_logger.info(f"path=upload_file user={user.get('email', '')} at={time.strftime('%Y-%m-%d %H:%M:%S')}")
 
     if not file:
         raise HTTPException(
@@ -277,6 +558,16 @@ async def upload_file(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No selected file"
         )
+
+    file.filename = normalize_upload_filename(file.filename)
+    model_id = model_id.strip()
+    if not model_id or len(model_id) > DEFAULT_MAX_MODEL_ID_CHARS or not model_id.isprintable():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid model ID")
+
+    owner_user_id = str(user.get("sub") or "").strip() or None
+    owner_user_email = str(user.get("email") or "").strip() or None
+    if not owner_user_id and not owner_user_email:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Authenticated user identity is required")
 
     is_allowed, model_rule = allowed_file(file.filename, model_id)
     if not is_allowed:
@@ -302,38 +593,68 @@ async def upload_file(
             detail=f"File type not allowed for model '{model_id}'. Allowed types: {', '.join(allowed_types)}"
         )
 
+    object_meta: dict[str, object] | None = None
+    mapping_inserted = False
+    reservation_id: str | None = None
     try:
         file_id = str(uuid.uuid4())
         file_extension = os.path.splitext(file.filename)[1]
-        file_content = await file.read()
+        limits = _get_gptassistant_upload_limits()
+        try:
+            reservation_id = reserve_file_upload_slot(
+                "gptassistant",
+                owner_user_id=owner_user_id,
+                owner_user_email=owner_user_email,
+                max_user_files=limits["max_active_files_per_user"],
+                max_system_files=limits["max_active_files"],
+            )
+        except FileUploadQuotaExceeded as exc:
+            if exc.scope == "user":
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    f"Too many uploaded files for this user. Limit: {limits['max_active_files_per_user']}",
+                ) from exc
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "File upload capacity is temporarily unavailable",
+            ) from exc
+        async with _UPLOAD_SEMAPHORE:
+            file_size, image_content = await _scan_upload(file, file.filename, model_rule, limits)
+            _validate_upload_content(file.filename, file_size, image_content, model_rule, limits)
+            await file.seek(0)
+            await asyncio.to_thread(_validate_file_signature, file.file, file.filename, image_content)
+            await asyncio.to_thread(_validate_office_archive, file.file, file.filename, limits)
+            await file.seek(0)
+            object_meta = await _store_upload_object(
+                file_id=file_id,
+                filename=file.filename,
+                content_file=file.file,
+                length=file_size,
+                content_type=safe_content_type(file.filename, file_extension),
+            )
         gpt_logger.info(
             "upload_request_received model_id=%s filename=%s content_type=%s extension=%s file_size=%s model_rule=%s",
             model_id,
             file.filename,
             file.content_type,
             file_extension.lower(),
-            len(file_content),
+            file_size,
             model_rule,
-        )
-        _validate_upload_limits(file.filename, file_content, model_rule)
-
-        object_meta = store_bytes(
-            file_id=file_id,
-            filename=file.filename,
-            content=file_content,
-            content_type=file.content_type,
         )
 
         insert_file_mapping(
             file_id,
             filename=file.filename,
             file_extension=file_extension,
-            content_type=file.content_type,
+            content_type=safe_content_type(file.filename, file_extension),
             bucket=str(object_meta["bucket"]),
             object_key=str(object_meta["object_key"]),
             storage_backend=str(object_meta["storage_backend"]),
             size_bytes=int(object_meta["size_bytes"]),
+            owner_user_id=owner_user_id,
+            owner_user_email=owner_user_email,
         )
+        mapping_inserted = True
         gpt_logger.info(
             "upload_request_succeeded model_id=%s filename=%s file_id=%s storage_backend=%s object_key=%s",
             model_id,
@@ -355,6 +676,22 @@ async def upload_file(
         )
         raise
     except Exception as e:
+        if object_meta is not None and not mapping_inserted:
+            try:
+                delete_object({"file_id": file_id, **object_meta})
+                gpt_logger.info(
+                    "upload_orphan_object_deleted file_id=%s storage_backend=%s object_key=%s",
+                    file_id,
+                    object_meta.get("storage_backend"),
+                    object_meta.get("object_key"),
+                )
+            except Exception:
+                gpt_logger.exception(
+                    "upload_orphan_object_delete_failed file_id=%s storage_backend=%s object_key=%s",
+                    file_id,
+                    object_meta.get("storage_backend"),
+                    object_meta.get("object_key"),
+                )
         gpt_logger.exception(
             "upload_request_failed_unexpected model_id=%s filename=%s content_type=%s error=%s",
             model_id,
@@ -364,25 +701,33 @@ async def upload_file(
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"File save failed: {str(e)}"
+            detail="File upload failed",
         )
+    finally:
+        try:
+            release_file_upload_slot(reservation_id)
+        except Exception:
+            gpt_logger.exception(
+                "upload_reservation_release_failed reservation_id=%s",
+                reservation_id,
+            )
 
 
 # 通过文件ID下载文件
 @router.get("/g/{gid}/file/{file_id}")
 async def get_file_by_gid(gid: str, file_id: str, user: dict = Depends(get_current_user)):
     gpt_logger.info(f"path=get_file_by_gid user={user['email']} at={time.strftime('%Y-%m-%d %H:%M:%S')}")
-    entry = _get_mapping_or_404(file_id, gid)
+    entry = get_owned_file_mapping_or_404(file_id, user, gid)
     file_path = _ensure_entry_local_path(file_id, entry)
     if not file_path or not os.path.isfile(file_path):
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="File not exist")
 
-    mime_type = entry.get("contentType") or mimetypes.guess_type(entry["filename"])[0] or "application/octet-stream"
+    mime_type = safe_content_type(entry.get("filename"), entry.get("fileExtension"))
 
     return FileResponse(
         file_path,
         media_type=mime_type,
-        filename=entry['filename']
+        filename=safe_display_filename(entry["filename"]),
     )
 
 
@@ -390,17 +735,17 @@ async def get_file_by_gid(gid: str, file_id: str, user: dict = Depends(get_curre
 @router.get("/file/{file_id}")
 async def get_file(file_id: str, user: dict = Depends(get_current_user)):
     gpt_logger.info(f"path=get_file user={user['email']} at={time.strftime('%Y-%m-%d %H:%M:%S')}")
-    entry = _get_mapping_or_404(file_id)
+    entry = get_owned_file_mapping_or_404(file_id, user)
     file_path = _ensure_entry_local_path(file_id, entry)
     if not file_path or not os.path.isfile(file_path):
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="File not exist")
 
-    mime_type = entry.get("contentType") or mimetypes.guess_type(entry["filename"])[0] or "application/octet-stream"
+    mime_type = safe_content_type(entry.get("filename"), entry.get("fileExtension"))
 
     return FileResponse(
         file_path,
         media_type=mime_type,
-        filename=entry['filename']
+        filename=safe_display_filename(entry["filename"]),
     )
 
 
@@ -408,35 +753,49 @@ async def get_file(file_id: str, user: dict = Depends(get_current_user)):
 @router.get("/file_name/{file_id}")
 async def get_file_name(file_id, user: dict = Depends(get_current_user)):
     gpt_logger.info(f"path=get_file_name user={user['email']} at={time.strftime('%Y-%m-%d %H:%M:%S')}")
-    entry = _get_mapping_or_404(file_id)
-    original_filename = entry['filename']
+    entry = get_owned_file_mapping_or_404(file_id, user)
+    original_filename = safe_display_filename(entry["filename"])
     return JSONResponse({"file_id": file_id, "original_filename": original_filename})
 
 
 # 删除过期文件的函数
 def delete_expired_files():
-    now = datetime.now(timezone.utc)
-    file_mapping = load_file_mapping()
+    with distributed_task_lock("file-retention-cleanup") as acquired:
+        if not acquired:
+            gpt_logger.info("expired_file_cleanup_skipped reason=lock_not_acquired")
+            return
+        now = datetime.now(timezone.utc)
+        file_mapping = load_file_mapping()
 
-    for file_id, file_data in list(file_mapping.items()):
-        upload_time_raw = str(file_data.get("uploadTime") or "")
-        try:
-            upload_time = datetime.fromisoformat(upload_time_raw.replace("Z", "+00:00"))
-        except ValueError:
-            continue
-        if (now - upload_time).total_seconds() <= FILE_LIFETIME_DAYS * 86400:
-            continue
-        try:
-            delete_object({"file_id": file_id, **file_data})
-        except Exception:
-            pass
-        cache_path = local_cache_path({"file_id": file_id, **file_data})
-        if cache_path and Path(cache_path).exists():
+        for file_id, file_data in list(file_mapping.items()):
             try:
-                Path(cache_path).unlink()
-            except OSError:
-                pass
-        delete_file_mapping(file_id)
+                upload_time_raw = str(file_data.get("uploadTime") or "")
+                upload_time = datetime.fromisoformat(upload_time_raw.replace("Z", "+00:00"))
+                if upload_time.tzinfo is None:
+                    upload_time = upload_time.replace(tzinfo=timezone.utc)
+                if (now - upload_time).total_seconds() <= FILE_LIFETIME_DAYS * 86400:
+                    continue
+                delete_object({"file_id": file_id, **file_data})
+                cache_path = local_cache_path({"file_id": file_id, **file_data})
+                if cache_path and Path(cache_path).exists():
+                    try:
+                        Path(cache_path).unlink()
+                    except OSError:
+                        pass
+                delete_file_mapping(file_id)
+            except ValueError:
+                gpt_logger.warning(
+                    "expired_file_invalid_upload_time file_id=%s upload_time=%s",
+                    file_id,
+                    file_data.get("uploadTime"),
+                )
+            except Exception:
+                gpt_logger.exception(
+                    "expired_file_cleanup_failed file_id=%s storage_backend=%s object_key=%s",
+                    file_id,
+                    file_data.get("storageBackend"),
+                    file_data.get("objectKey"),
+                )
 
 
 _cleanup_scheduler: BackgroundScheduler | None = None
@@ -463,13 +822,16 @@ def stop_file_retention_scheduler() -> None:
 @router.get("/extract_text_from_file/{file_id}")
 async def extract_text_from_file(file_id: str, user: dict = Depends(get_current_user)):
     gpt_logger.info(f"path=extract_text_from_file user={user['email']} at={time.strftime('%Y-%m-%d %H:%M:%S')}")
-    entry = _get_mapping_or_404(file_id)
+    entry = get_owned_file_mapping_or_404(file_id, user)
     file_path = _ensure_entry_local_path(file_id, entry)
     if not file_path or not os.path.exists(file_path):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "FilePath not found")
 
     extension = entry['fileExtension']
-    result = await extract_text.extract_text_from_file(file_path, extension)
+    result = await _extract_text_with_limits(file_path, extension)
+    max_chars = _get_gptassistant_upload_limits()["max_attachment_text_chars"]
+    if len(result) > max_chars:
+        result = result[:max_chars].rstrip() + "\n\n[已截断]"
     return JSONResponse({"text": result})
 
 
@@ -533,6 +895,8 @@ async def extract_text_from_file_ids(
     sheet_name: str | None = None,
     sheet_index: int | None = None,
 ):
+    if max_chars is None:
+        max_chars = _get_gptassistant_upload_limits()["max_attachment_text_chars"]
     file_mapping = load_file_mapping()
     content = "\n[上传文件内容]:\n"
     gpt_logger.info("extract_text_from_file_ids_start file_ids=%s", file_ids)
@@ -543,7 +907,7 @@ async def extract_text_from_file_ids(
             continue
 
         file_path = _ensure_entry_local_path(file_id, file_mapping[file_id])
-        file_name = file_mapping[file_id]['filename']
+        file_name = safe_display_filename(file_mapping[file_id]["filename"])
         if not file_path or not os.path.exists(file_path):
             print(f"file_path:{file_path} is not found")
             continue
@@ -558,7 +922,7 @@ async def extract_text_from_file_ids(
             file_path,
             extension,
         )
-        result = await extract_text.extract_text_from_file(
+        result = await _extract_text_with_limits(
             file_path,
             extension,
             page=page,
@@ -588,41 +952,35 @@ async def extract_text_from_file_ids(
     return content
 
 
-# TODO: 目前为了演示，临时增加的审批表文件获取路由；日后应当在上传功能完善后归到其中处理
-@router.get("/file/{gid}/{file_path:path}")
-async def get_gid_file(gid: str, file_path: str, request: Request, user: dict = Depends(get_current_user)):
-    arrs = file_path.split(".")
-    if len(arrs) > 1:
-        suffix = arrs[1]
-    else:
-        suffix = "pdf"
-    file_dir = f"{model_config.FILE_BASE}/{gid}/{suffix}/"
+async def _extract_text_with_limits(file_path: str, extension: str, **kwargs) -> str:
+    limits = _get_gptassistant_upload_limits()
+    timeout_seconds = limits["extraction_timeout_seconds"]
+    try:
+        async with _EXTRACTION_SEMAPHORE:
+            if _normalize_file_extension(extension) in {".docx", ".xlsx", ".pptx"}:
+                def validate_existing_office_file() -> None:
+                    with open(file_path, "rb") as content_file:
+                        _validate_office_archive(content_file, f"attachment{extension}", limits)
 
-    file_path = arrs[0]
-
-    gpt_logger.info(f"path=get_file/{gid} user={user['email']} at={time.strftime('%Y-%m-%d %H:%M:%S')}")
-    file_full_path = file_dir + file_path + "." + suffix
-    print("===="+file_full_path)
-
-    if not os.path.isfile(file_full_path):
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="File not exist")
-
-    file_name = file_path + "." + suffix
-
-    # 获取文件的 MIME 类型
-    mime_type, _ = mimetypes.guess_type(file_full_path)
-    if mime_type is None:
-        mime_type = "application/octet-stream"
-
-    # 自定义 header，让浏览器直接打开而非下载
-    headers = {
-        "Content-Disposition": f'inline',
-        "Accept-Ranges": "bytes",
-    }
-
-    return FileResponse(
-        file_full_path,
-        media_type=mime_type,
-        headers=headers,
-        filename=file_name
-    )
+                await asyncio.to_thread(validate_existing_office_file)
+            return await asyncio.wait_for(
+                extract_text.extract_text_from_file(
+                    file_path,
+                    extension,
+                    timeout_seconds=timeout_seconds,
+                    max_chars=limits["max_attachment_text_chars"],
+                    **kwargs,
+                ),
+                timeout=timeout_seconds + 1,
+            )
+    except asyncio.TimeoutError as exc:
+        gpt_logger.error(
+            "file_text_extract_timed_out path=%s extension=%s timeout_seconds=%s",
+            file_path,
+            extension,
+            timeout_seconds,
+        )
+        raise HTTPException(
+            status.HTTP_504_GATEWAY_TIMEOUT,
+            "File text extraction timed out",
+        ) from exc

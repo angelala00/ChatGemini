@@ -10,6 +10,7 @@ from app.auth.auth_routes import router as auth_router
 from app.routes.chat_routes import router as chat_router
 from app.routes.chat_trace_routes import router as trace_router
 from app.routes.file_routes import (
+    get_upload_request_max_bytes,
     router as file_router,
     start_file_retention_scheduler,
     stop_file_retention_scheduler,
@@ -27,6 +28,7 @@ from app.storage.business_store import business_storage_health, close_business_s
 from app.storage.config_validation import validate_storage_configuration
 from app.storage.object_store import cleanup_local_cache
 from app.storage.object_store import init_object_store, object_storage_health
+from app.middleware.upload_body_limit import UploadBodyLimitMiddleware
 from fastapi.middleware.cors import CORSMiddleware
 from app.base_config import model_config
 
@@ -44,6 +46,11 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+app.add_middleware(
+    UploadBodyLimitMiddleware,
+    max_bytes_provider=get_upload_request_max_bytes,
 )
 
 

@@ -88,6 +88,16 @@ class AttachmentToolTests(unittest.TestCase):
         )
         execute_attachment_list_mock.assert_called_once_with(["file-1"])
 
+    def test_attachment_tool_rejects_file_outside_current_request(self):
+        with self.assertRaisesRegex(ValueError, "current request"):
+            self._run_async(
+                execute_attachment_tool(
+                    "document_list",
+                    {"file_ids": ["other-user-file"]},
+                    available_file_ids=["file-1"],
+                )
+            )
+
     @patch("app.attachments.tools.describe_file_mapping_entry")
     @patch("app.attachments.tools.load_file_mapping")
     def test_document_list_uses_richer_file_metadata(self, load_file_mapping_mock, describe_file_mapping_entry_mock):
@@ -219,6 +229,79 @@ class AttachmentToolTests(unittest.TestCase):
             sheet_index=None,
         )
         self.assertEqual(result.details["max_chars"], DEFAULT_ATTACHMENT_TOOL_MAX_CHARS)
+
+    @patch("app.attachments.tools._get_gptassistant_upload_limits")
+    @patch("app.attachments.tools.extract_text_from_file_ids")
+    @patch("app.attachments.tools.resolve_attachment_selection")
+    def test_document_read_text_clamps_max_chars_to_system_limit(
+        self,
+        resolve_attachment_selection_mock,
+        extract_text_from_file_ids_mock,
+        upload_limits_mock,
+    ):
+        resolve_attachment_selection_mock.return_value = AttachmentSelection(
+            image_file_ids=None,
+            document_file_ids="file-1",
+            image_paths=[],
+            document_paths=["/tmp/demo.txt"],
+        )
+        extract_text_from_file_ids_mock.return_value = "hello"
+        upload_limits_mock.return_value = {"max_attachment_text_chars": 1000}
+
+        result = self._run_async(
+            execute_attachment_tool(
+                "document_read_text",
+                {"max_chars": 1_000_000},
+                available_file_ids=["file-1"],
+            )
+        )
+
+        extract_text_from_file_ids_mock.assert_called_once_with(
+            "file-1",
+            max_chars=1000,
+            page=None,
+            page_from=None,
+            page_to=None,
+            sheet_name=None,
+            sheet_index=None,
+        )
+        self.assertEqual(result.details["max_chars"], 1000)
+
+    @patch("app.attachments.tools.extract_text_from_file_ids")
+    @patch("app.attachments.tools.resolve_attachment_selection")
+    def test_document_read_text_deduplicates_repeated_file_ids(
+        self,
+        resolve_attachment_selection_mock,
+        extract_text_from_file_ids_mock,
+    ):
+        resolve_attachment_selection_mock.return_value = AttachmentSelection(
+            image_file_ids=None,
+            document_file_ids="file-1",
+            image_paths=[],
+            document_paths=["/tmp/demo.txt"],
+        )
+        extract_text_from_file_ids_mock.return_value = "hello"
+
+        self._run_async(
+            execute_attachment_tool(
+                "document_read_text",
+                {"file_ids": ["file-1", "file-1", " file-1 "]},
+                available_file_ids=["file-1"],
+            )
+        )
+
+        resolve_attachment_selection_mock.assert_called_once_with("file-1")
+        extract_text_from_file_ids_mock.assert_called_once()
+
+    def test_attachment_tool_rejects_non_string_file_ids(self):
+        with self.assertRaisesRegex(ValueError, "only strings"):
+            self._run_async(
+                execute_attachment_tool(
+                    "document_read_text",
+                    {"file_ids": ["file-1", {"file_id": "file-1"}]},
+                    available_file_ids=["file-1"],
+                )
+            )
 
     @patch("app.attachments.tools.resolve_attachment_selection")
     def test_document_read_text_rejects_conflicting_page_options(self, resolve_attachment_selection_mock):

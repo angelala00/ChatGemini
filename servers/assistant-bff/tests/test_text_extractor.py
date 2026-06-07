@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import tempfile
 import unittest
@@ -7,10 +8,37 @@ import unittest
 from openpyxl import Workbook
 from pptx import Presentation
 
+from app.utils.extract_text import _extract_document_in_process, extract_text_from_file
 from app.utils.text_extractor import extract_text
 
 
 class TextExtractorTests(unittest.TestCase):
+    def test_document_process_extracts_text_successfully(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            file_path = os.path.join(temp_dir, "notes.txt")
+            with open(file_path, "w", encoding="utf-8") as outfile:
+                outfile.write("process extraction works")
+
+            extracted = asyncio.run(
+                extract_text_from_file(
+                    file_path,
+                    ".txt",
+                    timeout_seconds=5,
+                    max_chars=100,
+                )
+            )
+
+            self.assertEqual(extracted, "process extraction works")
+
+    def test_document_process_is_terminated_on_timeout(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            file_path = os.path.join(temp_dir, "notes.txt")
+            with open(file_path, "w", encoding="utf-8") as outfile:
+                outfile.write("hello")
+
+            with self.assertRaises(TimeoutError):
+                _extract_document_in_process(file_path, ".txt", {}, 0, 100)
+
     def test_extract_xlsx_from_path_without_extension(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             workbook_path = os.path.join(temp_dir, "source.xlsx")
@@ -44,6 +72,16 @@ class TextExtractorTests(unittest.TestCase):
 
             self.assertIn("# Roadmap", extracted)
             self.assertIn("Add markdown upload", extracted)
+
+    def test_extract_text_stops_at_character_budget(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            file_path = os.path.join(temp_dir, "large.txt")
+            with open(file_path, "w", encoding="utf-8") as outfile:
+                outfile.write("a" * 10_000)
+
+            extracted = extract_text(file_path, ".txt", max_chars=100)
+
+            self.assertEqual(len(extracted), 101)
 
     def test_extract_csv_rows_as_text(self):
         with tempfile.TemporaryDirectory() as temp_dir:

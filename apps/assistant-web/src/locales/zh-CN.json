@@ -259,7 +259,8 @@
                 "type_image": "图片",
                 "upload_success": "文件已上传，可继续添加附件或直接发送",
                 "upload_failed": "文件上传失败，请稍后重试",
-                "upload_too_large": "文件上传失败，文件大小超出服务端限制"
+                "upload_too_large": "文件上传失败，文件大小超出服务端限制",
+                "too_many": "单次聊天最多添加 {{count}} 个附件"
             },
             "reasoning_toggle": {
                 "label": "思考",

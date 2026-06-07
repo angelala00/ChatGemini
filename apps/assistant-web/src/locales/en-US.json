@@ -259,7 +259,8 @@
                 "type_image": "image",
                 "upload_success": "File uploaded. Add more attachments or send directly.",
                 "upload_failed": "File upload failed. Please try again.",
-                "upload_too_large": "File upload failed because it exceeds the server size limit."
+                "upload_too_large": "File upload failed because it exceeds the server size limit.",
+                "too_many": "You can add up to {{count}} attachments per message."
             },
             "reasoning_toggle": {
                 "label": "Reason",

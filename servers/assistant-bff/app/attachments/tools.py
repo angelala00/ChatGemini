@@ -5,9 +5,9 @@ from typing import Any, Optional
 
 from app.llm_kernel import ImageContent, TextContent, ToolDefinition
 from app.routes.file_routes import (
+    _get_gptassistant_upload_limits,
     describe_file_mapping_entry,
     extract_text_from_file_ids,
-    get_file_paths,
     load_file_mapping,
 )
 
@@ -163,7 +163,13 @@ def get_attachment_tool_definitions(*, model_supports_native_images: bool) -> li
 
 
 def _join_file_ids(file_ids: list[str]) -> Optional[str]:
-    normalized = [file_id.strip() for file_id in file_ids if isinstance(file_id, str) and file_id.strip()]
+    normalized = list(
+        dict.fromkeys(
+            file_id.strip()
+            for file_id in file_ids
+            if isinstance(file_id, str) and file_id.strip()
+        )
+    )
     if not normalized:
         return None
     return ",".join(normalized)
@@ -272,7 +278,6 @@ async def _execute_attachment_load_images(file_ids: list[str]) -> AttachmentTool
         "selected_file_ids": selection.image_file_ids,
         "loaded_count": len(images),
         "requested_file_ids": joined_file_ids,
-        "paths": get_file_paths(selection.image_file_ids) or [],
     }
     if not images:
         return AttachmentToolExecutionResult(
@@ -296,6 +301,17 @@ async def execute_attachment_tool(
     else:
         raise ValueError("attachment tool file_ids must be a list of strings when provided")
 
+    if any(not isinstance(file_id, str) for file_id in file_ids):
+        raise ValueError("attachment tool file_ids must contain only strings")
+    file_ids = list(dict.fromkeys(file_id.strip() for file_id in file_ids if file_id.strip()))
+    allowed_file_ids = {
+        file_id.strip()
+        for file_id in available_file_ids
+        if isinstance(file_id, str) and file_id.strip()
+    }
+    if any(file_id not in allowed_file_ids for file_id in file_ids):
+        raise ValueError("attachment tool can only access files attached to the current request")
+
     if name in {DOCUMENT_LIST_TOOL_NAME, RESOURCE_LIST_TOOL_NAME, ATTACHMENT_LIST_TOOL_NAME}:
         return await _execute_attachment_list(file_ids)
     if name in {
@@ -305,8 +321,9 @@ async def execute_attachment_tool(
     }:
         mode = arguments.get("mode", "auto")
         max_chars = arguments.get("max_chars")
-        if not isinstance(max_chars, int) or max_chars <= 0:
+        if isinstance(max_chars, bool) or not isinstance(max_chars, int) or max_chars <= 0:
             max_chars = DEFAULT_ATTACHMENT_TOOL_MAX_CHARS
+        max_chars = min(max_chars, _get_gptassistant_upload_limits()["max_attachment_text_chars"])
         return await _execute_attachment_extract_text(
             file_ids,
             mode=mode,
