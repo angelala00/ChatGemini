@@ -47,7 +47,7 @@ class GPTAssistantModelAuthTests(unittest.IsolatedAsyncioTestCase):
     async def test_model_selection_rejects_unauthorized_requested_model(self):
         with patch.dict(chat_routes.gpts, {"gptassistant": self.assistant_config}, clear=False), patch(
             "app.routes.chat_routes.apply_admin_model_config_overrides",
-            side_effect=lambda gid, models: models,
+            side_effect=lambda gid, models, **kwargs: models,
         ), patch(
             "app.routes.chat_routes.apply_runtime_model_visibility",
             side_effect=lambda gid, models: models,
@@ -68,7 +68,7 @@ class GPTAssistantModelAuthTests(unittest.IsolatedAsyncioTestCase):
     async def test_model_selection_falls_back_to_visible_default(self):
         with patch.dict(chat_routes.gpts, {"gptassistant": self.assistant_config}, clear=False), patch(
             "app.routes.chat_routes.apply_admin_model_config_overrides",
-            side_effect=lambda gid, models: models,
+            side_effect=lambda gid, models, **kwargs: models,
         ), patch(
             "app.routes.chat_routes.apply_runtime_model_visibility",
             side_effect=lambda gid, models: models,
@@ -88,7 +88,7 @@ class GPTAssistantModelAuthTests(unittest.IsolatedAsyncioTestCase):
     async def test_model_selection_allows_whitelisted_user(self):
         with patch.dict(chat_routes.gpts, {"gptassistant": self.assistant_config}, clear=False), patch(
             "app.routes.chat_routes.apply_admin_model_config_overrides",
-            side_effect=lambda gid, models: models,
+            side_effect=lambda gid, models, **kwargs: models,
         ), patch(
             "app.routes.chat_routes.apply_runtime_model_visibility",
             side_effect=lambda gid, models: models,
@@ -118,7 +118,7 @@ class GPTAssistantModelAuthTests(unittest.IsolatedAsyncioTestCase):
         ]
         with patch.dict(chat_routes.gpts, {"gptassistant": self.assistant_config}, clear=False), patch(
             "app.routes.chat_routes.apply_admin_model_config_overrides",
-            side_effect=lambda gid, models: models,
+            side_effect=lambda gid, models, **kwargs: models,
         ), patch(
             "app.routes.chat_routes.apply_runtime_model_visibility",
             side_effect=lambda gid, models: models,
@@ -344,6 +344,71 @@ class GPTSPinnedAccessTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(selected["id"], "glm-4.7")
         self.assertEqual([item["id"] for item in detail["models"]], ["glm-4.7"])
 
+    async def test_admin_created_model_is_available_to_gptassistant(self):
+        business_store.upsert_admin_model_config(
+            model_id="new-production-model",
+            display_name="New Production Model",
+            provider_model_name="provider/new-production-model",
+            sort_order=50,
+            enabled=True,
+            visibility_scope="all",
+        )
+        business_store.upsert_admin_feature_flag(
+            config_key="default_visible_models",
+            config_value=["new-production-model"],
+            value_type="json",
+            description="Visible models",
+            updated_by="admin@example.com",
+        )
+        assistant_config = {
+            "default_model": "glm-4.7",
+            "models": [
+                {
+                    "id": "glm-4.7",
+                    "model_name": "glm-4.7",
+                    "name": "GLM 4.7",
+                }
+            ],
+        }
+
+        with patch.dict(chat_routes.gpts, {"gptassistant": assistant_config}, clear=False), patch.dict(
+            gpts_routes.gpts, {"gptassistant": assistant_config}, clear=False
+        ), patch(
+            "app.routes.chat_routes.resolve_model_configs",
+            new=AsyncMock(side_effect=lambda models: models),
+        ), patch(
+            "app.routes.gpts_routes.resolve_model_configs",
+            new=AsyncMock(side_effect=lambda models: models),
+        ), patch.object(gpts_routes, "refresh_gpts", lambda: None):
+            selected = await chat_routes._get_gid_model_config(
+                "gptassistant",
+                "new-production-model",
+                user_email=self.user["email"],
+                user_id=self.user["sub"],
+            )
+            detail = await gpts_routes.get_gpts_detail("gptassistant", self.user)
+
+        self.assertEqual(selected["model_name"], "provider/new-production-model")
+        self.assertEqual(
+            [item["id"] for item in detail["models"]],
+            ["new-production-model"],
+        )
+
+    async def test_disabled_admin_model_is_removed_from_gptassistant(self):
+        business_store.upsert_admin_model_config(
+            model_id="glm-4.7",
+            display_name="GLM 4.7",
+            provider_model_name="glm-4.7",
+            enabled=False,
+        )
+
+        models = gpts_routes.apply_admin_model_config_overrides(
+            "gptassistant",
+            [{"id": "glm-4.7", "model_name": "glm-4.7", "name": "GLM 4.7"}],
+        )
+
+        self.assertNotIn("glm-4.7", [item["id"] for item in models])
+
     async def test_default_reasoning_enabled_feature_flag_overrides_gptassistant_default(self):
         business_store.upsert_admin_feature_flag(
             config_key="default_reasoning_enabled",
@@ -417,10 +482,10 @@ class GPTSPinnedAccessTests(unittest.IsolatedAsyncioTestCase):
             gpts_routes.gpts, {"gptassistant": assistant_config}, clear=False
         ), patch(
             "app.routes.chat_routes.apply_admin_model_config_overrides",
-            side_effect=lambda gid, models: models,
+            side_effect=lambda gid, models, **kwargs: models,
         ), patch(
             "app.routes.gpts_routes.apply_admin_model_config_overrides",
-            side_effect=lambda gid, models: models,
+            side_effect=lambda gid, models, **kwargs: models,
         ), patch(
             "app.routes.chat_routes.resolve_model_configs",
             new=AsyncMock(side_effect=lambda models: models),

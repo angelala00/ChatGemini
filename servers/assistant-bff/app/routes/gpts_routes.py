@@ -114,31 +114,25 @@ def apply_runtime_model_visibility(
 def apply_admin_model_config_overrides(
     gid: str,
     models: list[dict],
+    *,
+    include_missing: bool = True,
 ) -> list[dict]:
     if gid != "gptassistant":
         return models
 
-    config_map = {
-        item["model_id"]: item
+    admin_configs = [
+        item
         for item in list_admin_model_configs()
         if isinstance(item, dict) and isinstance(item.get("model_id"), str)
-    }
+    ]
+    config_map = {item["model_id"]: item for item in admin_configs}
     if not config_map:
         return models
 
-    overridden: list[dict] = []
-    for model in models:
-        if not isinstance(model, dict):
-            overridden.append(model)
-            continue
-
-        model_id = str(model.get("id") or "").strip()
-        admin_config = config_map.get(model_id)
-        if not admin_config:
-            overridden.append(model)
-            continue
-
+    def merge_admin_config(model: dict, admin_config: dict) -> dict:
+        model_id = admin_config["model_id"]
         merged = dict(model)
+        merged["id"] = model_id
         merged["name"] = admin_config.get("display_name") or merged.get("name") or model_id
         merged["model_name"] = (
             admin_config.get("provider_model_name")
@@ -163,6 +157,13 @@ def apply_admin_model_config_overrides(
         allowed_upload_types = admin_config.get("allowed_upload_types")
         if isinstance(allowed_upload_types, list):
             merged["upload_file_types"] = allowed_upload_types
+        metadata = admin_config.get("metadata")
+        if (
+            isinstance(metadata, dict)
+            and isinstance(metadata.get("description"), str)
+            and metadata["description"].strip()
+        ):
+            merged["description"] = metadata["description"].strip()
         visibility_scope = admin_config.get("visibility_scope")
         visibility_users = admin_config.get("visibility_users")
         if visibility_scope == "whitelist" and isinstance(visibility_users, list):
@@ -171,8 +172,38 @@ def apply_admin_model_config_overrides(
             merged["auth"] = {"type": "white", "user": []}
         elif visibility_scope == "all":
             merged["auth"] = {"type": "all"}
-        overridden.append(merged)
+        return merged
 
+    overridden: list[dict] = []
+    existing_model_ids: set[str] = set()
+    for model in models:
+        if not isinstance(model, dict):
+            overridden.append(model)
+            continue
+
+        model_id = str(model.get("id") or "").strip()
+        existing_model_ids.add(model_id)
+        admin_config = config_map.get(model_id)
+        if not admin_config:
+            overridden.append(model)
+            continue
+        if admin_config.get("enabled"):
+            overridden.append(merge_admin_config(model, admin_config))
+
+    if include_missing:
+        for admin_config in admin_configs:
+            model_id = admin_config["model_id"]
+            if model_id in existing_model_ids or not admin_config.get("enabled"):
+                continue
+            overridden.append(merge_admin_config({}, admin_config))
+
+    overridden.sort(
+        key=lambda item: (
+            config_map.get(str(item.get("id") or ""), {}).get("sort_order", 1_000_000)
+            if isinstance(item, dict)
+            else 1_000_000
+        )
+    )
     return overridden
 
 
@@ -329,11 +360,15 @@ async def get_gpts_detail(gid: str, user: dict = Depends(get_current_user)):
 
     gpts_detail = {k: v for k, v in gpt_item.items() if k not in exclude_fields}
     if isinstance(gpts_detail.get("models"), list):
-        runtime_visible_models = apply_runtime_model_visibility(gid, gpts_detail["models"])
-        runtime_visible_models = apply_admin_model_config_overrides(gid, runtime_visible_models)
+        runtime_models = apply_admin_model_config_overrides(gid, gpts_detail["models"])
+        runtime_visible_models = apply_runtime_model_visibility(gid, runtime_models)
         visible_models = sanitize_models_for_detail(runtime_visible_models, user["email"], user["sub"])
         visible_models = await resolve_model_configs(visible_models)
-        visible_models = apply_admin_model_config_overrides(gid, visible_models)
+        visible_models = apply_admin_model_config_overrides(
+            gid,
+            visible_models,
+            include_missing=False,
+        )
         gpts_detail["models"] = visible_models
         if isinstance(gpts_detail.get("default_model"), str):
             default_model = gpts_detail["default_model"]

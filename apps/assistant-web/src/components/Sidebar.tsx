@@ -180,7 +180,7 @@ const releaseHistory = [
         ],
     },
     {
-        version: "2026.04",
+        version: "v0.9.0",
         date: "2026.04",
         type: "minor",
         zhTitle: "诊断与链路优化",
@@ -198,7 +198,7 @@ const releaseHistory = [
         ],
     },
     {
-        version: "2026.03",
+        version: "v0.8.0",
         date: "2026.03",
         type: "minor",
         zhTitle: "架构重构与交互升级",
@@ -217,7 +217,7 @@ const releaseHistory = [
         ],
     },
     {
-        version: "2026.01",
+        version: "v0.7.0",
         date: "2026.01",
         type: "minor",
         zhTitle: "模型服务管理上线",
@@ -233,7 +233,7 @@ const releaseHistory = [
         ],
     },
     {
-        version: "2025.12",
+        version: "v0.6.1",
         date: "2025.12",
         type: "patch",
         zhTitle: "细节打磨",
@@ -248,9 +248,9 @@ const releaseHistory = [
         ],
     },
     {
-        version: "2025.11",
+        version: "v0.6.0",
         date: "2025.11",
-        type: "patch",
+        type: "minor",
         zhTitle: "功能完善",
         zhChanges: [
             "修复数据大屏在部分时区下时间筛选不准确的问题。",
@@ -262,9 +262,9 @@ const releaseHistory = [
         ],
     },
     {
-        version: "2025.10",
+        version: "v0.5.0",
         date: "2025.10",
-        type: "major",
+        type: "minor",
         zhTitle: "架构重构与数据大屏",
         zhChanges: [
             "完成应用结构升级，为聊天、数据看板和统计服务分别优化。",
@@ -280,7 +280,7 @@ const releaseHistory = [
         ],
     },
     {
-        version: "2025.09",
+        version: "v0.4.0",
         date: "2025.09",
         type: "minor",
         zhTitle: "GPTs 平台化",
@@ -299,7 +299,7 @@ const releaseHistory = [
         ],
     },
     {
-        version: "2025.08",
+        version: "v0.3.0",
         date: "2025.08",
         type: "minor",
         zhTitle: "可视化增强",
@@ -314,10 +314,10 @@ const releaseHistory = [
         ],
     },
     {
-        version: "早期记录",
+        version: "v0.1.0",
         date: "2024.06 - 2025.07",
-        type: "major",
-        zhTitle: "早期记录",
+        type: "minor",
+        zhTitle: "早期版本",
         zhChanges: [
             "GPT 助手 1.0 版本正式上线。",
             "接入 DeepSeek 模型，实现思考模式展示。",
@@ -327,7 +327,7 @@ const releaseHistory = [
             "非现场问答助手优化，支持中止回答、代码精简和登录 Session 修复。",
             "上线多个纪委智能助手和模型切换功能。",
         ],
-        enTitle: "Early Records",
+        enTitle: "Early Releases",
         enChanges: [
             "Released GPT assistant 1.0.",
             "Integrated DeepSeek with Thinking display support.",

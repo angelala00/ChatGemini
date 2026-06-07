@@ -516,8 +516,8 @@ async def _get_gid_model_config(
 ):
     assistant_config = apply_runtime_gpt_defaults(gid, gpts.get(gid, {}))
     all_models = assistant_config.get("models", [])
-    runtime_visible_models = apply_runtime_model_visibility(gid, all_models)
-    runtime_visible_models = apply_admin_model_config_overrides(gid, runtime_visible_models)
+    runtime_models = apply_admin_model_config_overrides(gid, all_models)
+    runtime_visible_models = apply_runtime_model_visibility(gid, runtime_models)
     visible_models = filter_models_for_user(runtime_visible_models, user_email, user_id)
     visible_model_ids = {
         item.get("id")
@@ -525,7 +525,7 @@ async def _get_gid_model_config(
         if isinstance(item, dict)
     }
     models = await resolve_model_configs(visible_models)
-    models = apply_admin_model_config_overrides(gid, models)
+    models = apply_admin_model_config_overrides(gid, models, include_missing=False)
     default_model = assistant_config.get("default_model", "")
     selected_model = requested_model or default_model
 
