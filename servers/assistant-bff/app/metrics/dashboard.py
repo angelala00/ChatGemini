@@ -180,7 +180,7 @@ def _collect_trend(
         iso_day = day.isoformat()
         total = counts.get(iso_day, 0)
         values.append(total)
-        series.append({"date": iso_day, "count": total})
+        series.append({"date": iso_day, "total": total})
     peak = max(values) if values else None
     low = min(values) if values else None
     return series, peak, low
