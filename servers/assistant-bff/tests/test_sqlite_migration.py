@@ -4,6 +4,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import Mock
 
 import migrate_local_sqlite_to_postgres as migration
 
@@ -24,6 +25,37 @@ class SQLiteMigrationTests(unittest.TestCase):
 
         self.assertEqual(first_fingerprint[:2], second_fingerprint[:2])
         self.assertNotEqual(first_fingerprint[2], second_fingerprint[2])
+
+    def test_source_with_same_content_and_new_mtime_is_already_migrated(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "source.db"
+            source.write_bytes(b"unchanged")
+            source_size, source_mtime_ns, source_sha256 = migration._source_fingerprint(source)
+            os.utime(source, ns=(source_mtime_ns + 1, source_mtime_ns + 1))
+
+            conn = Mock()
+            conn.execute.return_value.fetchone.return_value = (
+                source_size,
+                source_mtime_ns,
+                source_sha256,
+            )
+
+            self.assertTrue(migration._is_source_already_migrated(conn, source))
+
+    def test_legacy_state_without_hash_uses_size_and_mtime(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "source.db"
+            source.write_bytes(b"legacy")
+            source_size, source_mtime_ns, _ = migration._source_fingerprint(source)
+
+            conn = Mock()
+            conn.execute.return_value.fetchone.return_value = (
+                source_size,
+                source_mtime_ns,
+                None,
+            )
+
+            self.assertTrue(migration._is_source_already_migrated(conn, source))
 
 
 if __name__ == "__main__":

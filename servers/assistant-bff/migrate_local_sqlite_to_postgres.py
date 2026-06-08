@@ -103,10 +103,11 @@ def _is_source_already_migrated(conn, source_path: Path) -> bool:
     ).fetchone()
     if not row:
         return False
+    if row[2]:
+        return str(row[2]) == source_sha256
     return (
         int(row[0]) == source_size
         and int(row[1]) == source_mtime_ns
-        and str(row[2] or "") == source_sha256
     )
 
 
