@@ -26,7 +26,12 @@ from app.storage.business_store import (
     set_user_config_version,
     set_user_gpt_pin,
     update_custom_gpt,
+    list_file_mappings,
+    get_file_mapping,
+    delete_file_mapping,
 )
+from app.storage.object_store import delete_object, local_cache_path
+from pathlib import Path
 
 router = APIRouter(prefix="/api", tags=["gpts"])
 
@@ -58,6 +63,25 @@ def ensure_gpts_manage_allowed(user: dict) -> None:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "GPTS feature not enabled")
     if not is_gpts_manage_allowed(user):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "GPTS management not enabled")
+
+
+def ensure_owned_custom_gpt(gid: str, user: dict) -> dict:
+    ensure_gpts_manage_allowed(user)
+    refresh_gpts()
+    if gid in BUILTIN_GIDS or gid not in gpts or gpts[gid].get("owner") != user.get("sub"):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "GPT not found")
+    return gpts[gid]
+
+
+def delete_assistant_knowledge_files(gid: str) -> None:
+    for file_id, entry in list_file_mappings(gid).items():
+        if entry.get("purpose") != "assistant_knowledge":
+            continue
+        delete_object({"file_id": file_id, **entry})
+        cache_path = local_cache_path({"file_id": file_id, **entry})
+        if cache_path and Path(cache_path).exists():
+            Path(cache_path).unlink()
+        delete_file_mapping(file_id)
 
 
 def is_required_pinned_gid(gid: str) -> bool:
@@ -382,6 +406,36 @@ async def get_gpts_detail(gid: str, user: dict = Depends(get_current_user)):
     return gpts_detail
 
 
+@router.get("/gpts/{gid}/knowledge-files")
+async def list_gpt_knowledge_files(gid: str, user: dict = Depends(get_current_user)):
+    ensure_owned_custom_gpt(gid, user)
+    return [
+        {
+            "file_id": file_id,
+            "filename": entry.get("filename"),
+            "file_extension": entry.get("fileExtension"),
+            "size_bytes": entry.get("sizeBytes"),
+            "upload_time": entry.get("uploadTime"),
+        }
+        for file_id, entry in list_file_mappings(gid).items()
+        if entry.get("purpose") == "assistant_knowledge"
+    ]
+
+
+@router.delete("/gpts/{gid}/knowledge-files/{file_id}")
+async def delete_gpt_knowledge_file(gid: str, file_id: str, user: dict = Depends(get_current_user)):
+    ensure_owned_custom_gpt(gid, user)
+    entry = get_file_mapping(file_id, gid)
+    if not entry or entry.get("purpose") != "assistant_knowledge":
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Knowledge file not found")
+    delete_object({"file_id": file_id, **entry})
+    cache_path = local_cache_path({"file_id": file_id, **entry})
+    if cache_path and Path(cache_path).exists():
+        Path(cache_path).unlink()
+    delete_file_mapping(file_id)
+    return {"file_id": file_id}
+
+
 @router.post("/gpts")
 async def create_gpt(request: Request, user: dict = Depends(get_current_user)):
     ensure_gpts_manage_allowed(user)
@@ -453,6 +507,7 @@ async def delete_gpt(gid: str, user: dict = Depends(get_current_user)):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "gid not found")
     if gpts[gid].get("owner") != user['sub']:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "No Authorized")
+    delete_assistant_knowledge_files(gid)
     delete_custom_gpt(gid)
     delete_user_gpt_state_by_gid(gid)
     refresh_gpts()

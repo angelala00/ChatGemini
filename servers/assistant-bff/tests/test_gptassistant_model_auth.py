@@ -34,6 +34,121 @@ class GPTAssistantModelAuthTests(unittest.IsolatedAsyncioTestCase):
             ],
         }
 
+    def test_tool_resources_are_scoped_to_current_gpt_conversation_and_user(self):
+        mappings = {
+            "knowledge-1": {"purpose": "assistant_knowledge"},
+            "session-current": {
+                "purpose": "session_attachment",
+                "conversationId": "cid-1",
+                "ownerUserId": "user-1",
+            },
+            "session-other-user": {
+                "purpose": "session_attachment",
+                "conversationId": "cid-1",
+                "ownerUserId": "user-2",
+            },
+            "session-other-conversation": {
+                "purpose": "session_attachment",
+                "conversationId": "cid-2",
+                "ownerUserId": "user-1",
+            },
+        }
+        with patch.object(chat_routes, "list_file_mappings", return_value=mappings):
+            merged = chat_routes._merge_tool_file_ids(
+                "request-1",
+                "custom-gpt",
+                "cid-1",
+                {"sub": "user-1", "email": "user@example.com"},
+            )
+
+        self.assertEqual(merged, "request-1,knowledge-1,session-current")
+
+    def test_request_session_attachments_are_bound_to_generated_conversation(self):
+        with patch.object(chat_routes, "bind_file_mappings_to_conversation", return_value=2) as bind_mock:
+            updated = chat_routes._bind_request_session_attachments(
+                " file-1,file-2 ",
+                "custom-gpt",
+                "cid-generated",
+                {"sub": "user-1", "email": "user@example.com"},
+            )
+
+        self.assertEqual(updated, 2)
+        bind_mock.assert_called_once_with(
+            [" file-1", "file-2 "],
+            gid="custom-gpt",
+            conversation_id="cid-generated",
+            owner_user_id="user-1",
+            owner_user_email="user@example.com",
+        )
+
+    def test_delete_session_attachments_only_removes_owned_session_files(self):
+        mappings = {
+            "session-current": {
+                "purpose": "session_attachment",
+                "conversationId": "cid-1",
+                "ownerUserId": "user-1",
+            },
+            "knowledge-current": {
+                "purpose": "assistant_knowledge",
+                "conversationId": "cid-1",
+                "ownerUserId": "user-1",
+            },
+            "session-other-user": {
+                "purpose": "session_attachment",
+                "conversationId": "cid-1",
+                "ownerUserId": "user-2",
+            },
+            "session-other-conversation": {
+                "purpose": "session_attachment",
+                "conversationId": "cid-2",
+                "ownerUserId": "user-1",
+            },
+        }
+        with (
+            patch.object(chat_routes, "list_file_mappings", return_value=mappings),
+            patch.object(chat_routes, "delete_object") as delete_object_mock,
+            patch.object(chat_routes, "local_cache_path", return_value="/tmp/nonexistent-cache"),
+            patch.object(chat_routes, "delete_file_mapping") as delete_mapping_mock,
+        ):
+            deleted = chat_routes._delete_session_attachments(
+                "cid-1",
+                "custom-gpt",
+                {"sub": "user-1", "email": "user@example.com"},
+            )
+
+        self.assertEqual(deleted, 1)
+        delete_object_mock.assert_called_once()
+        delete_mapping_mock.assert_called_once_with("session-current")
+
+    async def test_delete_session_cleans_attachments_before_history(self):
+        meta = {
+            "user_id": "user-1",
+            "auth_provider": "local",
+            "gid": "custom-gpt",
+        }
+        with (
+            patch.object(chat_routes, "get_current_auth_provider", return_value="local"),
+            patch.object(chat_routes, "get_session_history_meta", return_value=meta),
+            patch.object(chat_routes, "_delete_session_attachments") as delete_attachments_mock,
+            patch.object(chat_routes, "_runtime_history_key", return_value="runtime-cid-1"),
+            patch.object(chat_routes, "delete_session_history") as delete_history_mock,
+        ):
+            result = await chat_routes.delete_session(
+                "cid-1",
+                {"sub": "user-1", "email": "user@example.com"},
+            )
+
+        self.assertEqual(result, {"ok": True})
+        delete_attachments_mock.assert_called_once_with(
+            "cid-1",
+            "custom-gpt",
+            {"sub": "user-1", "email": "user@example.com"},
+        )
+        self.assertEqual(
+            [call.args[0] for call in delete_history_mock.call_args_list],
+            ["runtime-cid-1", "cid-1"],
+        )
+
     def test_filter_models_for_user_hides_restricted_model(self):
         visible_models = gpts_routes.sanitize_models_for_detail(
             self.assistant_config["models"],

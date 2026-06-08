@@ -545,6 +545,11 @@ const App = () => {
             formData.append('file', file);
             const targetModelId = resolveModelId() || 'auto';
             formData.append('model_id', targetModelId);
+            formData.append('gid', gid || 'gptassistant');
+            formData.append('purpose', 'session_attachment');
+            if (id) {
+                formData.append('conversation_id', id);
+            }
             const uploadResponseJson = await handleRequest('POST', getFullPath('/api/upload'), formData);
             console.log('上传成功:', uploadResponseJson);
             return {

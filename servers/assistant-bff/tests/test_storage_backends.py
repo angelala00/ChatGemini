@@ -657,6 +657,83 @@ class StorageBackendFallbackTests(unittest.TestCase):
             )
         self.assertEqual(ctx.exception.status_code, 404)
 
+    def test_bind_file_mappings_to_conversation_only_binds_owned_unassigned_session_files(self):
+        common = {
+            "filename": "demo.txt",
+            "file_extension": ".txt",
+            "content_type": "text/plain",
+            "bucket": "",
+            "storage_backend": "filesystem",
+            "size_bytes": 5,
+            "gid": "custom-gpt",
+        }
+        business_store.insert_file_mapping(
+            "session-unassigned",
+            object_key="/tmp/session-unassigned",
+            owner_user_id="user-1",
+            purpose="session_attachment",
+            **common,
+        )
+        business_store.insert_file_mapping(
+            "session-existing",
+            object_key="/tmp/session-existing",
+            owner_user_id="user-1",
+            purpose="session_attachment",
+            conversation_id="cid-existing",
+            **common,
+        )
+        business_store.insert_file_mapping(
+            "knowledge-file",
+            object_key="/tmp/knowledge-file",
+            owner_user_id="user-1",
+            purpose="assistant_knowledge",
+            **common,
+        )
+        business_store.insert_file_mapping(
+            "other-user-file",
+            object_key="/tmp/other-user-file",
+            owner_user_id="user-2",
+            purpose="session_attachment",
+            **common,
+        )
+        business_store.insert_file_mapping(
+            "email-owned-file",
+            object_key="/tmp/email-owned-file",
+            owner_user_email="owner@example.com",
+            purpose="session_attachment",
+            **common,
+        )
+
+        updated = business_store.bind_file_mappings_to_conversation(
+            [
+                "session-unassigned",
+                "session-existing",
+                "knowledge-file",
+                "other-user-file",
+                "email-owned-file",
+            ],
+            gid="custom-gpt",
+            conversation_id="cid-generated",
+            owner_user_id="user-1",
+            owner_user_email="owner@example.com",
+        )
+
+        self.assertEqual(updated, 2)
+        self.assertEqual(
+            business_store.get_file_mapping("session-unassigned")["conversationId"],
+            "cid-generated",
+        )
+        self.assertEqual(
+            business_store.get_file_mapping("session-existing")["conversationId"],
+            "cid-existing",
+        )
+        self.assertIsNone(business_store.get_file_mapping("knowledge-file")["conversationId"])
+        self.assertIsNone(business_store.get_file_mapping("other-user-file")["conversationId"])
+        self.assertEqual(
+            business_store.get_file_mapping("email-owned-file")["conversationId"],
+            "cid-generated",
+        )
+
     def test_usage_events_file_persistence_and_cleanup(self):
         tracker = metrics_events.create_usage_event(
             user_id="user-1",

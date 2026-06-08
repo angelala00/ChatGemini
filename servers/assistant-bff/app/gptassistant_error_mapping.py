@@ -31,6 +31,12 @@ def map_chat_v2_error(raw_message: str | None) -> MappedChatError:
             user_message="本次上传的文件总内容过长，请减少文件数量或拆分提问后重试。",
         )
 
+    if "attachment tools unsupported" in lowered:
+        return MappedChatError(
+            code="ATTACHMENT_TOOLS_UNSUPPORTED",
+            user_message="当前模型不支持读取附件，请切换到支持工具调用的模型后重试。",
+        )
+
     if _looks_like_file_parse_failure(lowered):
         return MappedChatError(
             code="FILE_PARSE_FAILED",

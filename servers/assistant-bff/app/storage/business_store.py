@@ -496,10 +496,17 @@ def _ensure_file_mapping_owner_columns() -> None:
             conn.execute("ALTER TABLE file_mapping ADD COLUMN IF NOT EXISTS owner_user_id TEXT")
             conn.execute("ALTER TABLE file_mapping ADD COLUMN IF NOT EXISTS owner_user_email TEXT")
             conn.execute(
+                "ALTER TABLE file_mapping ADD COLUMN IF NOT EXISTS purpose TEXT NOT NULL DEFAULT 'session_attachment'"
+            )
+            conn.execute("ALTER TABLE file_mapping ADD COLUMN IF NOT EXISTS conversation_id TEXT")
+            conn.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_file_mapping_owner
                   ON file_mapping(owner_user_id, owner_user_email)
                 """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_file_mapping_resource ON file_mapping(gid, purpose, conversation_id)"
             )
         else:
             columns = _sqlite_columns(conn, "file_mapping")
@@ -507,11 +514,20 @@ def _ensure_file_mapping_owner_columns() -> None:
                 conn.execute("ALTER TABLE file_mapping ADD COLUMN owner_user_id TEXT")
             if "owner_user_email" not in columns:
                 conn.execute("ALTER TABLE file_mapping ADD COLUMN owner_user_email TEXT")
+            if "purpose" not in columns:
+                conn.execute(
+                    "ALTER TABLE file_mapping ADD COLUMN purpose TEXT NOT NULL DEFAULT 'session_attachment'"
+                )
+            if "conversation_id" not in columns:
+                conn.execute("ALTER TABLE file_mapping ADD COLUMN conversation_id TEXT")
             conn.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_file_mapping_owner
                   ON file_mapping(owner_user_id, owner_user_email)
                 """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_file_mapping_resource ON file_mapping(gid, purpose, conversation_id)"
             )
         conn.commit()
 
@@ -1272,7 +1288,9 @@ def init_business_storage() -> None:
                   upload_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                   gid TEXT NOT NULL,
                   owner_user_id TEXT,
-                  owner_user_email TEXT
+                  owner_user_email TEXT,
+                  purpose TEXT NOT NULL DEFAULT 'session_attachment',
+                  conversation_id TEXT
                 )
                 """
             )
@@ -1432,7 +1450,9 @@ def init_business_storage() -> None:
                   upload_time TEXT NOT NULL,
                   gid TEXT NOT NULL,
                   owner_user_id TEXT,
-                  owner_user_email TEXT
+                  owner_user_email TEXT,
+                  purpose TEXT NOT NULL DEFAULT 'session_attachment',
+                  conversation_id TEXT
                 );
                 CREATE INDEX IF NOT EXISTS idx_file_mapping_gid ON file_mapping(gid);
                 CREATE TABLE IF NOT EXISTS file_upload_reservations (
@@ -2107,7 +2127,7 @@ def list_file_mappings(gid: str | None = None) -> dict[str, dict[str, Any]]:
                     """
                     SELECT file_id, filename, file_extension, content_type, bucket,
                            object_key, storage_backend, size_bytes, upload_time, gid,
-                           owner_user_id, owner_user_email
+                           owner_user_id, owner_user_email, purpose, conversation_id
                       FROM file_mapping
                      WHERE gid=%s
                     """,
@@ -2118,7 +2138,7 @@ def list_file_mappings(gid: str | None = None) -> dict[str, dict[str, Any]]:
                     """
                     SELECT file_id, filename, file_extension, content_type, bucket,
                            object_key, storage_backend, size_bytes, upload_time, gid,
-                           owner_user_id, owner_user_email
+                           owner_user_id, owner_user_email, purpose, conversation_id
                       FROM file_mapping
                      WHERE gid=?
                     """,
@@ -2129,7 +2149,7 @@ def list_file_mappings(gid: str | None = None) -> dict[str, dict[str, Any]]:
                 """
                 SELECT file_id, filename, file_extension, content_type, bucket,
                        object_key, storage_backend, size_bytes, upload_time, gid,
-                       owner_user_id, owner_user_email
+                       owner_user_id, owner_user_email, purpose, conversation_id
                   FROM file_mapping
                 """
             ).fetchall()
@@ -2148,6 +2168,8 @@ def list_file_mappings(gid: str | None = None) -> dict[str, dict[str, Any]]:
             "gid": item.get("gid"),
             "ownerUserId": item.get("owner_user_id"),
             "ownerUserEmail": item.get("owner_user_email"),
+            "purpose": item.get("purpose") or "session_attachment",
+            "conversationId": item.get("conversation_id"),
         }
     return result
 
@@ -2161,7 +2183,7 @@ def get_file_mapping(file_id: str, gid: str | None = None) -> dict[str, Any] | N
                     """
                     SELECT file_id, filename, file_extension, content_type, bucket,
                            object_key, storage_backend, size_bytes, upload_time, gid,
-                           owner_user_id, owner_user_email
+                           owner_user_id, owner_user_email, purpose, conversation_id
                       FROM file_mapping
                      WHERE file_id=%s AND gid=%s
                     """,
@@ -2172,7 +2194,7 @@ def get_file_mapping(file_id: str, gid: str | None = None) -> dict[str, Any] | N
                     """
                     SELECT file_id, filename, file_extension, content_type, bucket,
                            object_key, storage_backend, size_bytes, upload_time, gid,
-                           owner_user_id, owner_user_email
+                           owner_user_id, owner_user_email, purpose, conversation_id
                       FROM file_mapping
                      WHERE file_id=? AND gid=?
                     """,
@@ -2184,7 +2206,7 @@ def get_file_mapping(file_id: str, gid: str | None = None) -> dict[str, Any] | N
                     """
                     SELECT file_id, filename, file_extension, content_type, bucket,
                            object_key, storage_backend, size_bytes, upload_time, gid,
-                           owner_user_id, owner_user_email
+                           owner_user_id, owner_user_email, purpose, conversation_id
                       FROM file_mapping
                      WHERE file_id=%s
                     """,
@@ -2195,7 +2217,7 @@ def get_file_mapping(file_id: str, gid: str | None = None) -> dict[str, Any] | N
                     """
                     SELECT file_id, filename, file_extension, content_type, bucket,
                            object_key, storage_backend, size_bytes, upload_time, gid,
-                           owner_user_id, owner_user_email
+                           owner_user_id, owner_user_email, purpose, conversation_id
                       FROM file_mapping
                      WHERE file_id=?
                     """,
@@ -2217,6 +2239,8 @@ def get_file_mapping(file_id: str, gid: str | None = None) -> dict[str, Any] | N
         "gid": item.get("gid"),
         "ownerUserId": item.get("owner_user_id"),
         "ownerUserEmail": item.get("owner_user_email"),
+        "purpose": item.get("purpose") or "session_attachment",
+        "conversationId": item.get("conversation_id"),
     }
 
 
@@ -2386,6 +2410,8 @@ def insert_file_mapping(
     gid: str = "gptassistant",
     owner_user_id: str | None = None,
     owner_user_email: str | None = None,
+    purpose: str = "session_attachment",
+    conversation_id: str | None = None,
 ) -> None:
     ensure_initialized()
     uploaded_at = _now_iso()
@@ -2396,8 +2422,8 @@ def insert_file_mapping(
                 INSERT INTO file_mapping(
                     file_id, filename, file_extension, content_type, bucket,
                     object_key, storage_backend, size_bytes, upload_time, gid,
-                    owner_user_id, owner_user_email
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    owner_user_id, owner_user_email, purpose, conversation_id
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     file_id,
@@ -2412,6 +2438,8 @@ def insert_file_mapping(
                     gid,
                     owner_user_id,
                     owner_user_email,
+                    purpose,
+                    conversation_id,
                 ),
             )
         else:
@@ -2420,8 +2448,8 @@ def insert_file_mapping(
                 INSERT INTO file_mapping(
                     file_id, filename, file_extension, content_type, bucket,
                     object_key, storage_backend, size_bytes, upload_time, gid,
-                    owner_user_id, owner_user_email
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    owner_user_id, owner_user_email, purpose, conversation_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     file_id,
@@ -2436,9 +2464,59 @@ def insert_file_mapping(
                     gid,
                     owner_user_id,
                     owner_user_email,
+                    purpose,
+                    conversation_id,
                 ),
             )
         conn.commit()
+
+
+def bind_file_mappings_to_conversation(
+    file_ids: list[str],
+    *,
+    gid: str,
+    conversation_id: str,
+    owner_user_id: str | None = None,
+    owner_user_email: str | None = None,
+) -> int:
+    ensure_initialized()
+    normalized_file_ids = list(
+        dict.fromkeys(file_id.strip() for file_id in file_ids if file_id.strip())
+    )
+    if not normalized_file_ids or not gid or not conversation_id:
+        return 0
+    owner_conditions: list[str] = []
+    owner_params: list[str] = []
+    placeholder = "%s" if _use_postgres() else "?"
+    if owner_user_id:
+        owner_conditions.append(f"owner_user_id={placeholder}")
+        owner_params.append(owner_user_id)
+    if owner_user_email:
+        owner_conditions.append(
+            f"(owner_user_id IS NULL AND owner_user_email={placeholder})"
+        )
+        owner_params.append(owner_user_email)
+    if not owner_conditions:
+        return 0
+    owner_clause = " OR ".join(owner_conditions)
+    updated = 0
+    with _connect() as conn:
+        for file_id in normalized_file_ids:
+            cursor = conn.execute(
+                f"""
+                UPDATE file_mapping
+                   SET conversation_id={placeholder}
+                 WHERE file_id={placeholder}
+                   AND gid={placeholder}
+                   AND purpose='session_attachment'
+                   AND conversation_id IS NULL
+                   AND ({owner_clause})
+                """,
+                (conversation_id, file_id, gid, *owner_params),
+            )
+            updated += max(0, int(cursor.rowcount or 0))
+        conn.commit()
+    return updated
 
 
 def delete_file_mapping(file_id: str) -> None:
@@ -3051,6 +3129,7 @@ def list_enabled_permissions_for_user(user_keys: list[str]) -> set[str]:
 
 
 __all__ = [
+    "bind_file_mappings_to_conversation",
     "business_storage_backend",
     "business_storage_health",
     "close_business_storage",

@@ -275,6 +275,23 @@ class FileRouteUploadTests(unittest.TestCase):
 
         delete_mapping_mock.assert_not_called()
 
+    def test_expired_cleanup_skips_assistant_knowledge_files(self):
+        expired_mapping = {
+            "file-1": {
+                "uploadTime": "2020-01-01T00:00:00+00:00",
+                "purpose": "assistant_knowledge",
+            },
+        }
+        with (
+            patch.object(file_routes, "load_file_mapping", return_value=expired_mapping),
+            patch.object(file_routes, "delete_object") as delete_object_mock,
+            patch.object(file_routes, "delete_file_mapping") as delete_mapping_mock,
+        ):
+            file_routes.delete_expired_files()
+
+        delete_object_mock.assert_not_called()
+        delete_mapping_mock.assert_not_called()
+
     def test_expired_file_cleanup_skips_when_distributed_lock_is_held(self):
         @contextmanager
         def lock_not_acquired(lock_name):

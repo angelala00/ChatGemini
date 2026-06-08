@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, status,
 from fastapi.responses import JSONResponse, FileResponse
 from datetime import datetime, timezone
 from app.auth.auth_routes import get_current_user
+from app.admin.access_control import resolve_user_permissions
 from app.logger import gpt_logger
 from app.gpts.config_gpts import gpts, refresh_gpts
 from app.utils.model_tool import (
@@ -77,6 +78,12 @@ DEFAULT_OFFICE_MAX_COMPRESSION_RATIO = 100
 DEFAULT_UPLOAD_REQUEST_OVERHEAD_BYTES = 1024 * 1024
 DEFAULT_MAX_UPLOAD_FILENAME_CHARS = 255
 DEFAULT_MAX_MODEL_ID_CHARS = 200
+FILE_PURPOSE_SESSION_ATTACHMENT = "session_attachment"
+FILE_PURPOSE_ASSISTANT_KNOWLEDGE = "assistant_knowledge"
+ALLOWED_FILE_PURPOSES = {
+    FILE_PURPOSE_SESSION_ATTACHMENT,
+    FILE_PURPOSE_ASSISTANT_KNOWLEDGE,
+}
 UPLOAD_READ_CHUNK_BYTES = 1024 * 1024
 DEFAULT_IMAGE_MAX_WIDTH = 4096
 DEFAULT_IMAGE_MAX_HEIGHT = 4096
@@ -387,7 +394,7 @@ def load_gid_file_mapping(gid):
 
 
 def load_file_mapping():
-    return load_gid_file_mapping("gptassistant")
+    return list_file_mappings()
 
 
 def _normalize_file_extension(value: str | None) -> str:
@@ -452,6 +459,8 @@ def describe_file_mapping_entry(file_id: str, entry: dict | None) -> dict:
         "exists": exists,
         "size_bytes": size_bytes,
         "size_kb": size_kb,
+        "purpose": entry.get("purpose") or FILE_PURPOSE_SESSION_ATTACHMENT,
+        "gid": entry.get("gid"),
     }
 
 
@@ -491,7 +500,11 @@ def get_owned_file_mapping_or_404(file_id: str, user: dict, gid: str | None = No
     return entry
 
 
-def ensure_file_ids_owned_by_user(file_ids: str | None, user: dict) -> str | None:
+def ensure_file_ids_owned_by_user(
+    file_ids: str | None,
+    user: dict,
+    gid: str | None = None,
+) -> str | None:
     if not file_ids:
         return None
     if len(file_ids) > DEFAULT_MAX_FILE_IDS_FIELD_CHARS:
@@ -510,7 +523,7 @@ def ensure_file_ids_owned_by_user(file_ids: str | None, user: dict) -> str | Non
         )
     total_bytes = 0
     for current_file_id in normalized_file_ids:
-        entry = get_owned_file_mapping_or_404(current_file_id, user)
+        entry = get_owned_file_mapping_or_404(current_file_id, user, gid)
         total_bytes += int(entry.get("sizeBytes") or 0)
     max_total_bytes = _get_gptassistant_upload_limits()["max_chat_attachment_bytes"]
     if total_bytes > max_total_bytes:
@@ -543,6 +556,9 @@ async def _store_upload_object(**kwargs) -> dict[str, object]:
 async def upload_file(
     file: UploadFile = File(...),
     model_id: str = Form("auto"),
+    gid: str = Form("gptassistant"),
+    purpose: str = Form(FILE_PURPOSE_SESSION_ATTACHMENT),
+    conversation_id: str | None = Form(None),
     user: dict = Depends(get_current_user),
 ):
     gpt_logger.info(f"path=upload_file user={user.get('email', '')} at={time.strftime('%Y-%m-%d %H:%M:%S')}")
@@ -563,11 +579,33 @@ async def upload_file(
     model_id = model_id.strip()
     if not model_id or len(model_id) > DEFAULT_MAX_MODEL_ID_CHARS or not model_id.isprintable():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid model ID")
+    gid = gid.strip() if isinstance(gid, str) else "gptassistant"
+    purpose = (
+        purpose.strip()
+        if isinstance(purpose, str)
+        else FILE_PURPOSE_SESSION_ATTACHMENT
+    )
+    conversation_id = conversation_id.strip() if isinstance(conversation_id, str) else None
+    if not gid or len(gid) > 200 or not gid.isprintable():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid GPT ID")
+    if purpose not in ALLOWED_FILE_PURPOSES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid file purpose")
 
     owner_user_id = str(user.get("sub") or "").strip() or None
     owner_user_email = str(user.get("email") or "").strip() or None
     if not owner_user_id and not owner_user_email:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Authenticated user identity is required")
+    if purpose == FILE_PURPOSE_ASSISTANT_KNOWLEDGE:
+        refresh_gpts()
+        assistant_config = gpts.get(gid)
+        if (
+            not assistant_config
+            or assistant_config.get("owner") != owner_user_id
+            or "gpts.manage" not in resolve_user_permissions(user)
+        ):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "GPT not found")
+        if os.path.splitext(file.filename)[1].lower().lstrip(".") not in DOCUMENT_EXTENSIONS:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Knowledge files must be documents")
 
     is_allowed, model_rule = allowed_file(file.filename, model_id)
     if not is_allowed:
@@ -602,7 +640,7 @@ async def upload_file(
         limits = _get_gptassistant_upload_limits()
         try:
             reservation_id = reserve_file_upload_slot(
-                "gptassistant",
+                gid,
                 owner_user_id=owner_user_id,
                 owner_user_email=owner_user_email,
                 max_user_files=limits["max_active_files_per_user"],
@@ -653,6 +691,9 @@ async def upload_file(
             size_bytes=int(object_meta["size_bytes"]),
             owner_user_id=owner_user_id,
             owner_user_email=owner_user_email,
+            gid=gid,
+            purpose=purpose,
+            conversation_id=conversation_id,
         )
         mapping_inserted = True
         gpt_logger.info(
@@ -769,6 +810,11 @@ def delete_expired_files():
 
         for file_id, file_data in list(file_mapping.items()):
             try:
+                if (
+                    file_data.get("purpose", FILE_PURPOSE_SESSION_ATTACHMENT)
+                    != FILE_PURPOSE_SESSION_ATTACHMENT
+                ):
+                    continue
                 upload_time_raw = str(file_data.get("uploadTime") or "")
                 upload_time = datetime.fromisoformat(upload_time_raw.replace("Z", "+00:00"))
                 if upload_time.tzinfo is None:

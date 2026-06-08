@@ -48,9 +48,39 @@ interface SidebarProps {
     readonly onToggleSidebar: () => void;
 }
 
-const APP_VERSION = "v1.2.1";
+const APP_VERSION = "v1.3.1";
 
 const releaseHistory = [
+    {
+        version: "v1.3.1",
+        date: "2026.06",
+        type: "patch",
+        zhTitle: "GPT 页面视觉统一",
+        zhChanges: [
+            "重新设计更多助手和创建 GPT 页面，使其与主聊天助手保持统一的视觉语言。",
+            "优化助手探索卡片、配置表单、知识文件和权限区域的层级与交互。",
+        ],
+        enTitle: "Unified GPT Page Design",
+        enChanges: [
+            "Redesigned the Explore GPTs and Create GPT pages to match the main chat assistant.",
+            "Refined assistant cards, configuration forms, knowledge files, and visibility controls.",
+        ],
+    },
+    {
+        version: "v1.3.0",
+        date: "2026.06",
+        type: "minor",
+        zhTitle: "GPT 长期知识文件",
+        zhChanges: [
+            "创建和编辑 GPT 时支持维护助手全局长期知识文件。",
+            "GPT 会在需要资料时通过文档工具按需读取知识文件，不会默认把全部正文放入上下文。",
+        ],
+        enTitle: "Long-term GPT Knowledge Files",
+        enChanges: [
+            "Added management of assistant-level long-term knowledge files when creating or editing GPTs.",
+            "GPTs now read knowledge files on demand through document tools instead of injecting all file content by default.",
+        ],
+    },
     {
         version: "v1.2.1",
         date: "2026.06",

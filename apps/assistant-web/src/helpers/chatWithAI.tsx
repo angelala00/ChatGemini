@@ -25,6 +25,7 @@ const CHAT_V2_ERROR_MESSAGES: Record<string, string> = {
     FILE_CONTENT_TOO_LONG: "附件文本内容过长，请减少文件内容、拆分提问，或更换更精简的文件后重试。",
     TOO_MANY_FILES: "本次上传的文件总内容过长，请减少文件数量或拆分提问后重试。",
     FILE_PARSE_FAILED: "附件内容处理失败，请检查文件是否损坏，或更换文件后重试。",
+    ATTACHMENT_TOOLS_UNSUPPORTED: "当前模型不支持读取附件，请切换到支持工具调用的模型后重试。",
     MODEL_REQUEST_FAILED: "本次请求处理失败，请稍后重试。",
 };
 
@@ -357,7 +358,8 @@ export const chatWithAI = (
                 reasoning_enabled: reasoningEnabled,
             };
 
-            const useKernelProtocol = isGptAssistant(gid) && useGptAssistantV2();
+            const isCustomGpt = Boolean(gid && gid !== "gptassistant");
+            const useKernelProtocol = isCustomGpt || (isGptAssistant(gid) && useGptAssistantV2());
             let streamCb = function(chatResponse: any) {
                 const reader = chatResponse.body?.getReader();
                 const decoder = new TextDecoder("utf-8");

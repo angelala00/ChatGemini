@@ -47,6 +47,10 @@ class ChatContextTooLongError(RuntimeError):
     """Raised when assembled chat-v2 context exceeds the allowed budget."""
 
 
+class AttachmentToolsUnsupportedError(RuntimeError):
+    """Raised when attachments require tools that the selected model cannot call."""
+
+
 @dataclass(frozen=True)
 class TrimmedHistoryResult:
     messages: list[Any]
@@ -728,7 +732,7 @@ async def chat_with_kernel_gptassistant(
 
     base_tools = (
         get_attachment_tool_definitions(model_supports_native_images=model.supports_input("image"))
-        if file_ids
+        if file_ids and supports_attachment_tools
         else []
     )
     options = OpenAICompatOptions(
@@ -770,9 +774,9 @@ async def chat_with_kernel_gptassistant(
             len(base_tools),
             _log_preview([tool.name for tool in base_tools]),
         )
-        if not supports_attachment_tools and base_tools:
+        if not supports_attachment_tools:
             gpt_logger.warning(
-                "attachment_tooling_capability_mismatch conversation_id=%s response_id=%s model=%s supports_tool_calling=%s but tool_first_flow_active=true",
+                "attachment_tooling_capability_mismatch conversation_id=%s response_id=%s model=%s supports_tool_calling=%s request_rejected=true",
                 conversation_id,
                 response_id,
                 model.id,
@@ -780,6 +784,10 @@ async def chat_with_kernel_gptassistant(
             )
 
     try:
+        if file_ids and not supports_attachment_tools:
+            raise AttachmentToolsUnsupportedError(
+                "attachment tools unsupported by selected model"
+            )
         if trace_recorder:
             trace_recorder.log(
                 "preprocess_start",

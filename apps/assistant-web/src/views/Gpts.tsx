@@ -1,12 +1,18 @@
 import { useEffect, useState } from "react";
 import { useDispatch } from "react-redux";
+import { Link, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import {
+    ArrowRightIcon,
+    PlusIcon,
+    Squares2X2Icon,
+    UserCircleIcon,
+} from "@heroicons/react/24/outline";
 import { Container } from "../components/Container";
 import pinnedIcon from "../assets/icons/thumbtack-solid.svg";
 import unpinnedIcon from "../assets/icons/map-pin-solid.svg";
 import { getFullPath } from "../helpers/getDomainAndPath";
 import { onUpdate as updatePinnedGpts } from "../store/gpts";
-import { Link, useNavigate } from "react-router-dom";
-import { useTranslation } from "react-i18next";
 import { normalizeAssetPath } from "../helpers/normalizeAssetPath";
 
 interface GptsItem {
@@ -23,90 +29,119 @@ interface GptsItem {
 
 interface SectionProps {
     readonly title: string;
+    readonly description: string;
     readonly items: GptsItem[];
     readonly onToggle: (id: string, is_pinned: boolean) => void;
 }
 
-const Section = ({ title, items, onToggle }: SectionProps) => {
+const Section = ({ title, description, items, onToggle }: SectionProps) => {
     const { t } = useTranslation();
     const navigate = useNavigate();
 
+    if (!items.length) {
+        return null;
+    }
+
     return (
-    <section className="mb-16">
-        <h2 className="mb-6 text-sm font-semibold text-gray-500 tracking-wide uppercase">
-            {title}
-        </h2>
-        <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
-            {items.map((item) => (
-                <div
-                    key={item.gid}
-                    className="relative flex h-full flex-col rounded-xl border bg-gray-50 px-6 pt-6 pb-4 transition-colors hover:bg-gray-100 cursor-pointer"
-                    onClick={() => {
-                        navigate(`/g/${item.gid}`);
-                    }}
-                >
-                    <div className="flex flex-1 gap-4">
-                        <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-gray-200 text-2xl overflow-hidden">
-                            {item.logo ? (
-                                <img src={normalizeAssetPath(item.logo)} alt="" className="h-12 w-12" />
-                            ) : (
-                                item.name.slice(0, 1)
-                            )}
-                        </div>
-                        <div className="flex flex-1 flex-col">
-                            <h3 className="text-lg font-medium text-gray-900">{item.name}</h3>
-                            <p className="mt-2 text-sm text-gray-600">{item.desc}</p>
-                        </div>
-                    </div>
-                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-2 text-xs text-gray-400">
-                        <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500 whitespace-nowrap">
-                            {item.owner
-                                ? t("views.Gpts.owner_user", { owner: item.owner })
-                                : t("views.Gpts.owner_official")}
-                        </span>
-                        <div className="flex items-center gap-3">
-                            <span className="whitespace-nowrap">
-                                {t("views.Gpts.usage_count", {
-                                    count: item.usage_count ?? 0,
-                                })}
-                            </span>
-                            <span className="whitespace-nowrap">
-                                {t("views.Gpts.pinned_count", {
-                                    count: item.pinned_user_count ?? 0,
-                                })}
-                            </span>
-                        </div>
-                    </div>
-                    <button
-                        className={`absolute top-2 right-2 p-1 rounded ${
-                            item.is_required_pinned
-                                ? "cursor-not-allowed opacity-60"
-                                : "hover:bg-gray-200 cursor-pointer"
-                        }`}
-                        disabled={item.is_required_pinned}
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            if (item.is_required_pinned) {
-                                return;
-                            }
-                            onToggle(item.gid, item.is_pinned);
-                        }}
-                        aria-label={
-                            item.is_pinned
-                                ? t("views.Gpts.unpin")
-                                : t("views.Gpts.pin")
-                        }
-                    >
-                        <img
-                            className="w-5 h-5"
-                            src={item.is_pinned ? pinnedIcon : unpinnedIcon}
-                            alt=""
-                        />
-                    </button>
+        <section className="space-y-5">
+            <div className="flex items-end justify-between gap-4">
+                <div>
+                    <h2 className="text-[17px] font-semibold tracking-[-0.01em] text-[var(--assist-text)]">
+                        {title}
+                    </h2>
+                    <p className="mt-1 text-sm text-[var(--assist-text-faint)]">{description}</p>
                 </div>
-            ))}
-        </div>
-    </section>
+                <span className="shrink-0 rounded-full border border-[var(--assist-line)] bg-white/70 px-2.5 py-1 text-xs text-[var(--assist-text-faint)]">
+                    {items.length}
+                </span>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {items.map((item) => (
+                    <article
+                        key={item.gid}
+                        role="button"
+                        tabIndex={0}
+                        className="group relative flex min-h-[208px] cursor-pointer flex-col overflow-hidden rounded-[22px] border border-[var(--assist-line)] bg-[rgba(252,253,254,0.92)] p-5 shadow-[var(--assist-shadow-sm)] transition duration-200 ease-out hover:-translate-y-0.5 hover:border-[var(--assist-line-strong)] hover:shadow-[var(--assist-shadow-md)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--assist-accent)]/40"
+                        onClick={() => navigate(`/g/${item.gid}`)}
+                        onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                navigate(`/g/${item.gid}`);
+                            }
+                        }}
+                    >
+                        <div className="flex items-start gap-4">
+                            <div className="grid size-12 shrink-0 place-items-center overflow-hidden rounded-[15px] border border-[rgba(212,221,229,0.9)] bg-[var(--assist-panel-soft)] text-lg font-semibold text-[var(--assist-accent-strong)]">
+                                {item.logo ? (
+                                    <img
+                                        src={normalizeAssetPath(item.logo)}
+                                        alt=""
+                                        className="size-9 object-contain"
+                                    />
+                                ) : (
+                                    item.name.slice(0, 1)
+                                )}
+                            </div>
+                            <div className="min-w-0 flex-1 pr-8">
+                                <h3 className="truncate text-base font-semibold tracking-[-0.01em] text-[var(--assist-text)]">
+                                    {item.name}
+                                </h3>
+                                <p className="mt-1 line-clamp-3 text-sm leading-6 text-[var(--assist-text-soft)]">
+                                    {item.desc}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="mt-auto flex items-end justify-between gap-3 pt-6">
+                            <div className="min-w-0 space-y-2 text-xs text-[var(--assist-text-faint)]">
+                                <div className="truncate">
+                                    {item.owner
+                                        ? t("views.Gpts.owner_user", { owner: item.owner })
+                                        : t("views.Gpts.owner_official")}
+                                </div>
+                                <div className="flex flex-wrap gap-x-3 gap-y-1">
+                                    <span>
+                                        {t("views.Gpts.usage_count", {
+                                            count: item.usage_count ?? 0,
+                                        })}
+                                    </span>
+                                    <span>
+                                        {t("views.Gpts.pinned_count", {
+                                            count: item.pinned_user_count ?? 0,
+                                        })}
+                                    </span>
+                                </div>
+                            </div>
+                            <ArrowRightIcon className="size-4 shrink-0 text-[var(--assist-text-faint)] transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-[var(--assist-accent-strong)]" />
+                        </div>
+
+                        <button
+                            type="button"
+                            className={`absolute right-4 top-4 grid size-8 place-items-center rounded-[10px] border border-transparent transition ${
+                                item.is_required_pinned
+                                    ? "cursor-not-allowed opacity-50"
+                                    : "hover:border-[var(--assist-line)] hover:bg-[var(--assist-panel-soft)]"
+                            }`}
+                            disabled={item.is_required_pinned}
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                if (!item.is_required_pinned) {
+                                    onToggle(item.gid, item.is_pinned);
+                                }
+                            }}
+                            aria-label={item.is_pinned ? t("views.Gpts.unpin") : t("views.Gpts.pin")}
+                        >
+                            <img
+                                className="size-4 opacity-60"
+                                src={item.is_pinned ? pinnedIcon : unpinnedIcon}
+                                alt=""
+                            />
+                        </button>
+                    </article>
+                ))}
+            </div>
+        </section>
     );
 };
 
@@ -117,81 +152,114 @@ const Gpts = () => {
     const { t } = useTranslation();
 
     const refreshSidebar = () => {
-        // console.log("refreshSidebar:")
-        fetch(getFullPath('/api/gpts/pined'), {})
+        fetch(getFullPath("/api/gpts/pined"), {})
             .then((res) => res.json())
             .then((data) => dispatch(updatePinnedGpts(data ?? [])))
-            .catch(() => {});
+            .catch(() => dispatch(updatePinnedGpts([])));
     };
 
     useEffect(() => {
-        fetch(getFullPath('/api/gpts'), {})
+        fetch(getFullPath("/api/gpts"), {})
             .then((res) => res.json())
             .then((data) => {
                 setItems(data ?? []);
                 refreshSidebar();
             })
-            .catch(() => {
-                setItems([]);
-            });
-        fetch(getFullPath('/api/gpts/permission'), {})
+            .catch(() => setItems([]));
+        fetch(getFullPath("/api/gpts/permission"), {})
             .then((res) => res.json())
             .then((data) => setCanManage(Boolean(data.manage_allowed)))
             .catch(() => setCanManage(false));
     }, []);
 
-    const handleToggle = (id: string, is_pinned: boolean) => {
+    const handleToggle = (id: string, isPinned: boolean) => {
         fetch(getFullPath(`/api/gpts/${id}/pin`), {
             method: "PATCH",
             headers: {},
-            body: JSON.stringify({ is_pinned: !is_pinned }),
+            body: JSON.stringify({ is_pinned: !isPinned }),
         })
             .then((res) => res.json())
             .then((data) => {
-                setItems((prev) =>
-                    prev.map((item) =>
-                        item.gid === id
-                            ? { ...item, is_pinned: data.is_pinned }
-                            : item
-                    )
+                setItems((previous) =>
+                    previous.map((item) =>
+                        item.gid === id ? { ...item, is_pinned: data.is_pinned } : item,
+                    ),
                 );
                 refreshSidebar();
             })
             .catch(() => {});
     };
 
-    const pinned = items.filter((i) => i.is_pinned);
-    const others = items.filter((i) => !i.is_pinned);
+    const pinned = items.filter((item) => item.is_pinned);
+    const others = items.filter((item) => !item.is_pinned);
 
     return (
-        <Container className="flex-1 w-full overflow-y-auto bg-white text-gray-900">
-            <div className="max-w-5xl mx-auto px-6 pb-16">
-                <header className="py-10 flex items-center justify-between">
-                    <div className="text-3xl font-semibold">{t("views.Gpts.page_title")}</div>
-                    <div className="space-x-4 text-sm">
+        <Container className="min-h-full w-full flex-1 overflow-y-auto bg-[var(--assist-bg)] text-[var(--assist-text)]">
+            <main className="mx-auto w-full max-w-[1180px] px-5 pb-20 pt-10 sm:px-8 lg:px-10">
+                <header className="rounded-[22px] border border-[var(--assist-line)] bg-[rgba(252,253,254,0.78)] px-5 py-5 shadow-[var(--assist-shadow-sm)] sm:px-6">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                        <div className="max-w-2xl">
+                            <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.13em] text-[var(--assist-accent-strong)]">
+                                <Squares2X2Icon className="size-4" />
+                                {t("views.Gpts.workspace_label")}
+                            </div>
+                            <h1 className="text-[26px] font-semibold leading-tight tracking-[-0.03em] text-[var(--assist-text)] sm:text-[30px]">
+                                {t("views.Gpts.page_title")}
+                            </h1>
+                            <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--assist-text-soft)]">
+                                {t("views.Gpts.page_subtitle")}
+                            </p>
+                        </div>
+
                         {canManage && (
-                            <>
-                                <Link to="/my-gpts" className="text-blue-600 hover:underline">
+                            <div className="flex flex-wrap gap-2">
+                                <Link
+                                    to="/my-gpts"
+                                    className="inline-flex h-10 items-center gap-2 rounded-[13px] border border-[var(--assist-line)] bg-white/80 px-4 text-sm font-medium text-[var(--assist-text-soft)] transition hover:border-[var(--assist-line-strong)] hover:bg-white hover:text-[var(--assist-text)]"
+                                >
+                                    <UserCircleIcon className="size-[18px]" />
                                     {t("views.Gpts.link_my_gpts")}
                                 </Link>
-                                <Link to="/gpts/create" className="text-blue-600 hover:underline">
+                                <Link
+                                    to="/gpts/create"
+                                    className="inline-flex h-10 items-center gap-2 rounded-[13px] bg-[var(--assist-accent-strong)] px-4 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(39,154,179,0.18)] transition hover:-translate-y-0.5 hover:bg-[var(--assist-accent)]"
+                                >
+                                    <PlusIcon className="size-[18px]" />
                                     {t("views.Gpts.link_create")}
                                 </Link>
-                            </>
+                            </div>
                         )}
                     </div>
                 </header>
-                <Section
-                    title={t("views.Gpts.section_pinned")}
-                    items={pinned}
-                    onToggle={handleToggle}
-                />
-                <Section
-                    title={t("views.Gpts.section_all")}
-                    items={others}
-                    onToggle={handleToggle}
-                />
-            </div>
+
+                <div className="mt-10 space-y-12">
+                    {!items.length && (
+                        <div className="grid min-h-64 place-items-center rounded-[24px] border border-dashed border-[var(--assist-line-strong)] bg-[rgba(252,253,254,0.65)] px-6 text-center">
+                            <div className="max-w-sm">
+                                <div className="mx-auto grid size-11 place-items-center rounded-[14px] bg-[var(--assist-accent-soft)] text-[var(--assist-accent-strong)]">
+                                    <Squares2X2Icon className="size-5" />
+                                </div>
+                                <h2 className="mt-4 text-base font-semibold">{t("views.Gpts.empty_title")}</h2>
+                                <p className="mt-2 text-sm leading-6 text-[var(--assist-text-faint)]">
+                                    {t("views.Gpts.empty_description")}
+                                </p>
+                            </div>
+                        </div>
+                    )}
+                    <Section
+                        title={t("views.Gpts.section_pinned")}
+                        description={t("views.Gpts.section_pinned_description")}
+                        items={pinned}
+                        onToggle={handleToggle}
+                    />
+                    <Section
+                        title={t("views.Gpts.section_all")}
+                        description={t("views.Gpts.section_all_description")}
+                        items={others}
+                        onToggle={handleToggle}
+                    />
+                </div>
+            </main>
         </Container>
     );
 };
