@@ -927,7 +927,7 @@ const TraceInspector = () => {
                             Internal Trace View
                         </p>
                         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-50">
-                            GPT Assistant Trace Inspector
+                            AI Assistant Trace Inspector
                         </h1>
                         <p className="mt-1 text-sm text-slate-400">
                             按 conversation id 回放单次问答的模型输入、输出和工具调用。

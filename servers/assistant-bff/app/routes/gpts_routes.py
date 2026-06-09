@@ -37,6 +37,7 @@ router = APIRouter(prefix="/api", tags=["gpts"])
 
 LIMIT_PINNED = 8
 MAX_SAMPLES = 5
+MAX_MODEL_ID_CHARS = 200
 
 GPTS_WHITE_LIST = model_config.GPTS_WHITE_LIST
 
@@ -270,6 +271,12 @@ async def gpts_permission(user: dict = Depends(get_current_user)):
     }
 
 
+@router.get("/gpts/available-models")
+async def get_available_gpt_models(user: dict = Depends(get_current_user)):
+    ensure_gpts_manage_allowed(user)
+    return await resolve_available_gpt_models(user)
+
+
 @router.get("/gpts")
 async def get_gpts(user: dict = Depends(get_current_user)):
     ensure_gpts_feature_allowed(user)
@@ -462,6 +469,7 @@ async def create_gpt(request: Request, user: dict = Depends(get_current_user)):
     elif auth.get("type") not in {"all", "self"}:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid auth type")
     body["auth"] = auth
+    normalize_preferred_model(body)
     insert_custom_gpt(gid, body)
     refresh_gpts()
     return {"gid": gid}
@@ -492,6 +500,7 @@ async def update_gpt(gid: str, request: Request, user: dict = Depends(get_curren
     if len(samples) > MAX_SAMPLES:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "samples limit exceeded")
     body["owner"] = gpts[gid].get("owner", user['sub'])
+    normalize_preferred_model(body)
     update_custom_gpt(gid, body)
     refresh_gpts()
     return {"gid": gid}
@@ -541,3 +550,54 @@ def filter_models_for_user(models: list[dict], user: str, user_id: Optional[str]
 def sanitize_models_for_detail(models: list[dict], user: str, user_id: Optional[str] = None) -> list[dict]:
     visible_models = filter_models_for_user(models, user, user_id)
     return [{k: v for k, v in item.items() if k != "auth"} for item in visible_models]
+
+
+async def resolve_available_gpt_models(user: dict) -> dict:
+    refresh_gpts()
+    assistant_config = apply_runtime_gpt_defaults(
+        "gptassistant",
+        gpts.get("gptassistant", {}),
+    )
+    runtime_models = apply_admin_model_config_overrides(
+        "gptassistant",
+        assistant_config.get("models", []),
+    )
+    runtime_visible_models = apply_runtime_model_visibility("gptassistant", runtime_models)
+    visible_models = sanitize_models_for_detail(
+        runtime_visible_models,
+        user["email"],
+        user.get("sub"),
+    )
+    visible_models = await resolve_model_configs(visible_models)
+    visible_models = apply_admin_model_config_overrides(
+        "gptassistant",
+        visible_models,
+        include_missing=False,
+    )
+    visible_model_ids = {
+        item.get("id")
+        for item in visible_models
+        if isinstance(item, dict)
+    }
+    default_model = assistant_config.get("default_model", "")
+    if default_model not in visible_model_ids:
+        default_model = visible_models[0].get("id", "") if visible_models else ""
+    return {
+        "default_model": default_model,
+        "models": visible_models,
+    }
+
+
+def normalize_preferred_model(body: dict) -> None:
+    preferred_model = body.get("default_model")
+    if preferred_model is None:
+        return
+    if not isinstance(preferred_model, str):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "default_model must be a string")
+    preferred_model = preferred_model.strip()
+    if len(preferred_model) > MAX_MODEL_ID_CHARS or not preferred_model.isprintable():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid default_model")
+    if preferred_model:
+        body["default_model"] = preferred_model
+    else:
+        body.pop("default_model", None)

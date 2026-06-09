@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import {
     ArrowLeftIcon,
     CheckIcon,
+    CpuChipIcon,
     DocumentTextIcon,
     LockClosedIcon,
     PlusIcon,
@@ -19,6 +20,12 @@ interface KnowledgeFile {
     readonly file_id: string;
     readonly filename: string;
     readonly size_bytes?: number;
+}
+
+interface AvailableModel {
+    readonly id: string;
+    readonly name: string;
+    readonly description?: string;
 }
 
 const fieldClassName =
@@ -41,6 +48,9 @@ const CreateGpt = () => {
     const [authType, setAuthType] = useState<"self" | "white" | "all">("all");
     const [authUsers, setAuthUsers] = useState("");
     const [knowledgeFiles, setKnowledgeFiles] = useState<KnowledgeFile[]>([]);
+    const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
+    const [preferredModel, setPreferredModel] = useState("");
+    const [modelsLoaded, setModelsLoaded] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const [message, setMessage] = useState("");
     const navigate = useNavigate();
@@ -84,6 +94,9 @@ const CreateGpt = () => {
                 setName(data.name ?? "");
                 setDesc(data.desc ?? "");
                 setSystemPrompt(data.system_prompt ?? "");
+                if (typeof data.default_model === "string" && data.default_model) {
+                    setPreferredModel(data.default_model);
+                }
                 const sampleData = data.samples ?? [];
                 setSamples(sampleData.length ? [...sampleData, ""] : [""]);
                 if (data.auth) {
@@ -98,6 +111,27 @@ const CreateGpt = () => {
             .then((data) => setKnowledgeFiles(Array.isArray(data) ? data : []))
             .catch(() => setKnowledgeFiles([]));
     }, [gid]);
+
+    useEffect(() => {
+        handleRequest("GET", getFullPath("/api/gpts/available-models"))
+            .then((data) => {
+                const nextModels = Array.isArray(data.models)
+                    ? data.models.filter(
+                          (item: unknown): item is AvailableModel =>
+                              !!item &&
+                              typeof item === "object" &&
+                              typeof (item as AvailableModel).id === "string" &&
+                              typeof (item as AvailableModel).name === "string",
+                      )
+                    : [];
+                setAvailableModels(nextModels);
+                setPreferredModel(
+                    (current) => current || data.default_model || nextModels[0]?.id || "",
+                );
+            })
+            .catch(() => setAvailableModels([]))
+            .finally(() => setModelsLoaded(true));
+    }, []);
 
     const handleKnowledgeUpload = async (file: File) => {
         if (!gid || isUploading) return;
@@ -137,6 +171,7 @@ const CreateGpt = () => {
             name,
             desc,
             system_prompt: systemPrompt,
+            default_model: preferredModel,
         };
         const sanitizedSamples = samples.map((sample) => sample.trim()).filter(Boolean);
         if (sanitizedSamples.length > 0) {
@@ -172,6 +207,9 @@ const CreateGpt = () => {
         { value: "white" as const, label: t("views.CreateGpt.permission_white"), icon: UsersIcon },
         { value: "all" as const, label: t("views.CreateGpt.permission_all"), icon: SparklesIcon },
     ];
+    const preferredModelOption = availableModels.find((item) => item.id === preferredModel);
+    const preferredModelUnavailable =
+        !!preferredModel && modelsLoaded && !preferredModelOption;
 
     return (
         <Container className="min-h-full w-full flex-1 overflow-y-auto bg-[var(--assist-bg)] text-[var(--assist-text)]">
@@ -296,6 +334,60 @@ const CreateGpt = () => {
                         <section className="rounded-[24px] border border-[var(--assist-line)] bg-[rgba(252,253,254,0.92)] p-5 shadow-[var(--assist-shadow-sm)]">
                             <div className="flex items-center gap-3">
                                 <div className="grid size-10 place-items-center rounded-[13px] bg-[var(--assist-accent-soft)] text-[var(--assist-accent-strong)]">
+                                    <CpuChipIcon className="size-5" />
+                                </div>
+                                <div>
+                                    <h2 className="text-sm font-semibold">
+                                        {t("views.CreateGpt.model_label")}
+                                    </h2>
+                                    <p className="mt-0.5 text-xs text-[var(--assist-text-faint)]">
+                                        {t("views.CreateGpt.model_description")}
+                                    </p>
+                                </div>
+                            </div>
+                            <select
+                                value={preferredModel}
+                                onChange={(event) => setPreferredModel(event.target.value)}
+                                className={fieldClassName}
+                                required
+                                disabled={!modelsLoaded || availableModels.length === 0}
+                            >
+                                {!preferredModel && (
+                                    <option value="">
+                                        {modelsLoaded
+                                            ? t("views.CreateGpt.model_empty")
+                                            : t("views.CreateGpt.model_loading")}
+                                    </option>
+                                )}
+                                {preferredModelUnavailable && (
+                                    <option value={preferredModel}>
+                                        {t("views.CreateGpt.model_unavailable_option", {
+                                            model: preferredModel,
+                                        })}
+                                    </option>
+                                )}
+                                {availableModels.map((model) => (
+                                    <option key={model.id} value={model.id}>
+                                        {model.name}
+                                    </option>
+                                ))}
+                            </select>
+                            {preferredModelUnavailable ? (
+                                <p className="mt-3 rounded-[12px] border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
+                                    {t("views.CreateGpt.model_unavailable_hint")}
+                                </p>
+                            ) : (
+                                preferredModelOption?.description && (
+                                    <p className="mt-3 text-xs leading-5 text-[var(--assist-text-faint)]">
+                                        {preferredModelOption.description}
+                                    </p>
+                                )
+                            )}
+                        </section>
+
+                        <section className="rounded-[24px] border border-[var(--assist-line)] bg-[rgba(252,253,254,0.92)] p-5 shadow-[var(--assist-shadow-sm)]">
+                            <div className="flex items-center gap-3">
+                                <div className="grid size-10 place-items-center rounded-[13px] bg-[var(--assist-accent-soft)] text-[var(--assist-accent-strong)]">
                                     <DocumentTextIcon className="size-5" />
                                 </div>
                                 <div>
@@ -404,7 +496,7 @@ const CreateGpt = () => {
 
                         <button
                             type="submit"
-                            disabled={isSubmitting}
+                            disabled={isSubmitting || !preferredModel}
                             className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-[14px] bg-[var(--assist-accent-strong)] px-5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(39,154,179,0.2)] transition hover:-translate-y-0.5 hover:bg-[var(--assist-accent)] disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             {isSubmitting ? t("views.CreateGpt.submitting") : t("views.CreateGpt.submit")}

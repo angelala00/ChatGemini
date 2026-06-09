@@ -48,37 +48,67 @@ interface SidebarProps {
     readonly onToggleSidebar: () => void;
 }
 
-const APP_VERSION = "v1.3.1";
+const APP_VERSION = "v1.3.3";
 
 const releaseHistory = [
+    {
+        version: "v1.3.3",
+        date: "2026.06",
+        type: "patch",
+        zhTitle: "智能体术语统一",
+        zhChanges: [
+            "将创建、探索、管理等页面中的 GPT 和专项助手统一命名为智能体。",
+            "保留主聊天入口的 AI 助手称呼，并保持内部配置名不变。",
+        ],
+        enTitle: "Unified Agent Terminology",
+        enChanges: [
+            "Renamed user-facing GPT and specialized assistant concepts to agents.",
+            "Kept AI Assistant for the main chat entry and preserved internal configuration names.",
+        ],
+    },
+    {
+        version: "v1.3.2",
+        date: "2026.06",
+        type: "patch",
+        zhTitle: "智能体首选模型",
+        zhChanges: [
+            "创建和编辑智能体时可从当前可用模型中选择首选模型。",
+            "首选模型下线或不可见时，智能体会自动降级到全局默认模型，避免聊天中断。",
+        ],
+        enTitle: "Preferred Models for Agents",
+        enChanges: [
+            "Added preferred model selection when creating or editing agents.",
+            "Agents now fall back to the global default when their preferred model is retired or unavailable.",
+        ],
+    },
     {
         version: "v1.3.1",
         date: "2026.06",
         type: "patch",
-        zhTitle: "GPT 页面视觉统一",
+        zhTitle: "智能体页面视觉统一",
         zhChanges: [
-            "重新设计更多助手和创建 GPT 页面，使其与主聊天助手保持统一的视觉语言。",
-            "优化助手探索卡片、配置表单、知识文件和权限区域的层级与交互。",
+            "重新设计更多智能体和创建智能体页面，使其与主聊天助手保持统一的视觉语言。",
+            "优化智能体探索卡片、配置表单、知识文件和权限区域的层级与交互。",
         ],
-        enTitle: "Unified GPT Page Design",
+        enTitle: "Unified Agent Page Design",
         enChanges: [
-            "Redesigned the Explore GPTs and Create GPT pages to match the main chat assistant.",
-            "Refined assistant cards, configuration forms, knowledge files, and visibility controls.",
+            "Redesigned the Explore Agents and Create Agent pages to match the main chat assistant.",
+            "Refined agent cards, configuration forms, knowledge files, and visibility controls.",
         ],
     },
     {
         version: "v1.3.0",
         date: "2026.06",
         type: "minor",
-        zhTitle: "GPT 长期知识文件",
+        zhTitle: "智能体长期知识文件",
         zhChanges: [
-            "创建和编辑 GPT 时支持维护助手全局长期知识文件。",
-            "GPT 会在需要资料时通过文档工具按需读取知识文件，不会默认把全部正文放入上下文。",
+            "创建和编辑智能体时支持维护智能体全局长期知识文件。",
+            "智能体会在需要资料时通过文档工具按需读取知识文件，不会默认把全部正文放入上下文。",
         ],
-        enTitle: "Long-term GPT Knowledge Files",
+        enTitle: "Long-term Agent Knowledge Files",
         enChanges: [
-            "Added management of assistant-level long-term knowledge files when creating or editing GPTs.",
-            "GPTs now read knowledge files on demand through document tools instead of injecting all file content by default.",
+            "Added management of agent-level long-term knowledge files when creating or editing agents.",
+            "Agents now read knowledge files on demand through document tools instead of injecting all file content by default.",
         ],
     },
     {
@@ -171,12 +201,12 @@ const releaseHistory = [
         zhTitle: "聊天界面交互细节优化",
         zhChanges: [
             "优化侧边栏会话、用户菜单、模型选择和新建会话页的交互细节。",
-            "优化新建会话页展示，让默认助手和专属助手的欢迎信息更清晰。",
+            "优化新建会话页展示，让默认助手和专项智能体的欢迎信息更清晰。",
         ],
         enTitle: "Chat UI Interaction Polish",
         enChanges: [
             "Polished sidebar session items, profile menu, model selector, and new chat interactions.",
-            "Improved the new chat welcome page so default and dedicated assistants are easier to distinguish.",
+            "Improved the new chat welcome page so the default assistant and specialized agents are easier to distinguish.",
         ],
     },
     {
@@ -215,14 +245,14 @@ const releaseHistory = [
         type: "minor",
         zhTitle: "诊断与链路优化",
         zhChanges: [
-            "优化 GPT 助手的附件处理流程，提升文档分析稳定性。",
+            "优化 AI 助手的附件处理流程，提升文档分析稳定性。",
             "增加助手访问控制能力，未授权用户不会看到对应入口。",
             "提高文件上传上限，并展示附件处理和工具调用进度。",
         ],
         enTitle: "Diagnostics And Flow Improvements",
         enChanges: [
             "Added diagnostic tools to help troubleshoot complex chats and attachment processing.",
-            "Improved GPT assistant attachment handling for more stable document analysis.",
+            "Improved AI Assistant attachment handling for more stable document analysis.",
             "Added assistant access controls so unauthorized users do not see restricted entries.",
             "Raised upload limits and added visible progress for attachment processing and tool calls.",
         ],
@@ -298,13 +328,13 @@ const releaseHistory = [
         zhTitle: "架构重构与数据大屏",
         zhChanges: [
             "完成应用结构升级，为聊天、数据看板和统计服务分别优化。",
-            "上线 GPT 助手核心指标总览页面。",
+            "上线 AI 助手核心指标总览页面。",
             "实现会话级模型偏好记忆和模型相关上传文件类型限制。",
         ],
         enTitle: "Architecture Refactor And Metrics Dashboard",
         enChanges: [
             "Upgraded the app structure to better support chat, dashboards, and metrics services.",
-            "Added the GPT assistant metrics overview dashboard.",
+            "Added the AI Assistant metrics overview dashboard.",
             "Added per-session model preference memory and model-specific upload restrictions.",
             "Improved connection stability and response behavior in VPN environments.",
         ],
@@ -313,18 +343,18 @@ const releaseHistory = [
         version: "v0.4.0",
         date: "2025.09",
         type: "minor",
-        zhTitle: "GPTs 平台化",
+        zhTitle: "智能体平台化",
         zhChanges: [
-            "上线 GPTs 创建与管理能力，支持自定义提示词和示例问题。",
-            "增加 GPTS 访问控制，非授权用户不会看到管理入口。",
-            "GPTs 相关页面支持中英文显示。",
+            "上线智能体创建与管理能力，支持自定义提示词和示例问题。",
+            "增加智能体访问控制，非授权用户不会看到管理入口。",
+            "智能体相关页面支持中英文显示。",
             "优化后台数据存储方式，提升本地部署便利性。",
         ],
-        enTitle: "GPTs Platformization",
+        enTitle: "Agent Platform",
         enChanges: [
-            "Added GPTs creation and management with custom prompts and example questions.",
-            "Added GPTS access control so unauthorized users do not see management entry points.",
-            "Added Chinese and English display support for GPTs pages.",
+            "Added agent creation and management with custom prompts and example questions.",
+            "Added agent access control so unauthorized users do not see management entry points.",
+            "Added Chinese and English display support for agent pages.",
             "Improved backend data storage for easier local deployment.",
         ],
     },
@@ -335,12 +365,12 @@ const releaseHistory = [
         zhTitle: "可视化增强",
         zhChanges: [
             "引入 Markdown 中的 ECharts 渲染支持。",
-            "新增 GPTs 独立视图和侧边栏固定/取消固定功能。",
+            "新增智能体独立视图和侧边栏固定/取消固定功能。",
         ],
         enTitle: "Visualization Improvements",
         enChanges: [
             "Added ECharts rendering inside Markdown.",
-            "Added a standalone GPTs view and sidebar pin/unpin support.",
+            "Added a standalone agent view and sidebar pin/unpin support.",
         ],
     },
     {
@@ -349,7 +379,7 @@ const releaseHistory = [
         type: "minor",
         zhTitle: "早期版本",
         zhChanges: [
-            "GPT 助手 1.0 版本正式上线。",
+            "AI 助手 1.0 版本正式上线。",
             "接入 DeepSeek 模型，实现思考模式展示。",
             "制度问答助手上线，支持多轮思考和工具调用。",
             "核心接口由 Dify 迁移至自研后端服务。",
@@ -359,7 +389,7 @@ const releaseHistory = [
         ],
         enTitle: "Early Releases",
         enChanges: [
-            "Released GPT assistant 1.0.",
+            "Released AI Assistant 1.0.",
             "Integrated DeepSeek with Thinking display support.",
             "Launched the regulation Q&A assistant with multi-turn thinking and tool calls.",
             "Migrated core APIs from Dify to an in-house backend service.",

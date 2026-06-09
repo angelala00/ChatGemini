@@ -159,6 +159,28 @@ class GPTAssistantModelAuthTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([item["id"] for item in visible_models], ["glm-4.7"])
         self.assertNotIn("auth", visible_models[0])
 
+    async def test_available_gpt_models_returns_only_models_visible_to_creator(self):
+        with patch.dict(gpts_routes.gpts, {"gptassistant": self.assistant_config}, clear=False), patch.object(
+            gpts_routes,
+            "refresh_gpts",
+            lambda: None,
+        ), patch(
+            "app.routes.gpts_routes.apply_admin_model_config_overrides",
+            side_effect=lambda gid, models, **kwargs: models,
+        ), patch(
+            "app.routes.gpts_routes.apply_runtime_model_visibility",
+            side_effect=lambda gid, models: models,
+        ), patch(
+            "app.routes.gpts_routes.resolve_model_configs",
+            new=AsyncMock(side_effect=lambda models: models),
+        ):
+            payload = await gpts_routes.resolve_available_gpt_models(
+                {"email": "blocked@example.com", "sub": "blocked-user"},
+            )
+
+        self.assertEqual(payload["default_model"], "glm-4.7")
+        self.assertEqual([item["id"] for item in payload["models"]], ["glm-4.7"])
+
     async def test_model_selection_rejects_unauthorized_requested_model(self):
         with patch.dict(chat_routes.gpts, {"gptassistant": self.assistant_config}, clear=False), patch(
             "app.routes.chat_routes.apply_admin_model_config_overrides",
@@ -197,6 +219,48 @@ class GPTAssistantModelAuthTests(unittest.IsolatedAsyncioTestCase):
                     user_email="blocked@example.com",
                     user_id="blocked-user",
                 )
+
+        self.assertEqual(selected["id"], "glm-4.7")
+
+    async def test_model_selection_uses_available_assistant_preferred_model(self):
+        with patch.dict(chat_routes.gpts, {"gptassistant": self.assistant_config}, clear=False), patch(
+            "app.routes.chat_routes.apply_admin_model_config_overrides",
+            side_effect=lambda gid, models, **kwargs: models,
+        ), patch(
+            "app.routes.chat_routes.apply_runtime_model_visibility",
+            side_effect=lambda gid, models: models,
+        ), patch(
+            "app.routes.chat_routes.resolve_model_configs",
+            new=AsyncMock(side_effect=lambda models: models),
+        ):
+            selected = await chat_routes._get_gid_model_config(
+                "gptassistant",
+                None,
+                user_email="allowed@example.com",
+                user_id="allowed-user",
+                fallback_model="glm-5",
+            )
+
+        self.assertEqual(selected["id"], "glm-5")
+
+    async def test_model_selection_falls_back_when_assistant_preferred_model_is_retired(self):
+        with patch.dict(chat_routes.gpts, {"gptassistant": self.assistant_config}, clear=False), patch(
+            "app.routes.chat_routes.apply_admin_model_config_overrides",
+            side_effect=lambda gid, models, **kwargs: models,
+        ), patch(
+            "app.routes.chat_routes.apply_runtime_model_visibility",
+            side_effect=lambda gid, models: models,
+        ), patch(
+            "app.routes.chat_routes.resolve_model_configs",
+            new=AsyncMock(side_effect=lambda models: models),
+        ):
+            selected = await chat_routes._get_gid_model_config(
+                "gptassistant",
+                None,
+                user_email="blocked@example.com",
+                user_id="blocked-user",
+                fallback_model="retired-model",
+            )
 
         self.assertEqual(selected["id"], "glm-4.7")
 

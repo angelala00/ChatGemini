@@ -40,10 +40,10 @@ const MyGpts = () => {
     return (
         <Container className="flex-1 w-full overflow-y-auto bg-white text-gray-900">
             <div className="max-w-3xl mx-auto px-6 pb-16">
-                <header className="py-10 text-3xl font-semibold">我的 GPTs</header>
+                <header className="py-10 text-3xl font-semibold">我的智能体</header>
                 <div className="space-y-4">
                     {items.length === 0 ? (
-                        <p className="text-gray-500">暂无 GPTs</p>
+                        <p className="text-gray-500">暂无智能体</p>
                     ) : (
                         items.map((item) => (
                             <div
