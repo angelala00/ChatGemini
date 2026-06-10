@@ -116,7 +116,78 @@ def can_access_gpt(user: dict, gid: str) -> bool:
     user_id = user.get("sub")
     if not user_id:
         return False
+    refresh_gpts()
+    gpt_item = gpts.get(gid)
+    if gpt_item and auth_ok(gpt_item, user.get("email") or "", user_id):
+        return True
     return is_gpt_pinned_for_user(user_id, gid)
+
+
+def get_sidebar_gpts(user: dict) -> list[dict]:
+    """Return the left-rail agent entries for the current user.
+
+    Compatibility rule:
+    - users with the global GPTS feature keep seeing their pinned/favorite agents here;
+    - users without that feature see every agent they can directly access.
+
+    This keeps gray-released users on the left rail without exposing the full gallery.
+    """
+    refresh_gpts()
+    user_email = user.get("email") or ""
+    user_id = user.get("sub") or ""
+    if is_gpts_feature_allowed(user):
+        pinned_rows = list_user_pinned_rows(user_id) if user_id else []
+        pinned: list[dict] = []
+        required_gids = set(get_required_pinned_gids())
+
+        for index, row in enumerate(pinned_rows):
+            gid = row["gpts_id"]
+            gpt_item = gpts.get(gid)
+            if not gpt_item or not auth_ok(gpt_item, user_email, user_id):
+                continue
+
+            item = {
+                "gid": gid,
+                "name": gpt_item.get("name") or gpt_item.get("title") or gid,
+                "is_pinned": True,
+                "is_required_pinned": is_required_pinned_gid(gid),
+                "_order": index,
+            }
+            if "logo" in gpt_item:
+                item["logo"] = gpt_item["logo"]
+            pinned.append(item)
+
+        pinned.sort(key=lambda item: (0 if item["gid"] in required_gids else 1, item["_order"]))
+        for item in pinned:
+            item.pop("_order", None)
+        return pinned[:LIMIT_PINNED]
+
+    visible_items: list[dict] = []
+    pinned_ids = set(list_pinned_gids(user_id)) if user_id else set()
+
+    for gid, value in fetch_gpts().items():
+        if gid == "gptassistant":
+            continue
+        if not auth_ok(value, user_email, user_id):
+            continue
+
+        visible_items.append(
+            {
+                "gid": gid,
+                **{k: v for k, v in value.items() if k not in {"system_prompt", "model_name", "auth"}},
+                "is_pinned": gid in pinned_ids or is_required_pinned_gid(gid),
+                "is_required_pinned": is_required_pinned_gid(gid),
+            }
+        )
+
+    visible_items.sort(
+        key=lambda item: (
+            0 if item["is_required_pinned"] else 1 if item["is_pinned"] else 2,
+            str(item.get("name") or "").lower(),
+            str(item.get("gid") or ""),
+        )
+    )
+    return visible_items
 
 
 def apply_runtime_model_visibility(
@@ -332,27 +403,7 @@ async def gpts_pined(user: dict = Depends(get_current_user)):
         ensure_required_pinned_gpts(user_id)
         set_user_config_version(user_id, CONFIG_VERSION)
     ensure_required_pinned_gpts(user_id)
-    rows = list_user_pinned_rows(user_id)
-
-    pinned = []
-    required_gids = set(get_required_pinned_gids())
-    for index, r in enumerate(rows):
-        gid = r["gpts_id"]
-        g = gpts.get(gid)
-        if g and auth_ok(g, user_email, user_id):
-            item = {
-                "gid": gid,
-                "name": g.get("name") or g.get("title") or gid,
-                "is_required_pinned": is_required_pinned_gid(gid),
-                "_order": index,
-            }
-            if "logo" in g:
-                item["logo"] = g["logo"]
-            pinned.append(item)
-    pinned.sort(key=lambda item: (0 if item["gid"] in required_gids else 1, item["_order"]))
-    for item in pinned:
-        item.pop("_order", None)
-    return pinned[:LIMIT_PINNED]
+    return get_sidebar_gpts(user)
 
 
 @router.get("/gpts/created")
@@ -382,8 +433,6 @@ async def get_gpts_detail(gid: str, user: dict = Depends(get_current_user)):
     ensure_gpt_access_allowed(user, gid)
 
     gpt_item = apply_runtime_gpt_defaults(gid, gpts[gid])
-    if not auth_ok(gpt_item, user['email'], user['sub']):
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "No Authorized")
 
     exclude_fields = {"model_name"}
     if gpt_item.get("owner") != user['sub']:
