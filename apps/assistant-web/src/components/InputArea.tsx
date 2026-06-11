@@ -54,6 +54,7 @@ interface AttachmentCardItem {
     readonly kindLabel: string;
     readonly iconLabel: string;
     readonly iconClassName: string;
+    readonly uploading?: boolean;
 }
 
 type AttachmentPresentation = Pick<
@@ -213,7 +214,9 @@ export const InputArea = forwardRef(
         const fileInputAccept = Array.from(allowedExtensions)
             .map((ext) => `.${ext}`)
             .join(",");
-        const canSubmit = !!promptValue.trim().length;
+
+        const isUploading = attachmentItems.some((item) => item.uploading);
+        const canSubmit = !!promptValue.trim().length && !isUploading;
 
         const handleSubmit = async () => {
             const { current } = textAreaRef;
@@ -239,7 +242,7 @@ export const InputArea = forwardRef(
                 const nextIds = new Set(next.map((item) => item.id));
                 revokePreviewUrls(prev.filter((item) => item.previewUrl && !nextIds.has(item.id)));
                 onAttachmentsChange(
-                    next.map(({ fileId, mimeType }) => ({ fileId, mimeType }))
+                    next.filter(item => !item.uploading).map(({ fileId, mimeType }) => ({ fileId, mimeType }))
                 );
                 attachmentItemsRef.current = next;
                 return next;
@@ -323,7 +326,8 @@ export const InputArea = forwardRef(
                 !shiftKey &&
                 key === "Enter" &&
                 !!value.trim().length &&
-                !isMobileDevice()
+                !isMobileDevice() &&
+                !isUploading
             ) {
                 e.preventDefault();
                 void handleSubmit();
@@ -402,6 +406,14 @@ export const InputArea = forwardRef(
                                                 alt={item.name}
                                                 className="h-full w-full object-cover"
                                             />
+                                            {item.uploading && (
+                                                <div className="absolute inset-0 flex items-center justify-center bg-white/50">
+                                                    <svg className="size-5 animate-spin text-[#279ab3]" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                    </svg>
+                                                </div>
+                                            )}
                                         </div>
                                     ) : (
                                         <div
@@ -433,14 +445,21 @@ export const InputArea = forwardRef(
                                                 </svg>
                                             </button>
                                             <div className={attachmentIconClassName(item.iconClassName)}>
-                                                {item.iconLabel}
+                                                {item.uploading ? (
+                                                    <svg className="size-4 animate-spin text-white" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                    </svg>
+                                                ) : item.iconLabel}
                                             </div>
                                             <div className="min-w-0">
                                                 <div className="truncate text-[13px] font-semibold leading-5 text-[#2f3a46]">
                                                     {item.name}
                                                 </div>
                                                 <div className="truncate pt-0.5 text-[11px] leading-4 text-[#87919d]">
-                                                    {item.kindLabel}{item.sizeLabel ? ` · ${item.sizeLabel}` : ""}
+                                                    {item.uploading ? "上传中..." : (
+                                                        <>{item.kindLabel}{item.sizeLabel ? ` · ${item.sizeLabel}` : ""}</>
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>
@@ -477,10 +496,9 @@ export const InputArea = forwardRef(
                                         className="hidden"
                                         accept={fileInputAccept}
                                         ref={fileInputRef}
-                                        onChange={async ({ currentTarget }) => {
+                                        onChange={({ currentTarget }) => {
                                             const { files } = currentTarget;
                                             if (files && files.length > 0) {
-                                                const nextItems: AttachmentCardItem[] = [];
                                                 const remainingSlots = Math.max(
                                                     0,
                                                     MAX_CHAT_ATTACHMENTS - attachmentItemsRef.current.length,
@@ -494,30 +512,64 @@ export const InputArea = forwardRef(
                                                         true,
                                                     );
                                                 }
-                                                for (const file of selectedFiles) {
-                                                    if (checkAttachment(file)) {
-                                                        const presentation = resolveAttachmentPresentation(file);
+
+                                                const validFiles = selectedFiles.filter(checkAttachment);
+                                                const initialTempItems = validFiles.map((file) => {
+                                                    const presentation = resolveAttachmentPresentation(file);
+                                                    const previewUrl = file.type.startsWith("image/")
+                                                        ? URL.createObjectURL(file)
+                                                        : undefined;
+                                                    return {
+                                                        id: `temp-${file.name}-${file.lastModified}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+                                                        fileId: "",
+                                                        mimeType: file.type || "application/octet-stream",
+                                                        name: file.name,
+                                                        previewUrl,
+                                                        ...presentation,
+                                                        uploading: true,
+                                                    };
+                                                });
+
+                                                if (initialTempItems.length > 0) {
+                                                    updateAttachmentItems((prev) => [...prev, ...initialTempItems]);
+
+                                                    validFiles.forEach(async (file, index) => {
+                                                        const tempItem = initialTempItems[index];
                                                         const uploaded = await onUpload(file);
+
+                                                        updateAttachmentItems((prev) => {
+                                                            const exists = prev.some((item) => item.id === tempItem.id);
+                                                            if (!exists) {
+                                                                return prev;
+                                                            }
+
+                                                            if (uploaded) {
+                                                                return prev.map((item) =>
+                                                                    item.id === tempItem.id
+                                                                        ? {
+                                                                              ...item,
+                                                                              fileId: uploaded.fileId,
+                                                                              mimeType: uploaded.mimeType,
+                                                                              uploading: false,
+                                                                          }
+                                                                        : item,
+                                                                );
+                                                            } else {
+                                                                return prev.filter((item) => item.id !== tempItem.id);
+                                                            }
+                                                        });
+
                                                         if (uploaded) {
-                                                            const previewUrl = uploaded.mimeType.startsWith("image/")
-                                                                ? URL.createObjectURL(file)
-                                                                : undefined;
-                                                            sendUserAlert(
-                                                                t("components.InputArea.checkAttachment.upload_success")
+                                                            const stillExists = attachmentItemsRef.current.some(
+                                                                (item) => item.id === tempItem.id,
                                                             );
-                                                            nextItems.push({
-                                                                id: `${uploaded.fileId}-${file.name}-${file.lastModified}`,
-                                                                fileId: uploaded.fileId,
-                                                                mimeType: uploaded.mimeType,
-                                                                name: file.name,
-                                                                previewUrl,
-                                                                ...presentation,
-                                                            });
+                                                            if (stillExists) {
+                                                                sendUserAlert(
+                                                                    t("components.InputArea.checkAttachment.upload_success"),
+                                                                );
+                                                            }
                                                         }
-                                                    }
-                                                }
-                                                if (nextItems.length > 0) {
-                                                    updateAttachmentItems((prev) => [...prev, ...nextItems]);
+                                                    });
                                                 }
                                                 currentTarget.value = "";
                                             }
