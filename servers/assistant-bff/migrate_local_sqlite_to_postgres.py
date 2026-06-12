@@ -13,11 +13,14 @@ from typing import Any
 from app.auth.auth_routes import DEFAULT_AUTH_PROVIDER
 from app.base_config import model_config
 from app.storage import business_store
+from app.storage import object_store
 
 
 KERNEL_HISTORY_PREFIX = "llm_kernel:gptassistant:"
 PROGRESS_EVERY = 100
 BATCH_SIZE = 500
+OBJECT_MIGRATION_STATE_STATUS_COMPLETED = "completed"
+OBJECT_MIGRATION_STATE_STATUS_MISSING = "missing"
 
 
 def _log(message: str) -> None:
@@ -135,6 +138,27 @@ def _ensure_migration_state_table(conn) -> None:
     )
 
 
+def _ensure_object_migration_state_table(conn) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS file_object_migration_state (
+          node_id TEXT NOT NULL,
+          file_id TEXT NOT NULL,
+          source_path TEXT NOT NULL,
+          source_size BIGINT,
+          source_mtime_ns BIGINT,
+          source_sha256 TEXT,
+          status TEXT NOT NULL,
+          target_bucket TEXT NOT NULL DEFAULT '',
+          target_object_key TEXT NOT NULL DEFAULT '',
+          completed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          error TEXT NOT NULL DEFAULT '',
+          PRIMARY KEY (node_id, file_id)
+        )
+        """
+    )
+
+
 def _is_source_already_migrated(conn, source_path: Path) -> bool:
     source_size, source_mtime_ns, source_sha256 = _source_fingerprint(source_path)
     row = conn.execute(
@@ -183,6 +207,97 @@ def _mark_source_migrated(conn, source_path: Path, summary: dict[str, int]) -> N
 def _log_table_progress(source_path: Path, table_name: str, current: int, total: int) -> None:
     if current == 1 or current == total or current % PROGRESS_EVERY == 0:
         _log(f"[migrating] source={source_path} table={table_name} rows={current}/{total}")
+
+
+def _file_sha256(source_path: Path) -> str:
+    digest = hashlib.sha256()
+    with source_path.open("rb") as source_file:
+        for chunk in iter(lambda: source_file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _normalize_pg_row(row: Any) -> dict[str, Any]:
+    if row is None:
+        return {}
+    if isinstance(row, dict):
+        return row
+    return dict(row)
+
+
+def _load_object_migration_state(conn, *, file_id: str) -> dict[str, Any] | None:
+    row = conn.execute(
+        """
+        SELECT file_id, source_path, source_size, source_mtime_ns, source_sha256,
+               status, target_bucket, target_object_key
+          FROM file_object_migration_state
+         WHERE node_id=%s AND file_id=%s
+        """,
+        (_migration_node_id(), file_id),
+    ).fetchone()
+    normalized = _normalize_pg_row(row)
+    return normalized or None
+
+
+def _record_object_migration_state(
+    conn,
+    *,
+    file_id: str,
+    source_path: str,
+    source_size: int | None,
+    source_mtime_ns: int | None,
+    source_sha256: str | None,
+    status: str,
+    target_bucket: str = "",
+    target_object_key: str = "",
+    error: str = "",
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO file_object_migration_state(
+            node_id, file_id, source_path, source_size, source_mtime_ns, source_sha256,
+            status, target_bucket, target_object_key, completed_at, error
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s)
+        ON CONFLICT (node_id, file_id) DO UPDATE SET
+            source_path=EXCLUDED.source_path,
+            source_size=EXCLUDED.source_size,
+            source_mtime_ns=EXCLUDED.source_mtime_ns,
+            source_sha256=EXCLUDED.source_sha256,
+            status=EXCLUDED.status,
+            target_bucket=EXCLUDED.target_bucket,
+            target_object_key=EXCLUDED.target_object_key,
+            completed_at=EXCLUDED.completed_at,
+            error=EXCLUDED.error
+        """,
+        (
+            _migration_node_id(),
+            file_id,
+            source_path,
+            source_size,
+            source_mtime_ns,
+            source_sha256,
+            status,
+            target_bucket,
+            target_object_key,
+            error[:500],
+        ),
+    )
+
+
+def _same_object_state(
+    state: dict[str, Any] | None,
+    *,
+    source_path: str,
+    source_size: int | None,
+    source_mtime_ns: int | None,
+) -> bool:
+    if not state:
+        return False
+    return (
+        str(state.get("source_path") or "") == source_path
+        and int(state.get("source_size") or -1) == int(source_size if source_size is not None else -1)
+        and int(state.get("source_mtime_ns") or -1) == int(source_mtime_ns if source_mtime_ns is not None else -1)
+    )
 
 
 def _inspect_source_db(source_path: Path) -> None:
@@ -649,6 +764,156 @@ def _migrate_light_business_tables(
     return summary
 
 
+def _migrate_filesystem_objects_to_minio(
+    target_conn,
+    *,
+    dry_run: bool,
+) -> dict[str, int]:
+    summary = {
+        "object_rows": 0,
+        "object_uploaded": 0,
+        "object_relinked": 0,
+        "object_skipped": 0,
+        "object_missing": 0,
+    }
+    if model_config.OBJECT_STORAGE_BACKEND != "minio":
+        return summary
+
+    _ensure_object_migration_state_table(target_conn)
+    last_file_id = ""
+    while True:
+        rows = target_conn.execute(
+            """
+            SELECT file_id, filename, file_extension, content_type, bucket, object_key,
+                   storage_backend, size_bytes, upload_time
+              FROM file_mapping
+             WHERE storage_backend='filesystem'
+               AND file_id > %s
+             ORDER BY file_id
+             LIMIT %s
+            """,
+            (last_file_id, BATCH_SIZE),
+        ).fetchall()
+        if not rows:
+            break
+
+        for row in rows:
+            item = _normalize_pg_row(row)
+            file_id = str(item.get("file_id") or "").strip()
+            if not file_id:
+                continue
+            last_file_id = file_id
+            summary["object_rows"] += 1
+            if summary["object_rows"] == 1 or summary["object_rows"] % PROGRESS_EVERY == 0:
+                _log(
+                    f"[migrating] table=file_objects rows={summary['object_rows']} "
+                    f"file_id={file_id}"
+                )
+
+            source_path = str(item.get("object_key") or "").strip()
+            if not source_path:
+                summary["object_skipped"] += 1
+                continue
+
+            source = Path(source_path)
+            state = _load_object_migration_state(target_conn, file_id=file_id)
+            if not source.exists():
+                if state and _same_object_state(
+                    state,
+                    source_path=source_path,
+                    source_size=None,
+                    source_mtime_ns=None,
+                ) and str(state.get("status") or "") == OBJECT_MIGRATION_STATE_STATUS_MISSING:
+                    summary["object_missing"] += 1
+                    continue
+                if not dry_run:
+                    _record_object_migration_state(
+                        target_conn,
+                        file_id=file_id,
+                        source_path=source_path,
+                        source_size=None,
+                        source_mtime_ns=None,
+                        source_sha256=None,
+                        status=OBJECT_MIGRATION_STATE_STATUS_MISSING,
+                        error="source file missing",
+                    )
+                summary["object_missing"] += 1
+                continue
+
+            stat = source.stat()
+            source_size = int(stat.st_size)
+            source_mtime_ns = int(stat.st_mtime_ns)
+            if state and _same_object_state(
+                state,
+                source_path=source_path,
+                source_size=source_size,
+                source_mtime_ns=source_mtime_ns,
+            ) and str(state.get("status") or "") == OBJECT_MIGRATION_STATE_STATUS_COMPLETED:
+                target_bucket = str(state.get("target_bucket") or "")
+                target_object_key = str(state.get("target_object_key") or "")
+                if target_bucket and target_object_key and not dry_run:
+                    target_conn.execute(
+                        """
+                        UPDATE file_mapping
+                           SET bucket=%s,
+                               object_key=%s,
+                               storage_backend='minio',
+                               size_bytes=%s
+                         WHERE file_id=%s
+                        """,
+                        (target_bucket, target_object_key, source_size, file_id),
+                    )
+                summary["object_relinked"] += 1
+                continue
+
+            if dry_run:
+                summary["object_uploaded"] += 1
+                continue
+
+            source_sha256 = _file_sha256(source)
+            uploaded = object_store.store_local_file(
+                file_id=file_id,
+                filename=str(item.get("filename") or file_id),
+                source_path=source,
+                content_type=str(item.get("content_type") or "").strip() or None,
+                upload_time=str(item.get("upload_time") or "").strip() or None,
+            )
+            target_conn.execute(
+                """
+                UPDATE file_mapping
+                   SET bucket=%s,
+                       object_key=%s,
+                       storage_backend=%s,
+                       size_bytes=%s
+                 WHERE file_id=%s
+                """,
+                (
+                    str(uploaded.get("bucket") or ""),
+                    str(uploaded.get("object_key") or ""),
+                    str(uploaded.get("storage_backend") or "minio"),
+                    int(uploaded.get("size_bytes") or source_size),
+                    file_id,
+                ),
+            )
+            _record_object_migration_state(
+                target_conn,
+                file_id=file_id,
+                source_path=source_path,
+                source_size=source_size,
+                source_mtime_ns=source_mtime_ns,
+                source_sha256=source_sha256,
+                status=OBJECT_MIGRATION_STATE_STATUS_COMPLETED,
+                target_bucket=str(uploaded.get("bucket") or ""),
+                target_object_key=str(uploaded.get("object_key") or ""),
+            )
+            summary["object_uploaded"] += 1
+
+        if not dry_run:
+            target_conn.commit()
+
+    return summary
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Migrate local sqlite session history into Postgres business storage.",
@@ -678,10 +943,13 @@ def main() -> int:
         source_paths = [path for path in source_paths if path.exists()]
 
     if not source_paths:
-        print("No sqlite source database found; nothing to migrate.")
-        return 0
+        if model_config.OBJECT_STORAGE_BACKEND != "minio":
+            print("No sqlite source database found; nothing to migrate.")
+            return 0
 
     if args.inspect:
+        if not source_paths:
+            print("[inspect] no sqlite source database found")
         for source_path in source_paths:
             _inspect_source_db(source_path)
         return 0
@@ -716,6 +984,11 @@ def main() -> int:
         "custom_gpts": 0,
         "user_gpts_state": 0,
         "user_config_version": 0,
+        "object_rows": 0,
+        "object_uploaded": 0,
+        "object_relinked": 0,
+        "object_skipped": 0,
+        "object_missing": 0,
     }
 
     try:
@@ -771,6 +1044,21 @@ def main() -> int:
                     totals[key] += value
                 for key, value in light_business_summary.items():
                     totals[key] += value
+            object_summary = _migrate_filesystem_objects_to_minio(
+                target_conn,
+                dry_run=args.dry_run,
+            )
+            if object_summary["object_rows"] > 0:
+                _log(
+                    "[migrated] table=file_objects "
+                    f"rows={object_summary['object_rows']} "
+                    f"uploaded={object_summary['object_uploaded']} "
+                    f"relinked={object_summary['object_relinked']} "
+                    f"skipped={object_summary['object_skipped']} "
+                    f"missing={object_summary['object_missing']}"
+                )
+            for key, value in object_summary.items():
+                totals[key] += value
     finally:
         model_config.BUSINESS_STORAGE_BACKEND = original_backend
         if original_skip_startup_migration is None:
@@ -790,7 +1078,12 @@ def main() -> int:
         f"file_mapping_skipped={totals['file_mapping_skipped']} "
         f"custom_gpts={totals['custom_gpts']} "
         f"user_gpts_state={totals['user_gpts_state']} "
-        f"user_config_version={totals['user_config_version']}"
+        f"user_config_version={totals['user_config_version']} "
+        f"object_rows={totals['object_rows']} "
+        f"object_uploaded={totals['object_uploaded']} "
+        f"object_relinked={totals['object_relinked']} "
+        f"object_skipped={totals['object_skipped']} "
+        f"object_missing={totals['object_missing']}"
     )
     return 0
 

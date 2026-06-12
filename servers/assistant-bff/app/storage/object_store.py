@@ -29,6 +29,20 @@ def _use_minio() -> bool:
     return object_storage_backend() == "minio"
 
 
+def build_minio_object_key(
+    *,
+    file_id: str,
+    filename: str,
+    upload_time: str | None = None,
+) -> str:
+    suffix = Path(filename).suffix
+    date_part = _object_date_part(upload_time)
+    prefix = model_config.MINIO_BASE_PREFIX.strip("/")
+    return "/".join(
+        part for part in (prefix, date_part, f"{file_id}{suffix}") if part
+    )
+
+
 def init_object_store() -> None:
     LOCAL_UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
     LOCAL_CACHE_ROOT.mkdir(parents=True, exist_ok=True)
@@ -68,14 +82,9 @@ def store_bytes(
     content_type: str | None = None,
 ) -> dict[str, object]:
     init_object_store()
-    suffix = Path(filename).suffix
     if _use_minio():
         client = _get_minio_client()
-        date_part = datetime.now(timezone.utc).strftime("%Y/%m/%d")
-        prefix = model_config.MINIO_BASE_PREFIX.strip("/")
-        object_key = "/".join(
-            part for part in (prefix, date_part, f"{file_id}{suffix}") if part
-        )
+        object_key = build_minio_object_key(file_id=file_id, filename=filename)
         client.put_object(
             model_config.MINIO_BUCKET,
             object_key,
@@ -110,14 +119,9 @@ def store_file(
     content_type: str | None = None,
 ) -> dict[str, object]:
     init_object_store()
-    suffix = Path(filename).suffix
     if _use_minio():
         client = _get_minio_client()
-        date_part = datetime.now(timezone.utc).strftime("%Y/%m/%d")
-        prefix = model_config.MINIO_BASE_PREFIX.strip("/")
-        object_key = "/".join(
-            part for part in (prefix, date_part, f"{file_id}{suffix}") if part
-        )
+        object_key = build_minio_object_key(file_id=file_id, filename=filename)
         client.put_object(
             model_config.MINIO_BUCKET,
             object_key,
@@ -145,6 +149,56 @@ def store_file(
         "object_key": str(target),
         "storage_backend": "filesystem",
         "size_bytes": length,
+    }
+
+
+def store_local_file(
+    *,
+    file_id: str,
+    filename: str,
+    source_path: str | Path,
+    content_type: str | None = None,
+    upload_time: str | None = None,
+) -> dict[str, object]:
+    init_object_store()
+    source = Path(source_path)
+    if not source.exists():
+        raise FileNotFoundError(source)
+    with source.open("rb") as content_file:
+        if _use_minio():
+            client = _get_minio_client()
+            object_key = build_minio_object_key(
+                file_id=file_id,
+                filename=filename,
+                upload_time=upload_time,
+            )
+            size_bytes = source.stat().st_size
+            client.put_object(
+                model_config.MINIO_BUCKET,
+                object_key,
+                content_file,
+                length=size_bytes,
+                content_type=content_type or "application/octet-stream",
+            )
+            return {
+                "bucket": model_config.MINIO_BUCKET,
+                "object_key": object_key,
+                "storage_backend": "minio",
+                "size_bytes": size_bytes,
+            }
+        target = LOCAL_UPLOAD_ROOT / file_id
+        try:
+            with target.open("wb") as output_file:
+                shutil.copyfileobj(content_file, output_file, length=1024 * 1024)
+        except Exception:
+            if target.exists():
+                target.unlink()
+            raise
+    return {
+        "bucket": "",
+        "object_key": str(target),
+        "storage_backend": "filesystem",
+        "size_bytes": source.stat().st_size,
     }
 
 
@@ -212,6 +266,18 @@ def _local_cache_path(entry: dict[str, object]) -> Path:
     file_id = str(entry.get("file_id") or entry.get("fileId") or "")
     suffix = str(entry.get("fileExtension") or entry.get("file_extension") or "")
     return LOCAL_CACHE_ROOT / f"{file_id}{suffix}"
+
+
+def _object_date_part(upload_time: str | None) -> str:
+    if upload_time:
+        try:
+            parsed = datetime.fromisoformat(upload_time.replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed.astimezone(timezone.utc).strftime("%Y/%m/%d")
+        except ValueError:
+            pass
+    return datetime.now(timezone.utc).strftime("%Y/%m/%d")
 
 
 def object_storage_health() -> dict[str, Any]:

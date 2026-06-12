@@ -15,7 +15,7 @@
 - [`.env.example`](./.env.example): 环境变量模板
 - [`sql/business_schema.postgres.sql`](./sql/business_schema.postgres.sql): 业务轻量表的显式 Postgres 建表 SQL
 - [`verify_storage.sh`](./verify_storage.sh): 启动服务后检查 `/healthz`、`/healthz/dependencies`、`/readyz`
-- [`migrate_local_sqlite_to_postgres.py`](./migrate_local_sqlite_to_postgres.py): 将节点本地 sqlite 会话历史、`file_mapping`、GPTs 配置与用户状态幂等迁移到 Postgres；`start.sh` 在 Postgres 模式启动前会自动执行一次
+- [`migrate_local_sqlite_to_postgres.py`](./migrate_local_sqlite_to_postgres.py): 将节点本地 sqlite 会话历史、`file_mapping`、GPTs 配置与用户状态幂等迁移到 Postgres；当 `OBJECT_STORAGE_BACKEND=minio` 时，也会把历史 `filesystem` 文件本体幂等搬迁到 MinIO；`start.sh` 在 Postgres 模式启动前会自动执行一次
 
 ## 测试
 
@@ -133,7 +133,15 @@ curl http://localhost:5008/readyz
 脚本会默认扫描 `FILE_BASE/gptassistant/business-dev.db`、`FILE_BASE/gptassistant/pins.db` 和 `servers/assistant-bff/app.db`；旧版 `pins.db` 中 `file_mapping(file_id, filename, fileExtension, path, uploadTime, gid)` 会映射到新版 `file_mapping` 表结构。
 老库中的会话元信息如果没有 `auth_provider` 字段，会统一按默认 Provider 写入；新请求会按当前请求上下文自动解析 Provider。
 
+### 文件本体迁移
+
+当 `OBJECT_STORAGE_BACKEND=minio` 时，`start.sh` / `deploy.sh` 触发的迁移会继续扫描 Postgres 中仍为 `storage_backend=filesystem` 的 `file_mapping` 记录，并把对应本地文件上传到 MinIO，然后原子更新该条 `file_mapping` 到 `minio`。
+
+- 迁移按 `file_id` 顺序分批处理，避免一次性把全部记录载入内存。
+- 成功迁移后会把 `file_mapping.storage_backend` 改成 `minio`，后续重复升级不会重复上传。
+- 额外状态会按 `(SQLITE_MIGRATION_NODE_ID, file_id)` 记录在 `file_object_migration_state`，用于断点续跑和避免重复处理缺失文件。
+- 如果本地文件已经不存在，会记录为 `missing` 并在后续重复升级中跳过，直到该记录源路径重新出现或元数据变化。
+
 ### 暂不处理的内容
 
-- 本地上传文件目录：当前接受两周过渡期风险，待 `MinIO` 就绪后再处理。
 - `usage_events` / `chat_traces` / `chat_trace_events`：不迁移。

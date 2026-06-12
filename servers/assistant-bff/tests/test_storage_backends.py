@@ -377,6 +377,50 @@ class StorageBackendFallbackTests(unittest.TestCase):
         self.assertEqual(payload["storage_backend"], "filesystem")
         self.assertEqual(Path(str(payload["object_key"])).read_bytes(), b"streamed content")
 
+    def test_build_minio_object_key_uses_upload_date(self):
+        key = object_store.build_minio_object_key(
+            file_id="file-1",
+            filename="demo.pdf",
+            upload_time="2026-03-04T05:06:07+00:00",
+        )
+        self.assertEqual(key, "assistant-files/2026/03/04/file-1.pdf")
+
+    def test_store_local_file_streams_to_minio_with_stable_key(self):
+        source = Path(self.file_base) / "source.txt"
+        source.write_text("migrate me", encoding="utf-8")
+        client = SimpleNamespace()
+        captured = {}
+
+        def put_object(bucket, object_key, content_file, length, content_type):
+            captured["bucket"] = bucket
+            captured["object_key"] = object_key
+            captured["length"] = length
+            captured["content_type"] = content_type
+            captured["body"] = content_file.read()
+
+        client.bucket_exists = lambda _bucket: True
+        client.put_object = put_object
+        with patch.object(model_config, "OBJECT_STORAGE_BACKEND", "minio"), \
+             patch.object(object_store, "OBJECT_BACKEND", "minio"), \
+             patch.object(object_store, "_get_minio_client", return_value=client):
+            payload = object_store.store_local_file(
+                file_id="file-1",
+                filename="source.txt",
+                source_path=source,
+                content_type="text/plain",
+                upload_time="2026-03-04T05:06:07+00:00",
+            )
+
+        self.assertEqual(payload["storage_backend"], "minio")
+        self.assertEqual(payload["bucket"], "gptassistant")
+        self.assertEqual(payload["object_key"], "assistant-files/2026/03/04/file-1.txt")
+        self.assertEqual(payload["size_bytes"], len(b"migrate me"))
+        self.assertEqual(captured["bucket"], "gptassistant")
+        self.assertEqual(captured["object_key"], "assistant-files/2026/03/04/file-1.txt")
+        self.assertEqual(captured["length"], len(b"migrate me"))
+        self.assertEqual(captured["content_type"], "text/plain")
+        self.assertEqual(captured["body"], b"migrate me")
+
     def test_minio_cache_download_is_published_atomically(self):
         cache_path = Path(object_store.LOCAL_CACHE_ROOT) / "file-1.pdf"
         client = SimpleNamespace()
