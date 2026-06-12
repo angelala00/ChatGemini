@@ -98,7 +98,7 @@ const Chat = (props: RouterComponentProps) => {
             dispatch(updateSessions(_sessions));
             const handler = (message: string, end: boolean, convId: string) => {
                 if (convId !== "") {
-                    dispatch(updateAI({ ...mappings, id, convId}))
+                    dispatch(updateMappings({ ...mappings, [id]: convId }));
                 }
                 if (end) {
                     dispatch(updateAI({ ...ai, busy: false }));

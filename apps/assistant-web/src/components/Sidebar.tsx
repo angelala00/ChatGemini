@@ -48,9 +48,24 @@ interface SidebarProps {
     readonly onToggleSidebar: () => void;
 }
 
-const APP_VERSION = "v1.3.3";
+const APP_VERSION = "v1.3.4";
 
 const releaseHistory = [
+    {
+        version: "v1.3.4",
+        date: "2026.06",
+        type: "patch",
+        zhTitle: "聊天流式兼容修复",
+        zhChanges: [
+            "修复部分智能体在生产环境中已收到流式响应但页面空白的问题。",
+            "前端聊天流解析改为同时兼容旧版 message 流和新版 kernel 事件流。",
+        ],
+        enTitle: "Streaming Compatibility Fix",
+        enChanges: [
+            "Fixed an issue where some agents showed a blank reply even though streamed responses were arriving.",
+            "Updated the frontend chat parser to support both legacy message streams and newer kernel event streams.",
+        ],
+    },
     {
         version: "v1.3.3",
         date: "2026.06",

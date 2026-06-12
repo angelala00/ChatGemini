@@ -10,10 +10,10 @@ import { globalConfig } from "../config/global";
 
 
 const unicodeToChar = (text: string) => {
-    return text.replace(/\\u[0-9a-f]{4}/g, (_match, p1) => {
-      return String.fromCharCode(parseInt(p1, 16))
-    })
-}
+    return text.replace(/\\u([0-9a-f]{4})/gi, (_match, codePoint) => {
+        return String.fromCharCode(parseInt(codePoint, 16));
+    });
+};
 
 const isGptAssistant = (gid: string) => !gid || gid === "gptassistant";
 const useGptAssistantV2 = () => globalConfig.gptassistantChatApiVersion !== "v1";
@@ -52,6 +52,28 @@ const handleLegacyEvent = (
     }
     onChatMessage(unicodeToChar(event.answer ?? ""), false, event.conversation_id ?? "");
 };
+
+const isLegacyEvent = (event: any) => event?.event === "message" || event?.event === "message_end";
+
+const isKernelEvent = (event: any) =>
+    typeof event?.event === "string" &&
+    [
+        "thinking_start",
+        "thinking_delta",
+        "thinking_end",
+        "preprocess_start",
+        "preprocess_complete",
+        "preprocess_error",
+        "toolcall_start",
+        "toolcall_delta",
+        "toolcall_end",
+        "tool_result",
+        "text_start",
+        "text_delta",
+        "text_end",
+        "response_complete",
+        "error",
+    ].includes(event.event);
 
 const FRIENDLY_ATTACHMENT_LIST_TOOLS = new Set([
     "document_list",
@@ -279,7 +301,6 @@ const read = async (
     reader: any,
     decoder: TextDecoder,
     onChatMessage: (message: string, end: boolean, conversationId: string) => void,
-    useKernelProtocol: boolean,
 ) => {
     let buffer = "";
     const kernelState = { toolStepOpen: false };
@@ -287,7 +308,7 @@ const read = async (
         while (true) {
             const result = await reader?.read();
             if (!result || result.done) {
-                if (useKernelProtocol && kernelState.toolStepOpen) {
+                if (kernelState.toolStepOpen) {
                     onChatMessage("</think>\n\n", false, "");
                     kernelState.toolStepOpen = false;
                 }
@@ -307,9 +328,9 @@ const read = async (
                 } catch (_error) {
                     continue;
                 }
-                if (useKernelProtocol) {
+                if (isKernelEvent(payload)) {
                     handleKernelEvent(payload, onChatMessage, kernelState);
-                } else {
+                } else if (isLegacyEvent(payload)) {
                     handleLegacyEvent(payload, onChatMessage);
                 }
             }
@@ -358,12 +379,10 @@ export const chatWithAI = (
                 reasoning_enabled: reasoningEnabled,
             };
 
-            const isCustomGpt = Boolean(gid && gid !== "gptassistant");
-            const useKernelProtocol = isCustomGpt || (isGptAssistant(gid) && useGptAssistantV2());
             let streamCb = function(chatResponse: any) {
                 const reader = chatResponse.body?.getReader();
                 const decoder = new TextDecoder("utf-8");
-                read(reader, decoder, onChatMessage, useKernelProtocol);
+                read(reader, decoder, onChatMessage);
             }
             // console.log("gid:"+gid)
             let path = useGptAssistantV2() ? "/api/chat-v2" : "/api/chat"
