@@ -24,6 +24,10 @@ def _log(message: str) -> None:
     print(message, flush=True)
 
 
+def _migration_node_id() -> str:
+    return model_config.SQLITE_MIGRATION_NODE_ID.strip()
+
+
 def _candidate_source_paths() -> list[Path]:
     return business_store.sqlite_business_source_paths()
 
@@ -79,6 +83,7 @@ def _ensure_migration_state_table(conn) -> None:
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS sqlite_migration_state (
+          node_id TEXT NOT NULL,
           source_path TEXT PRIMARY KEY,
           source_size BIGINT NOT NULL,
           source_mtime_ns BIGINT NOT NULL,
@@ -88,7 +93,46 @@ def _ensure_migration_state_table(conn) -> None:
         )
         """
     )
+    conn.execute("ALTER TABLE sqlite_migration_state ADD COLUMN IF NOT EXISTS node_id TEXT")
     conn.execute("ALTER TABLE sqlite_migration_state ADD COLUMN IF NOT EXISTS source_sha256 TEXT")
+    conn.execute(
+        """
+        UPDATE sqlite_migration_state
+           SET node_id=%s
+         WHERE node_id IS NULL OR node_id=''
+        """,
+        (_migration_node_id(),),
+    )
+    row = conn.execute(
+        """
+        SELECT 1
+          FROM information_schema.table_constraints
+         WHERE table_name='sqlite_migration_state'
+           AND constraint_type='PRIMARY KEY'
+           AND constraint_name='sqlite_migration_state_pkey'
+        """
+    ).fetchone()
+    if row:
+        conn.execute("ALTER TABLE sqlite_migration_state DROP CONSTRAINT sqlite_migration_state_pkey")
+    conn.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_sqlite_migration_state_node_source
+          ON sqlite_migration_state(node_id, source_path)
+        """
+    )
+    conn.execute(
+        """
+        DO $$
+        BEGIN
+          ALTER TABLE sqlite_migration_state
+            ADD CONSTRAINT sqlite_migration_state_pkey PRIMARY KEY
+            USING INDEX idx_sqlite_migration_state_node_source;
+        EXCEPTION
+          WHEN duplicate_table THEN NULL;
+          WHEN duplicate_object THEN NULL;
+        END $$;
+        """
+    )
 
 
 def _is_source_already_migrated(conn, source_path: Path) -> bool:
@@ -97,9 +141,9 @@ def _is_source_already_migrated(conn, source_path: Path) -> bool:
         """
         SELECT source_size, source_mtime_ns, source_sha256
           FROM sqlite_migration_state
-         WHERE source_path=%s
+         WHERE node_id=%s AND source_path=%s
         """,
-        (str(source_path),),
+        (_migration_node_id(), str(source_path)),
     ).fetchone()
     if not row:
         return False
@@ -116,9 +160,9 @@ def _mark_source_migrated(conn, source_path: Path, summary: dict[str, int]) -> N
     conn.execute(
         """
         INSERT INTO sqlite_migration_state(
-            source_path, source_size, source_mtime_ns, source_sha256, completed_at, summary
-        ) VALUES (%s, %s, %s, %s, NOW(), %s::jsonb)
-        ON CONFLICT (source_path) DO UPDATE SET
+            node_id, source_path, source_size, source_mtime_ns, source_sha256, completed_at, summary
+        ) VALUES (%s, %s, %s, %s, %s, NOW(), %s::jsonb)
+        ON CONFLICT (node_id, source_path) DO UPDATE SET
             source_size=EXCLUDED.source_size,
             source_mtime_ns=EXCLUDED.source_mtime_ns,
             source_sha256=EXCLUDED.source_sha256,
@@ -126,6 +170,7 @@ def _mark_source_migrated(conn, source_path: Path, summary: dict[str, int]) -> N
             summary=EXCLUDED.summary
         """,
         (
+            _migration_node_id(),
             str(source_path),
             source_size,
             source_mtime_ns,
@@ -643,6 +688,8 @@ def main() -> int:
 
     if not model_config.POSTGRES_DSN.strip():
         raise RuntimeError("POSTGRES_DSN is required")
+    if not _migration_node_id():
+        raise RuntimeError("SQLITE_MIGRATION_NODE_ID is required")
     if not model_config.SESSION_HISTORY_ENCRYPTION_KEY.strip():
         raise RuntimeError("SESSION_HISTORY_ENCRYPTION_KEY is required")
 

@@ -758,27 +758,28 @@ class StorageBackendFallbackTests(unittest.TestCase):
         self.assertFalse(old_file.exists())
 
     def test_trace_file_persistence_and_cleanup(self):
-        recorder = tracing.create_chat_trace(
-            user_id="user-1",
-            user_email="user@example.com",
-            conversation_id="cid-1",
-            gid="gptassistant",
-            route="/api/chat",
-            requested_model="glm-4.7",
-            selected_model="glm-4.7",
-            reasoning_enabled=True,
-            query="hello",
-            request_payload={"prompt": "hello"},
-        )
-        self.assertIsNotNone(recorder)
-        assert recorder is not None
-        recorder.log("request.received", {"ok": True})
-        recorder.finalize(status="success", response_preview="done", duration_ms=10.0)
+        with patch.object(model_config, "TRACE_ENABLED", True):
+            recorder = tracing.create_chat_trace(
+                user_id="user-1",
+                user_email="user@example.com",
+                conversation_id="cid-1",
+                gid="gptassistant",
+                route="/api/chat",
+                requested_model="glm-4.7",
+                selected_model="glm-4.7",
+                reasoning_enabled=True,
+                query="hello",
+                request_payload={"prompt": "hello"},
+            )
+            self.assertIsNotNone(recorder)
+            assert recorder is not None
+            recorder.log("request.received", {"ok": True})
+            recorder.finalize(status="success", response_preview="done", duration_ms=10.0)
 
-        detail = tracing.get_chat_trace(recorder.trace_id)
-        self.assertIsNotNone(detail)
-        self.assertEqual(detail["trace"]["status"], "success")
-        self.assertEqual(detail["events"][0]["event_type"], "request.received")
+            detail = tracing.get_chat_trace(recorder.trace_id)
+            self.assertIsNotNone(detail)
+            self.assertEqual(detail["trace"]["status"], "success")
+            self.assertEqual(detail["events"][0]["event_type"], "request.received")
 
         old_path = tracing.TRACE_DIR / "old-trace.json"
         old_path.write_text(
@@ -825,9 +826,22 @@ class ConfigValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "SESSION_HISTORY_ENCRYPTION_KEY"):
                 validate_storage_configuration()
 
+    def test_postgres_backend_requires_sqlite_migration_node_id(self):
+        try:
+            from cryptography.fernet import Fernet
+        except Exception:
+            self.skipTest("cryptography not installed in current test environment")
+        with patch.object(model_config, "BUSINESS_STORAGE_BACKEND", "postgres"), \
+             patch.object(model_config, "POSTGRES_DSN", "postgresql://demo"), \
+             patch.object(model_config, "SESSION_HISTORY_ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8")), \
+             patch.object(model_config, "SQLITE_MIGRATION_NODE_ID", ""):
+            with self.assertRaisesRegex(RuntimeError, "SQLITE_MIGRATION_NODE_ID"):
+                validate_storage_configuration()
+
     def test_postgres_backend_requires_valid_session_history_encryption_key(self):
         with patch.object(model_config, "BUSINESS_STORAGE_BACKEND", "postgres"), \
              patch.object(model_config, "POSTGRES_DSN", "postgresql://demo"), \
+             patch.object(model_config, "SQLITE_MIGRATION_NODE_ID", "node-a"), \
              patch.object(model_config, "SESSION_HISTORY_ENCRYPTION_KEY", "not-a-fernet-key"):
             with self.assertRaisesRegex(RuntimeError, "valid Fernet key"):
                 validate_storage_configuration()
@@ -839,6 +853,7 @@ class ConfigValidationTests(unittest.TestCase):
             self.skipTest("cryptography not installed in current test environment")
         with patch.object(model_config, "BUSINESS_STORAGE_BACKEND", "postgres"), \
              patch.object(model_config, "POSTGRES_DSN", "postgresql://demo"), \
+             patch.object(model_config, "SQLITE_MIGRATION_NODE_ID", "node-a"), \
              patch.object(model_config, "SESSION_HISTORY_ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8")), \
              patch("importlib.util.find_spec", return_value=object()):
             validate_storage_configuration()
@@ -850,6 +865,7 @@ class ConfigValidationTests(unittest.TestCase):
             self.skipTest("cryptography not installed in current test environment")
         with patch.object(model_config, "BUSINESS_STORAGE_BACKEND", "postgres"), \
              patch.object(model_config, "POSTGRES_DSN", "postgresql://demo"), \
+             patch.object(model_config, "SQLITE_MIGRATION_NODE_ID", "node-a"), \
              patch.object(model_config, "SESSION_HISTORY_ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8")), \
              patch.object(model_config, "POSTGRES_POOL_MIN_SIZE", 6), \
              patch.object(model_config, "POSTGRES_POOL_MAX_SIZE", 5), \
@@ -864,6 +880,7 @@ class ConfigValidationTests(unittest.TestCase):
             self.skipTest("cryptography not installed in current test environment")
         with patch.object(model_config, "BUSINESS_STORAGE_BACKEND", "postgres"), \
              patch.object(model_config, "POSTGRES_DSN", "postgresql://demo"), \
+             patch.object(model_config, "SQLITE_MIGRATION_NODE_ID", "node-a"), \
              patch.object(model_config, "SESSION_HISTORY_ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8")), \
              patch("importlib.util.find_spec", return_value=None):
             with self.assertRaisesRegex(RuntimeError, "psycopg_pool"):

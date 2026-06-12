@@ -28,6 +28,10 @@ def validate_storage_configuration() -> None:
         raise RuntimeError(
             "SESSION_HISTORY_ENCRYPTION_KEY is required when BUSINESS_STORAGE_BACKEND=postgres"
         )
+    if model_config.BUSINESS_STORAGE_BACKEND == "postgres" and not model_config.SQLITE_MIGRATION_NODE_ID:
+        raise RuntimeError(
+            "SQLITE_MIGRATION_NODE_ID is required when BUSINESS_STORAGE_BACKEND=postgres"
+        )
     if model_config.BUSINESS_STORAGE_BACKEND == "postgres":
         _validate_session_history_encryption_key(model_config.SESSION_HISTORY_ENCRYPTION_KEY)
         if importlib.util.find_spec("psycopg_pool") is None:

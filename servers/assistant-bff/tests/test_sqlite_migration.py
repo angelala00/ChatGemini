@@ -4,12 +4,16 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import migrate_local_sqlite_to_postgres as migration
 
 
 class SQLiteMigrationTests(unittest.TestCase):
+    def test_migration_node_id_reads_from_config(self):
+        with patch.object(migration.model_config, "SQLITE_MIGRATION_NODE_ID", "node-a"):
+            self.assertEqual(migration._migration_node_id(), "node-a")
+
     def test_source_fingerprint_distinguishes_same_size_and_mtime_content(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             first = Path(temp_dir) / "first.db"
@@ -40,7 +44,16 @@ class SQLiteMigrationTests(unittest.TestCase):
                 source_sha256,
             )
 
-            self.assertTrue(migration._is_source_already_migrated(conn, source))
+            with patch.object(migration.model_config, "SQLITE_MIGRATION_NODE_ID", "node-a"):
+                self.assertTrue(migration._is_source_already_migrated(conn, source))
+            conn.execute.assert_called_with(
+                """
+        SELECT source_size, source_mtime_ns, source_sha256
+          FROM sqlite_migration_state
+         WHERE node_id=%s AND source_path=%s
+        """,
+                ("node-a", str(source)),
+            )
 
     def test_legacy_state_without_hash_uses_size_and_mtime(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -55,7 +68,8 @@ class SQLiteMigrationTests(unittest.TestCase):
                 None,
             )
 
-            self.assertTrue(migration._is_source_already_migrated(conn, source))
+            with patch.object(migration.model_config, "SQLITE_MIGRATION_NODE_ID", "node-a"):
+                self.assertTrue(migration._is_source_already_migrated(conn, source))
 
 
 if __name__ == "__main__":
