@@ -47,7 +47,8 @@
         "dev": "vite",
         "start": "pnpm run dev",
         "build": "vite build",
-        "preview": "vite preview"
+        "preview": "vite preview",
+        "test:e2e": "playwright test"
     },
     "browserslist": {
         "production": [
@@ -63,6 +64,7 @@
     },
     "devDependencies": {
         "@babel/plugin-proposal-private-property-in-object": "^7.21.11",
+        "@playwright/test": "^1.60.0",
         "@tailwindcss/typography": "^0.5.10",
         "@types/crypto-js": "^4.2.2",
         "@types/file-saver": "^2.0.7",
