@@ -1,5 +1,17 @@
 # Repository Guidelines
 
+## Documentation & Engineering Principles
+
+### 1.1 知识沉淀 (Knowledge Sedimentation)
+- **`TODO.md` (Root)**: Used ONLY for **future tasks** and pending items. Do not store implemented technical design details here long-term.
+- **`AGENTS.md` (Scoped)**: Each core module directory (e.g., `apps/assistant-web/`, `servers/assistant-bff/`) should have its own `AGENTS.md` to document its **current architecture**, core logic, and module-specific conventions.
+- **Migration Rule**: When a technical task in `TODO.md` is completed, its implementation details and technical rationale must be migrated to the relevant module's `AGENTS.md`.
+
+### 1.2 Documentation Hierarchy
+- **`AGENTS.md` (Root)**: General engineering standards and repository-wide AI guidelines (this file).
+- **`TESTING_GUIDE.md` (Root)**: Regression testing scenarios and quality assurance strategy.
+- **`AGENTS.md` (Subdirectories)**: "Live" architectural descriptions for specific modules.
+
 ## Project Structure & Module Organization
 - `apps/assistant-web`: main ChatGemini web client (React + Vite + Tailwind). Source in `apps/assistant-web/src`, static assets in `apps/assistant-web/public` and `apps/assistant-web/src/assets`.
 - `apps/assistant-dashboard`: dashboard prototype (React + Vite + Tailwind). Source in `apps/assistant-dashboard/src`.

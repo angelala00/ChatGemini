@@ -1,0 +1,20 @@
+# Frontend Architectural Notes
+
+## 流式会话内存治理 (Streaming Memory Management)
+
+为了防止 AI 长回复时由于高频状态更新导致页面卡顿或内存溢出，本项目在 `apps/assistant-web` 中实现了以下优化：
+
+### 1. 状态更新节流 (Throttling)
+- **实现位置**：`apps/assistant-web/src/App.tsx` 中的 `scheduleSessionDispatch` 和 `flushSessionDispatch` 函数。
+- **逻辑**：
+    - 流式输出期间，新的内容先累积在局部变量 `_sessions` 中。
+    - 使用 `STREAM_SESSION_DISPATCH_INTERVAL_MS` (80ms) 作为最小更新间隔。
+    - 只有当距离上次分发超过 80ms 时，才会通过 `dispatch(updateSessions(...))` 触发 Redux 更新和 React 重渲染。
+    - 对话结束时，强制调用 `flushSessionDispatch` 确保最终内容完整落库。
+
+### 2. 附件状态轻量化
+- **存储策略**：会话历史和附件状态仅保留 `fileId`、文件名、`mimeType` 等元信息。
+- **内容分离**：不再在 Redux 状态或本地存储中长期持有文件正文或 Base64 编码，以降低长会话时的内存占用。
+
+### 3. 会话详情按需加载
+- **逻辑**：会话列表只持有 `SessionSummary`（元数据），具体的聊天详情在用户点击特定会话时才从服务端或本地缓存加载，避免初始化时加载全量历史。
