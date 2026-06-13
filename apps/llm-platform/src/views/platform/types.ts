@@ -5,6 +5,7 @@ export interface GatewayUserTokenInfo {
     ownerType: "user" | "project";
     projectId?: string;
     projectName?: string;
+    note?: string | null;
     diagnosticsAuthorized?: boolean;
     diagnosticsActive?: boolean;
     diagnosticsExpiresAt?: string | null;
@@ -49,6 +50,7 @@ export interface RankingEntry {
 
 export interface UserVisibilityResponse {
     user: string;
+    isAdmin?: boolean;
     models: Array<{
         name: string;
         type?: string | null;
@@ -150,7 +152,7 @@ export interface UserUsageResponse extends UserModelRankingResponse {
     projects?: ProjectUsageSummary[];
 }
 
-export type TopMenu = "console" | "market" | "docs" | "diagnostics";
+export type TopMenu = "console" | "market" | "docs" | "diagnostics" | "skills" | "mcps";
 export type ConsoleSideMenu = "apikey" | "usage";
 export type DocsPage = "gateway-api" | "claude-zhipu";
 

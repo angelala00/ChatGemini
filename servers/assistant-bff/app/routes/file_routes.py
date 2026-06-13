@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, status,
 from fastapi.responses import JSONResponse, FileResponse
 from datetime import datetime, timezone
 from app.auth.auth_routes import GLOBAL_AUTH_PROVIDER, get_current_auth_provider, get_current_user
+from app.base_config import model_config
 from app.admin.access_control import resolve_user_permissions
 from app.logger import gpt_logger
 from app.gpts.config_gpts import gpts, refresh_gpts

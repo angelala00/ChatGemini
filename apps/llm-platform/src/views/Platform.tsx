@@ -40,7 +40,14 @@ const Platform = (props: RouterComponentProps) => {
     const location = useLocation();
     const navigate = useNavigate();
     const parseTopMenu = (value?: string | null): TopMenu => {
-        if (value === "market" || value === "docs" || value === "console" || value === "diagnostics") {
+        if (
+            value === "market" ||
+            value === "docs" ||
+            value === "console" ||
+            value === "diagnostics" ||
+            value === "skills" ||
+            value === "mcps"
+        ) {
             return value;
         }
         return "console";
@@ -112,10 +119,9 @@ const Platform = (props: RouterComponentProps) => {
             return "";
         }
         if (safeToken.length <= head + tail) {
-            return "*".repeat(Math.max(safeToken.length, head + tail));
+            return "****";
         }
-        const maskedLength = Math.max(4, safeToken.length - head - tail);
-        return `${safeToken.slice(0, head)}${"*".repeat(maskedLength)}${safeToken.slice(-tail)}`;
+        return `${safeToken.slice(0, head)}****${safeToken.slice(-tail)}`;
     };
     const formatDateTime = (value?: string | null) => {
         if (!value) {
@@ -629,7 +635,7 @@ const Platform = (props: RouterComponentProps) => {
     }, [activeTopMenu]);
 
     useEffect(() => {
-        if (activeTopMenu !== "market" || modelsLoading || visibleModels) {
+        if (modelsLoading || visibleModels) {
             return;
         }
         if (modelsRetryCount >= MAX_RETRIES) {
@@ -654,7 +660,14 @@ const Platform = (props: RouterComponentProps) => {
             modelsRetryCount === 0 ? 0 : RETRY_DELAY_MS,
         );
         return () => window.clearTimeout(timer);
-    }, [activeTopMenu, modelsLoading, modelsRetryCount, visibleModels, MAX_RETRIES, RETRY_DELAY_MS]);
+    }, [modelsLoading, modelsRetryCount, visibleModels, MAX_RETRIES, RETRY_DELAY_MS]);
+
+    const isUserAdmin = useMemo(() => {
+        return (
+            visibleModels?.isAdmin ||
+            apiKeyUser?.isAdmin
+        );
+    }, [visibleModels?.isAdmin, apiKeyUser?.isAdmin]);
 
     useEffect(() => {
         if (
@@ -806,7 +819,7 @@ const Platform = (props: RouterComponentProps) => {
         setUsageData(null);
     }, [activeSideMenu, usageRange]);
 
-    const createToken = async (ownerType: "user" | "project", projectId?: string) => {
+    const createToken = async (ownerType: "user" | "project", projectId?: string, note?: string) => {
         const createKey = ownerType === "project" ? `project:${projectId ?? ""}` : "user";
         if (createTokenLoading[createKey]) {
             return;
@@ -814,9 +827,16 @@ const Platform = (props: RouterComponentProps) => {
         setCreateTokenLoading((prev) => ({ ...prev, [createKey]: true }));
         setCreateTokenError(null);
         try {
+            const jsonPayload: Record<string, unknown> = { ownerType };
+            if (ownerType === "project") {
+                jsonPayload.projectId = projectId;
+            }
+            if (note) {
+                jsonPayload.note = note;
+            }
             const payload = await platformUserPost<{ token?: string }>(
                 "/tokens",
-                ownerType === "project" ? { json: { ownerType, projectId } } : { json: { ownerType } },
+                { json: jsonPayload },
             );
             await loadApiKeys();
             setCreatedTokenValue(payload?.token ?? null);
@@ -849,6 +869,33 @@ const Platform = (props: RouterComponentProps) => {
             });
         } catch (error) {
             setTokenActionError(error instanceof Error ? error.message : "Token 状态更新失败");
+        } finally {
+            setTokenUpdating((prev) => ({ ...prev, [token]: false }));
+        }
+    };
+
+    const updateTokenNote = async (token: string, note: string | null) => {
+        if (tokenUpdating[token]) {
+            return;
+        }
+        setTokenUpdating((prev) => ({ ...prev, [token]: true }));
+        setTokenActionError(null);
+        try {
+            await platformUserPatch<{ token: string; note: string | null }>(
+                `/tokens/${token}/note`,
+                { json: { note } },
+            );
+            setApiKeyUser((prev) => {
+                if (!prev) return prev;
+                return {
+                    ...prev,
+                    tokens: prev.tokens.map((item) =>
+                        item.token === token ? { ...item, note } : item,
+                    ),
+                };
+            });
+        } catch (error) {
+            setTokenActionError(error instanceof Error ? error.message : "备注更新失败");
         } finally {
             setTokenUpdating((prev) => ({ ...prev, [token]: false }));
         }
@@ -961,8 +1008,19 @@ const Platform = (props: RouterComponentProps) => {
                         <nav className="flex items-center gap-3 text-sm font-medium text-slate-500">
                             {(
                                 activeTopMenu === "diagnostics"
-                                    ? ["console", "market", "docs", "diagnostics"]
-                                    : ["console", "market", "docs"]
+                                    ? [
+                                          "console",
+                                          "market",
+                                          "docs",
+                                          ...(isUserAdmin ? ["skills", "mcps"] : []),
+                                          "diagnostics",
+                                      ]
+                                    : [
+                                          "console",
+                                          "market",
+                                          "docs",
+                                          ...(isUserAdmin ? ["skills", "mcps"] : []),
+                                      ]
                             ).map((item) => (
                                 <button
                                     key={item}
@@ -971,7 +1029,7 @@ const Platform = (props: RouterComponentProps) => {
                                         setActiveTopMenu(item as TopMenu);
                                         syncPath(item as TopMenu, activeSideMenu, activeDocsPage);
                                     }}
-                                    className={`rounded-full px-4 py-2 transition ${
+                                    className={`relative rounded-full px-4 py-2 transition ${
                                         activeTopMenu === item
                                             ? "bg-blue-800 text-white"
                                             : "hover:bg-slate-100"
@@ -980,7 +1038,15 @@ const Platform = (props: RouterComponentProps) => {
                                     {item === "console" && "控制台"}
                                     {item === "market" && "模型广场"}
                                     {item === "docs" && "API 文档"}
+                                    {item === "skills" && "Skills"}
+                                    {item === "mcps" && "MCPs"}
                                     {item === "diagnostics" && "诊断日志"}
+                                    {(item === "skills" || item === "mcps") && (
+                                        <span className="absolute -right-1 -top-1 flex h-2 w-2">
+                                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75"></span>
+                                            <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500"></span>
+                                        </span>
+                                    )}
                                 </button>
                             ))}
                         </nav>
@@ -1036,6 +1102,7 @@ const Platform = (props: RouterComponentProps) => {
                     maskToken={maskToken}
                     createToken={createToken}
                     updateTokenStatus={updateTokenStatus}
+                    updateTokenNote={updateTokenNote}
                     updateDiagnosticsState={updateDiagnosticsState}
                     getUsageTotals={getUsageTotals}
                 />
@@ -1084,6 +1151,30 @@ const Platform = (props: RouterComponentProps) => {
                     syncPath={syncPath}
                     openApiKeysPage={openApiKeysPage}
                 />
+            )}
+            {(activeTopMenu === "skills" || activeTopMenu === "mcps") && (
+                <div className="flex min-h-[400px] flex-col items-center justify-center gap-4 px-6 text-center">
+                    <div className="flex size-16 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.675.337a4 4 0 01-2.574.346l-2.387-.477a2 2 0 00-1.022.547l-1.5 1.5a2 2 0 000 2.828l1.5 1.5a2 2 0 002.828 0l1.5-1.5a2 2 0 00.547-1.022l.477-2.387a6 6 0 00-.517-3.86l-.337-.675a4 4 0 01-.346-2.574l.477-2.387a2 2 0 00-.547-1.022l-1.5-1.5a2 2 0 00-2.828 0l-1.5 1.5a2 2 0 000 2.828l1.5 1.5a2 2 0 001.022.547l2.387.477a6 6 0 003.86-.517l.675-.337a4 4 0 012.574-.346l2.387.477a2 2 0 001.022-.547l1.5-1.5a2 2 0 000-2.828l-1.5-1.5a2 2 0 00-2.828 0l-1.5 1.5z" />
+                        </svg>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                        <h3 className="text-xl font-bold text-slate-800">
+                            {activeTopMenu === "skills" ? "Skills" : "MCPs"} 功能开发中
+                        </h3>
+                        <p className="max-w-md text-slate-500">
+                            我们正在努力构建 {activeTopMenu === "skills" ? "插件系统 (Skills)" : "MCP 协议支持"}，该功能将允许你扩展模型能力并连接更多外部工具。敬请期待！
+                        </p>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={openApiKeysPage}
+                        className="mt-4 rounded-full bg-slate-900 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+                    >
+                        返回控制台
+                    </button>
+                </div>
             )}
         </div>
     );

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 from fastapi.responses import JSONResponse
 import httpx
 
-from app.base_config import platform_config
+from app.base_config import platform_config, model_config
 from app.auth.auth_routes import get_current_user
 
 
@@ -222,6 +222,7 @@ async def _load_user_api_key_summary(
             "diagnosticsAuthorized": bool(access_token_entry.get("diagnosticsAuthorized", False)),
             "diagnosticsActive": bool(access_token_entry.get("diagnosticsActive", False)),
             "diagnosticsExpiresAt": access_token_entry.get("diagnosticsExpiresAt"),
+            "note": access_token_entry.get("note") or entry.get("note"),
             **owner_payload,
         }
         token_entries.append(token_payload)
@@ -238,11 +239,16 @@ async def _load_user_api_key_summary(
         if isinstance(entry, dict)
     ]
 
+    # Check if user is in any whitelist to grant isAdmin-like privileges in frontend
+    is_admin = False
+    if user_email in model_config.GPTS_WHITE_LIST or user_email in model_config.VOICE_LAB_WHITE_LIST:
+        is_admin = True
+
     return {
         "id": user_email,
         "displayName": display_name,
         "enabled": enabled,
-        "isAdmin": False,
+        "isAdmin": is_admin,
         "tokenCount": len(token_entries),
         "tokens": token_entries,
         "projects": project_list,
@@ -369,7 +375,36 @@ async def get_user_visibility(
         "/gateway/admin",
         f"/users/{user_email}/visibility/public",
     )
-    return await _proxy_request(request, target_url)
+    
+    # Check if user is in any whitelist to grant isAdmin-like privileges in frontend
+    is_admin = False
+    if user_email in model_config.GPTS_WHITE_LIST or user_email in model_config.VOICE_LAB_WHITE_LIST:
+        is_admin = True
+    
+    headers = _build_headers(request)
+    async with httpx.AsyncClient(
+        timeout=platform_config.PORTAL_TIMEOUT_SECONDS,
+        trust_env=platform_config.PORTAL_TRUST_ENV,
+    ) as client:
+        upstream = await client.get(
+            target_url,
+            headers=headers,
+        )
+    
+    if upstream.status_code == 200:
+        try:
+            payload = upstream.json()
+            if isinstance(payload, dict):
+                payload["isAdmin"] = is_admin
+                return JSONResponse(content=payload)
+        except Exception:
+            pass
+            
+    return Response(
+        content=upstream.content,
+        status_code=upstream.status_code,
+        media_type=upstream.headers.get("content-type"),
+    )
 
 
 @router.get("/user/usage")
@@ -467,6 +502,7 @@ async def create_user_token(
     payload = await request.json()
     owner_type = payload.get("ownerType")
     project_id = payload.get("projectId")
+    note = payload.get("note")
 
     target_url = _build_target_url("/access", "/db")
     status_code, access_db = await _fetch_json(request, target_url, method="GET")
@@ -502,6 +538,8 @@ async def create_user_token(
                 content={"detail": f"项目 API Key 上限为 {PROJECT_TOKEN_LIMIT}"},
             )
         create_payload = {"project": project_id, "createdBy": user_email}
+        if isinstance(note, str) and note.strip():
+            create_payload["note"] = note.strip()
     else:
         existing = sum(
             1
@@ -514,6 +552,8 @@ async def create_user_token(
                 content={"detail": f"个人 API Key 上限为 {USER_TOKEN_LIMIT}"},
             )
         create_payload = {"user": user_email, "createdBy": user_email}
+        if isinstance(note, str) and note.strip():
+            create_payload["note"] = note.strip()
 
     target_url = _build_target_url("/access", "/tokens")
     headers = _build_headers(request)
@@ -539,6 +579,20 @@ async def update_user_token_enabled(
     target_url = _build_target_url(
         "/access",
         f"/tokens/{token}/enabled",
+    )
+    return await _proxy_request(request, target_url)
+
+
+@router.patch("/user/tokens/{token}/note")
+async def update_user_token_note(
+    request: Request,
+    token: str,
+    user: dict = Depends(get_current_user),
+) -> Response:
+    _get_user_email(user)
+    target_url = _build_target_url(
+        "/access",
+        f"/tokens/{token}/note",
     )
     return await _proxy_request(request, target_url)
 

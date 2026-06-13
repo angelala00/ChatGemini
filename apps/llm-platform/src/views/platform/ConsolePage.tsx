@@ -49,8 +49,9 @@ interface ConsolePageProps {
     openDiagnosticsPage: (tokenId?: string) => void;
     handleCopyToken: (token: string) => void;
     maskToken: (token: string, head?: number, tail?: number) => string;
-    createToken: (ownerType: "user" | "project", projectId?: string) => void;
+    createToken: (ownerType: "user" | "project", projectId?: string, note?: string) => void;
     updateTokenStatus: (token: string, enabled: boolean) => void;
+    updateTokenNote: (token: string, note: string | null) => void;
     updateDiagnosticsState: (token: GatewayUserTokenInfo, activate: boolean) => void;
     getUsageTotals: (ranking?: RankingEntry[]) => UsageTotals;
 }
@@ -90,6 +91,7 @@ const ConsolePage = ({
     maskToken,
     createToken,
     updateTokenStatus,
+    updateTokenNote,
     updateDiagnosticsState,
     getUsageTotals,
 }: ConsolePageProps) => (
@@ -143,6 +145,7 @@ const ConsolePage = ({
                     maskToken={maskToken}
                     createToken={createToken}
                     updateTokenStatus={updateTokenStatus}
+                    updateTokenNote={updateTokenNote}
                     updateDiagnosticsState={updateDiagnosticsState}
                 />
             )}
