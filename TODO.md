@@ -20,4 +20,5 @@
 - **恶意文件检测能力**：评估接入杀毒扫描或沙箱分析。
 
 ---
-*注：已完成的“流式会话内存治理”和“管理员配置体系”已沉淀至 `apps/assistant-web/GEMINI.md` 和 `servers/assistant-bff/app/admin/GEMINI.md`。*
+*注：已完成的技术方案应按 `AGENTS.md` 中的“知识沉淀”原则，及时搬迁至对应模块的 `AGENTS.md` 中。*
+
