@@ -66,7 +66,7 @@ MODEL_UPLOAD_RULES = {
     MODEL_NAME_INSTRUCT: {"documents": True, "images": False},
     MODEL_NAME_VL: {"documents": False, "images": True},
 }
-FILE_LIFETIME_DAYS = 7  # 可配置的过期时间，单位为天
+FILE_LIFETIME_DAYS = model_config.FILE_LIFETIME_DAYS
 DEFAULT_UPLOAD_MAX_BYTES = 10 * 1024 * 1024
 DEFAULT_IMAGE_MAX_BYTES = 8 * 1024 * 1024
 DEFAULT_MAX_ACTIVE_FILES = 2000
@@ -874,6 +874,9 @@ async def get_file_name(file_id, user: dict = Depends(get_current_user)):
 
 # 删除过期文件的函数
 def delete_expired_files():
+    if FILE_LIFETIME_DAYS <= 0:
+        gpt_logger.info("expired_file_cleanup_skipped reason=disabled")
+        return
     with distributed_task_lock("file-retention-cleanup") as acquired:
         if not acquired:
             gpt_logger.info("expired_file_cleanup_skipped reason=lock_not_acquired")

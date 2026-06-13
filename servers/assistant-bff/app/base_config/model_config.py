@@ -67,6 +67,7 @@ OBJECT_STORAGE_BACKEND: str = os.getenv(
     "OBJECT_STORAGE_BACKEND",
     "minio" if MINIO_ENDPOINT else "filesystem",
 ).strip().lower()
+FILE_LIFETIME_DAYS: int = _parse_int_env(os.getenv("FILE_LIFETIME_DAYS"), 7)
 USAGE_EVENT_RETENTION_DAYS: int = _parse_int_env(os.getenv("USAGE_EVENT_RETENTION_DAYS"), 14)
 TRACE_RETENTION_DAYS: int = _parse_int_env(os.getenv("TRACE_RETENTION_DAYS"), 7)
 OBJECT_CACHE_RETENTION_DAYS: int = _parse_int_env(os.getenv("OBJECT_CACHE_RETENTION_DAYS"), 3)

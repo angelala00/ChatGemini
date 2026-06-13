@@ -61,11 +61,15 @@ def validate_storage_configuration() -> None:
             )
 
     for name, value in (
+        ("FILE_LIFETIME_DAYS", model_config.FILE_LIFETIME_DAYS),
         ("USAGE_EVENT_RETENTION_DAYS", model_config.USAGE_EVENT_RETENTION_DAYS),
         ("TRACE_RETENTION_DAYS", model_config.TRACE_RETENTION_DAYS),
         ("OBJECT_CACHE_RETENTION_DAYS", model_config.OBJECT_CACHE_RETENTION_DAYS),
     ):
-        if value < 1:
+        if name == "FILE_LIFETIME_DAYS":
+            if value < 0:
+                raise RuntimeError(f"{name} must be >= 0")
+        elif value < 1:
             raise RuntimeError(f"{name} must be >= 1")
 
 

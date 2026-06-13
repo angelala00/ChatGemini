@@ -35,6 +35,7 @@
 - `SQLITE_MIGRATION_NODE_ID`: 本节点 sqlite 迁移状态标识；当 `BUSINESS_STORAGE_BACKEND=postgres` 时会自动回填为当前机器的主 IP，也可以手工覆盖，但每个节点必须不同。
 - `SESSION_HISTORY_ENCRYPTION_KEY`: 会话历史加密密钥。当前要求在 `BUSINESS_STORAGE_BACKEND=postgres` 时必填，格式为 `Fernet` key。
 - `OBJECT_STORAGE_BACKEND`: 文件存储后端。生产建议 `minio`，本地开发可用 `filesystem`。
+- `FILE_LIFETIME_DAYS`: 会话附件自动过期天数；设为 `0` 时关闭自动过期清理，默认 `7`。
 - `MINIO_ENDPOINT`: MinIO 地址，例如 `minio.example.com:9000`。
 - `MINIO_ACCESS_KEY`: MinIO access key。
 - `MINIO_SECRET_KEY`: MinIO secret key。
@@ -78,6 +79,7 @@
   - 新上传文件按内容 SHA-256 使用 `assistant-files/blobs/sha256/<sha256>` 对象键。
   - 同一用户重复上传相同内容时复用已有对象，但每次上传仍创建独立 `file_id`，以分别绑定会话附件或智能体知识文件。
   - 删除逻辑附件时，只有底层对象不存在其他引用才会真正删除对象；历史附件继续兼容原有对象键。
+  - 会话附件的自动过期清理默认在 7 天后执行，可通过 `FILE_LIFETIME_DAYS=0` 关闭。
 - 观测数据：节点本地日志文件
   - `usage_events`
   - `chat_traces`
