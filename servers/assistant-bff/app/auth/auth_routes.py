@@ -12,6 +12,7 @@ from fastapi import APIRouter, Request
 
 
 DEFAULT_AUTH_PROVIDER = "c"
+GLOBAL_AUTH_PROVIDER = "global"
 
 
 def resolve_auth_provider(request: Request) -> str:
@@ -95,6 +96,7 @@ def get_current_auth_provider(user: dict[str, str]) -> str:
 
 __all__ = [
     "DEFAULT_AUTH_PROVIDER",
+    "GLOBAL_AUTH_PROVIDER",
     "router",
     "get_current_user",
     "get_current_auth_provider",

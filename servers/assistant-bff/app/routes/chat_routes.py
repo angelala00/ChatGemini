@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
-from app.auth.auth_routes import get_current_auth_provider, get_current_user
+from app.auth.auth_routes import GLOBAL_AUTH_PROVIDER, get_current_auth_provider, get_current_user
 from app.storage.business_store import (
     bind_file_mappings_to_conversation,
     delete_session_history,
@@ -75,14 +75,17 @@ def _merge_tool_file_ids(
         for item in (request_file_ids or "").split(",")
         if item.strip()
     ]
+    current_provider = get_current_auth_provider(user)
     for file_id, entry in list_file_mappings(gid).items():
         purpose = entry.get("purpose")
         if purpose == "assistant_knowledge":
-            file_ids.append(file_id)
+            if entry.get("authProvider") in {current_provider, GLOBAL_AUTH_PROVIDER}:
+                file_ids.append(file_id)
             continue
         if (
             purpose == "session_attachment"
             and entry.get("conversationId") == conversation_id
+            and entry.get("authProvider") in {current_provider, GLOBAL_AUTH_PROVIDER}
             and (
                 entry.get("ownerUserId") == user.get("sub")
                 or (
@@ -110,6 +113,7 @@ def _bind_request_session_attachments(
         conversation_id=conversation_id,
         owner_user_id=str(user.get("sub") or "").strip() or None,
         owner_user_email=str(user.get("email") or "").strip() or None,
+        auth_provider=get_current_auth_provider(user),
     )
 
 
@@ -117,9 +121,11 @@ def _delete_session_attachments(conversation_id: str, gid: str, user: dict) -> i
     deleted = 0
     user_id = str(user.get("sub") or "").strip()
     user_email = str(user.get("email") or "").strip()
+    current_provider = get_current_auth_provider(user)
     for file_id, entry in list_file_mappings(gid).items():
         owner_user_id = str(entry.get("ownerUserId") or "").strip()
         owner_user_email = str(entry.get("ownerUserEmail") or "").strip()
+        entry_provider = str(entry.get("authProvider") or "").strip() or GLOBAL_AUTH_PROVIDER
         is_owned = (
             bool(user_id and owner_user_id == user_id)
             if owner_user_id
@@ -129,6 +135,7 @@ def _delete_session_attachments(conversation_id: str, gid: str, user: dict) -> i
             entry.get("purpose") != "session_attachment"
             or entry.get("conversationId") != conversation_id
             or not is_owned
+            or entry_provider not in {current_provider, GLOBAL_AUTH_PROVIDER}
         ):
             continue
         delete_file_reference(file_id, entry)
@@ -857,7 +864,12 @@ async def chat_with_gpts(request: QueryRequest, gid: str, user: dict = Depends(g
         raise HTTPException(status.HTTP_404_NOT_FOUND, "gid not found")
     ensure_gpt_access_allowed(user, gid)
     assistant_config = gpts[gid]
-    if not auth_ok(assistant_config, user["email"], user.get("sub")):
+    if not auth_ok(
+        assistant_config,
+        user["email"],
+        user.get("sub"),
+        current_provider=get_current_auth_provider(user),
+    ):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "No Authorized")
     if gid == "regulationassistant":
         selected_model_config = await _get_gid_model_config(

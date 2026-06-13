@@ -61,6 +61,7 @@ CREATE TABLE IF NOT EXISTS file_mapping (
   gid TEXT NOT NULL,
   owner_user_id TEXT,
   owner_user_email TEXT,
+  auth_provider TEXT NOT NULL DEFAULT 'c',
   purpose TEXT NOT NULL DEFAULT 'session_attachment',
   conversation_id TEXT
 );
@@ -72,7 +73,7 @@ CREATE INDEX IF NOT EXISTS idx_file_mapping_owner
   ON file_mapping(owner_user_id, owner_user_email);
 
 CREATE INDEX IF NOT EXISTS idx_file_mapping_owner_content
-  ON file_mapping(owner_user_id, owner_user_email, content_sha256);
+  ON file_mapping(owner_user_id, owner_user_email, auth_provider, content_sha256);
 
 CREATE INDEX IF NOT EXISTS idx_file_mapping_object
   ON file_mapping(bucket, object_key);
@@ -85,8 +86,9 @@ CREATE TABLE IF NOT EXISTS file_upload_reservations (
   gid TEXT NOT NULL,
   owner_user_id TEXT,
   owner_user_email TEXT,
+  auth_provider TEXT NOT NULL DEFAULT 'c',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_file_upload_reservations_owner
-  ON file_upload_reservations(gid, owner_user_id, owner_user_email);
+  ON file_upload_reservations(gid, owner_user_id, owner_user_email, auth_provider);

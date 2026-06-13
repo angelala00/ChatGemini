@@ -104,6 +104,45 @@ class StorageBackendFallbackTests(unittest.TestCase):
         business_store.set_user_config_version("user-1", "v1.2.3")
         self.assertEqual(business_store.get_user_config_version("user-1"), "v1.2.3")
 
+    def test_file_mapping_dedup_is_scoped_by_auth_provider(self):
+        business_store.insert_file_mapping(
+            "file-a",
+            filename="demo.txt",
+            file_extension=".txt",
+            content_type="text/plain",
+            bucket="bucket",
+            object_key="object-a",
+            storage_backend="filesystem",
+            size_bytes=4,
+            content_sha256="sha-demo",
+            owner_user_id="user-1",
+            auth_provider="a",
+        )
+
+        self.assertIsNone(
+            business_store.find_owned_file_mapping_by_content(
+                "sha-demo",
+                owner_user_id="user-1",
+                owner_user_email=None,
+                auth_provider="b",
+            )
+        )
+        self.assertIsNotNone(
+            business_store.find_owned_file_mapping_by_content(
+                "sha-demo",
+                owner_user_id="user-1",
+                owner_user_email=None,
+                auth_provider="a",
+            )
+        )
+
+    def test_custom_gpt_defaults_to_global_scope_when_missing(self):
+        business_store.insert_custom_gpt("gid-legacy", {"gid": "gid-legacy", "name": "demo"})
+        payload = business_store.load_custom_gpts()["gid-legacy"]
+
+        self.assertEqual(payload["provider_scope"], "global")
+        self.assertEqual(payload["auth_provider"], "global")
+
     def test_init_business_storage_marks_store_initialized(self):
         business_store._INITIALIZED = False
         business_store.init_business_storage()
@@ -673,6 +712,7 @@ class StorageBackendFallbackTests(unittest.TestCase):
             "gptassistant",
             owner_user_id="user-1",
             owner_user_email="owner@example.com",
+            auth_provider="c",
             max_user_files=1,
             max_system_files=10,
         )
@@ -682,6 +722,7 @@ class StorageBackendFallbackTests(unittest.TestCase):
                 "gptassistant",
                 owner_user_id="user-1",
                 owner_user_email="owner@example.com",
+                auth_provider="c",
                 max_user_files=1,
                 max_system_files=10,
             )
@@ -691,6 +732,7 @@ class StorageBackendFallbackTests(unittest.TestCase):
             "gptassistant",
             owner_user_id="user-1",
             owner_user_email="owner@example.com",
+            auth_provider="c",
             max_user_files=1,
             max_system_files=10,
         )
@@ -702,6 +744,7 @@ class StorageBackendFallbackTests(unittest.TestCase):
             "gptassistant",
             owner_user_id="user-1",
             owner_user_email="owner@example.com",
+            auth_provider="c",
             max_user_files=10,
             max_system_files=1,
         )
@@ -710,6 +753,7 @@ class StorageBackendFallbackTests(unittest.TestCase):
                 "gptassistant",
                 owner_user_id="user-2",
                 owner_user_email="other@example.com",
+                auth_provider="c",
                 max_user_files=10,
                 max_system_files=1,
             )

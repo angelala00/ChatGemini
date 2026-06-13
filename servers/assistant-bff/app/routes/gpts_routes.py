@@ -8,7 +8,7 @@ from app.admin.access_control import (
     is_feature_flag_enabled,
     resolve_user_permissions,
 )
-from app.auth.auth_routes import get_current_user
+from app.auth.auth_routes import GLOBAL_AUTH_PROVIDER, get_current_auth_provider, get_current_user
 from app.logger import gpt_logger
 from app.gpts.config_gpts import gpts, fetch_gpts, refresh_gpts, BUILTIN_GIDS
 from app.gpts.model_metadata import resolve_model_configs
@@ -36,6 +36,8 @@ router = APIRouter(prefix="/api", tags=["gpts"])
 LIMIT_PINNED = 8
 MAX_SAMPLES = 5
 MAX_MODEL_ID_CHARS = 200
+GPT_PROVIDER_SCOPE_PROVIDER = "provider"
+GPT_PROVIDER_SCOPE_GLOBAL = "global"
 
 GPTS_WHITE_LIST = model_config.GPTS_WHITE_LIST
 
@@ -64,12 +66,40 @@ def ensure_gpts_manage_allowed(user: dict) -> None:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "GPTS management not enabled")
 
 
+def _normalize_provider_scope(value: object) -> str:
+    scope = str(value or "").strip().lower()
+    if scope in {GPT_PROVIDER_SCOPE_PROVIDER, GPT_PROVIDER_SCOPE_GLOBAL}:
+        return scope
+    return GPT_PROVIDER_SCOPE_GLOBAL
+
+
+def _get_gpt_provider_scope(gpt_dict: dict) -> str:
+    return _normalize_provider_scope(gpt_dict.get("provider_scope"))
+
+
+def _get_gpt_auth_provider(gpt_dict: dict) -> str:
+    value = str(gpt_dict.get("auth_provider") or "").strip()
+    return value or GLOBAL_AUTH_PROVIDER
+
+
+def is_gpt_visible_to_provider(gpt_dict: dict, current_provider: str) -> bool:
+    if _get_gpt_provider_scope(gpt_dict) == GPT_PROVIDER_SCOPE_PROVIDER:
+        return _get_gpt_auth_provider(gpt_dict) == current_provider
+    return True
+
+
 def ensure_owned_custom_gpt(gid: str, user: dict) -> dict:
     ensure_gpts_manage_allowed(user)
     refresh_gpts()
-    if gid in BUILTIN_GIDS or gid not in gpts or gpts[gid].get("owner") != user.get("sub"):
+    if gid in BUILTIN_GIDS or gid not in gpts:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "GPT not found")
-    return gpts[gid]
+    current_provider = get_current_auth_provider(user)
+    gpt_item = gpts[gid]
+    if gpt_item.get("owner") != user.get("sub") or not is_gpt_visible_to_provider(
+        gpt_item, current_provider
+    ):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "GPT not found")
+    return gpt_item
 
 
 def delete_assistant_knowledge_files(gid: str) -> None:
@@ -105,16 +135,22 @@ def is_gpt_pinned_for_user(user_id: str, gid: str) -> bool:
 def can_access_gpt(user: dict, gid: str) -> bool:
     if gid == "gptassistant":
         return True
-    if is_gpts_feature_allowed(user):
-        return True
-    user_id = user.get("sub")
+    user_id = user.get("sub") or user.get("email") or ""
     if not user_id:
         return False
+    current_provider = get_current_auth_provider(user)
     refresh_gpts()
     gpt_item = gpts.get(gid)
-    if gpt_item and auth_ok(gpt_item, user.get("email") or "", user_id):
+    if gpt_item and auth_ok(
+        gpt_item,
+        user.get("email") or "",
+        user_id,
+        current_provider=current_provider,
+    ):
         return True
-    return is_gpt_pinned_for_user(user_id, gid)
+    if not is_gpts_feature_allowed(user):
+        return is_gpt_pinned_for_user(user_id, gid)
+    return False
 
 
 def get_sidebar_gpts(user: dict) -> list[dict]:
@@ -128,7 +164,7 @@ def get_sidebar_gpts(user: dict) -> list[dict]:
     """
     refresh_gpts()
     user_email = user.get("email") or ""
-    user_id = user.get("sub") or ""
+    user_id = user.get("sub") or user.get("email") or ""
     if is_gpts_feature_allowed(user):
         pinned_rows = list_user_pinned_rows(user_id) if user_id else []
         pinned: list[dict] = []
@@ -137,7 +173,12 @@ def get_sidebar_gpts(user: dict) -> list[dict]:
         for index, row in enumerate(pinned_rows):
             gid = row["gpts_id"]
             gpt_item = gpts.get(gid)
-            if not gpt_item or not auth_ok(gpt_item, user_email, user_id):
+            if not gpt_item or not auth_ok(
+                gpt_item,
+                user_email,
+                user_id,
+                current_provider=get_current_auth_provider(user),
+            ):
                 continue
 
             item = {
@@ -162,7 +203,12 @@ def get_sidebar_gpts(user: dict) -> list[dict]:
     for gid, value in fetch_gpts().items():
         if gid == "gptassistant":
             continue
-        if not auth_ok(value, user_email, user_id):
+        if not auth_ok(
+            value,
+            user_email,
+            user_id,
+            current_provider=get_current_auth_provider(user),
+        ):
             continue
 
         visible_items.append(
@@ -347,12 +393,14 @@ async def get_gpts(user: dict = Depends(get_current_user)):
     ensure_gpts_feature_allowed(user)
     gpt_logger.info(f"path=get_gpts user={user['email']} at={time.strftime('%Y-%m-%d %H:%M:%S')}")
     refresh_gpts()
-    pinned_ids = list_pinned_gids(user["sub"])
+    user_id = user.get("sub") or user.get("email") or ""
+    pinned_ids = list_pinned_gids(user_id)
+    current_provider = get_current_auth_provider(user)
 
     gpts_list = [{"gid": key, **{k: v for k, v in value.items() if k not in {"system_prompt", "model_name", "auth"}},
                   "is_pinned": key in pinned_ids or is_required_pinned_gid(key),
                   "is_required_pinned": is_required_pinned_gid(key)} for key, value in fetch_gpts().items() if
-                 auth_ok(value, user['email'], user['sub']) and key != 'gptassistant']
+                 auth_ok(value, user['email'], user['sub'], current_provider=current_provider) and key != 'gptassistant']
     return gpts_list
 
 
@@ -405,11 +453,14 @@ async def gpts_created(user: dict = Depends(get_current_user)):
     ensure_gpts_manage_allowed(user)
     gpt_logger.info(f"path=gpts_created user={user['email']} at={time.strftime('%Y-%m-%d %H:%M:%S')}")
     refresh_gpts()
+    current_provider = get_current_auth_provider(user)
     created = []
     for gid, data in gpts.items():
         if gid in BUILTIN_GIDS:
             continue
         if data.get("owner") != user['sub']:
+            continue
+        if not is_gpt_visible_to_provider(data, current_provider):
             continue
         item = {"gid": gid, "name": data["name"]}
         if "logo" in data:
@@ -459,6 +510,7 @@ async def get_gpts_detail(gid: str, user: dict = Depends(get_current_user)):
 @router.get("/gpts/{gid}/knowledge-files")
 async def list_gpt_knowledge_files(gid: str, user: dict = Depends(get_current_user)):
     ensure_owned_custom_gpt(gid, user)
+    current_provider = get_current_auth_provider(user)
     return [
         {
             "file_id": file_id,
@@ -469,14 +521,21 @@ async def list_gpt_knowledge_files(gid: str, user: dict = Depends(get_current_us
         }
         for file_id, entry in list_file_mappings(gid).items()
         if entry.get("purpose") == "assistant_knowledge"
+        and (
+            entry.get("authProvider") == GLOBAL_AUTH_PROVIDER
+            or entry.get("authProvider") == current_provider
+        )
     ]
 
 
 @router.delete("/gpts/{gid}/knowledge-files/{file_id}")
 async def delete_gpt_knowledge_file(gid: str, file_id: str, user: dict = Depends(get_current_user)):
     ensure_owned_custom_gpt(gid, user)
+    current_provider = get_current_auth_provider(user)
     entry = get_file_mapping(file_id, gid)
     if not entry or entry.get("purpose") != "assistant_knowledge":
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Knowledge file not found")
+    if entry.get("authProvider") not in {GLOBAL_AUTH_PROVIDER, current_provider}:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Knowledge file not found")
     delete_file_reference(file_id, entry)
     return {"file_id": file_id}
@@ -500,6 +559,10 @@ async def create_gpt(request: Request, user: dict = Depends(get_current_user)):
         gid = uuid.uuid4().hex
     body["gid"] = gid
     body["owner"] = user['sub']
+    current_provider = get_current_auth_provider(user)
+    provider_scope = _normalize_provider_scope(body.get("provider_scope") or GPT_PROVIDER_SCOPE_PROVIDER)
+    body["provider_scope"] = provider_scope
+    body["auth_provider"] = current_provider if provider_scope == GPT_PROVIDER_SCOPE_PROVIDER else GLOBAL_AUTH_PROVIDER
     auth = body.get("auth", {"type": "all"})
     if auth.get("type") == "white":
         users = auth.get("user", [])
@@ -525,6 +588,20 @@ async def update_gpt(gid: str, request: Request, user: dict = Depends(get_curren
     if gpts[gid].get("owner") != user['sub']:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "No Authorized")
     body = await request.json()
+    current_provider = get_current_auth_provider(user)
+    provider_scope = _normalize_provider_scope(body.get("provider_scope", gpts[gid].get("provider_scope")))
+    if provider_scope == GPT_PROVIDER_SCOPE_PROVIDER:
+        gpt_provider = str(
+            body.get("auth_provider")
+            or gpts[gid].get("auth_provider")
+            or current_provider
+        ).strip() or current_provider
+        if gpt_provider != current_provider:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "GPT is not visible on this provider")
+        body["auth_provider"] = gpt_provider
+    else:
+        body["auth_provider"] = GLOBAL_AUTH_PROVIDER
+    body["provider_scope"] = provider_scope
     auth = body.get("auth", {"type": "all"})
     if auth.get("type") == "white":
         users = auth.get("user", [])
@@ -562,7 +639,15 @@ async def delete_gpt(gid: str, user: dict = Depends(get_current_user)):
     return {"gid": gid}
 
 
-def auth_ok(gpt_dict: dict, user: str, user_id: Optional[str] = None):
+def auth_ok(
+    gpt_dict: dict,
+    user: str,
+    user_id: Optional[str] = None,
+    *,
+    current_provider: str | None = None,
+):
+    if current_provider and not is_gpt_visible_to_provider(gpt_dict, current_provider):
+        return False
     if user_id and gpt_dict.get("owner") == user_id:
         return True
     auth = gpt_dict.get("auth") or {"type": "all"}

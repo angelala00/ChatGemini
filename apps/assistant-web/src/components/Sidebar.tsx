@@ -48,9 +48,24 @@ interface SidebarProps {
     readonly onToggleSidebar: () => void;
 }
 
-const APP_VERSION = "v1.4.0";
+const APP_VERSION = "v1.5.0";
 
 const releaseHistory = [
+    {
+        version: "v1.5.0",
+        date: "2026.06",
+        type: "minor",
+        zhTitle: "智能体与附件端内隔离",
+        zhChanges: [
+            "默认按登录端隔离智能体可见性和普通附件归属，避免不同入口之间的文件互通。",
+            "支持审核后的全局智能体跨端可见，知识文件随智能体作用域统一管理。",
+        ],
+        enTitle: "Agent and Attachment Provider Scoping",
+        enChanges: [
+            "Scopes agent visibility and ordinary attachments to the current login provider by default.",
+            "Supports approved global agents across providers, with knowledge files following the agent scope.",
+        ],
+    },
     {
         version: "v1.4.0",
         date: "2026.06",

@@ -36,21 +36,24 @@ class GPTAssistantModelAuthTests(unittest.IsolatedAsyncioTestCase):
 
     def test_tool_resources_are_scoped_to_current_gpt_conversation_and_user(self):
         mappings = {
-            "knowledge-1": {"purpose": "assistant_knowledge"},
+            "knowledge-1": {"purpose": "assistant_knowledge", "authProvider": "c"},
             "session-current": {
                 "purpose": "session_attachment",
                 "conversationId": "cid-1",
                 "ownerUserId": "user-1",
+                "authProvider": "c",
             },
             "session-other-user": {
                 "purpose": "session_attachment",
                 "conversationId": "cid-1",
                 "ownerUserId": "user-2",
+                "authProvider": "c",
             },
             "session-other-conversation": {
                 "purpose": "session_attachment",
                 "conversationId": "cid-2",
                 "ownerUserId": "user-1",
+                "authProvider": "c",
             },
         }
         with patch.object(chat_routes, "list_file_mappings", return_value=mappings):
@@ -79,6 +82,7 @@ class GPTAssistantModelAuthTests(unittest.IsolatedAsyncioTestCase):
             conversation_id="cid-generated",
             owner_user_id="user-1",
             owner_user_email="user@example.com",
+            auth_provider="c",
         )
 
     def test_delete_session_attachments_only_removes_owned_session_files(self):
@@ -87,21 +91,25 @@ class GPTAssistantModelAuthTests(unittest.IsolatedAsyncioTestCase):
                 "purpose": "session_attachment",
                 "conversationId": "cid-1",
                 "ownerUserId": "user-1",
+                "authProvider": "c",
             },
             "knowledge-current": {
                 "purpose": "assistant_knowledge",
                 "conversationId": "cid-1",
                 "ownerUserId": "user-1",
+                "authProvider": "c",
             },
             "session-other-user": {
                 "purpose": "session_attachment",
                 "conversationId": "cid-1",
                 "ownerUserId": "user-2",
+                "authProvider": "c",
             },
             "session-other-conversation": {
                 "purpose": "session_attachment",
                 "conversationId": "cid-2",
                 "ownerUserId": "user-1",
+                "authProvider": "c",
             },
         }
         with (
@@ -148,6 +156,62 @@ class GPTAssistantModelAuthTests(unittest.IsolatedAsyncioTestCase):
             [call.args[0] for call in delete_history_mock.call_args_list],
             ["runtime-cid-1", "cid-1"],
         )
+
+    def test_provider_scoped_gpt_is_hidden_on_other_login_end(self):
+        with patch.dict(
+            gpts_routes.gpts,
+            {
+                "provider-gpt": {
+                    "gid": "provider-gpt",
+                    "name": "Provider GPT",
+                    "owner": "user-1",
+                    "provider_scope": "provider",
+                    "auth_provider": "a",
+                    "auth": {"type": "all"},
+                }
+            },
+            clear=False,
+        ):
+            self.assertFalse(
+                gpts_routes.is_gpt_visible_to_provider(
+                    gpts_routes.gpts["provider-gpt"],
+                    "b",
+                )
+            )
+            self.assertTrue(
+                gpts_routes.is_gpt_visible_to_provider(
+                    gpts_routes.gpts["provider-gpt"],
+                    "a",
+                )
+            )
+
+    def test_global_gpt_stays_visible_across_provider_ends(self):
+        with patch.dict(
+            gpts_routes.gpts,
+            {
+                "global-gpt": {
+                    "gid": "global-gpt",
+                    "name": "Global GPT",
+                    "owner": "user-1",
+                    "provider_scope": "global",
+                    "auth_provider": "global",
+                    "auth": {"type": "all"},
+                }
+            },
+            clear=False,
+        ):
+            self.assertTrue(
+                gpts_routes.is_gpt_visible_to_provider(
+                    gpts_routes.gpts["global-gpt"],
+                    "a",
+                )
+            )
+            self.assertTrue(
+                gpts_routes.is_gpt_visible_to_provider(
+                    gpts_routes.gpts["global-gpt"],
+                    "b",
+                )
+            )
 
     def test_filter_models_for_user_hides_restricted_model(self):
         visible_models = gpts_routes.sanitize_models_for_detail(
@@ -432,6 +496,30 @@ class GPTSPinnedAccessTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(gpts_routes, "GPTS_WHITE_LIST", {"allowed@example.com"}):
             self.assertTrue(gpts_routes.can_access_gpt(self.user, "custom-gpt"))
             self.assertFalse(gpts_routes.can_access_gpt(self.user, "not-pinned"))
+
+    def test_feature_flag_does_not_bypass_provider_scope(self):
+        with patch.object(gpts_routes, "refresh_gpts", lambda: None), patch.object(
+            gpts_routes,
+            "is_gpts_feature_allowed",
+            return_value=True,
+        ), patch.object(
+            gpts_routes,
+            "get_current_auth_provider",
+            return_value="b",
+        ), patch.dict(
+            gpts_routes.gpts,
+            {
+                "provider-gpt": {
+                    "name": "Provider GPT",
+                    "owner": "blocked-user",
+                    "provider_scope": "provider",
+                    "auth_provider": "a",
+                    "auth": {"type": "all"},
+                }
+            },
+            clear=False,
+        ):
+            self.assertFalse(gpts_routes.can_access_gpt(self.user, "provider-gpt"))
 
     async def test_pinned_endpoint_accepts_user_without_sub(self):
         user = {"email": "email-only@example.com"}

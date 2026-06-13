@@ -601,8 +601,8 @@ def _migrate_file_mapping_table(
                 INSERT INTO file_mapping(
                     file_id, filename, file_extension, content_type, bucket,
                     object_key, storage_backend, size_bytes, content_sha256, upload_time, gid,
-                    owner_user_id, owner_user_email, purpose, conversation_id
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::timestamptz, %s, %s, %s, %s, %s)
+                    owner_user_id, owner_user_email, auth_provider, purpose, conversation_id
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::timestamptz, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (file_id) DO NOTHING
                 RETURNING file_id
                 """,
@@ -620,6 +620,7 @@ def _migrate_file_mapping_table(
                     normalized.get("gid") or "gptassistant",
                     normalized.get("owner_user_id"),
                     normalized.get("owner_user_email"),
+                    normalized.get("auth_provider") or DEFAULT_AUTH_PROVIDER,
                     normalized.get("purpose") or "session_attachment",
                     normalized.get("conversation_id"),
                 ),

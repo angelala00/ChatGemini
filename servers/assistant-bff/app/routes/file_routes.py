@@ -10,10 +10,11 @@ from ..utils import extract_text
 from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, status, Form
 from fastapi.responses import JSONResponse, FileResponse
 from datetime import datetime, timezone
-from app.auth.auth_routes import get_current_user
+from app.auth.auth_routes import GLOBAL_AUTH_PROVIDER, get_current_auth_provider, get_current_user
 from app.admin.access_control import resolve_user_permissions
 from app.logger import gpt_logger
 from app.gpts.config_gpts import gpts, refresh_gpts
+from app.routes.gpts_routes import is_gpt_visible_to_provider
 from app.utils.model_tool import (
     MODEL_NAME_INSTRUCT,
     MODEL_NAME_THINKING,
@@ -496,11 +497,19 @@ def _is_file_owned_by_user(entry: dict, user: dict) -> bool:
     owner_user_email = str(entry.get("ownerUserEmail") or "").strip()
     user_id = str(user.get("sub") or "").strip()
     user_email = str(user.get("email") or "").strip()
+    file_provider = str(entry.get("authProvider") or "").strip() or GLOBAL_AUTH_PROVIDER
+    current_provider = get_current_auth_provider(user)
     if owner_user_id:
-        return bool(user_id and owner_user_id == user_id)
+        return bool(user_id and owner_user_id == user_id) and file_provider in {
+            current_provider,
+            GLOBAL_AUTH_PROVIDER,
+        }
     if owner_user_email:
-        return bool(user_email and owner_user_email == user_email)
-    return False
+        if not bool(user_email and owner_user_email == user_email):
+            return False
+    else:
+        return False
+    return file_provider in {current_provider, GLOBAL_AUTH_PROVIDER}
 
 
 def get_owned_file_mapping_or_404(file_id: str, user: dict, gid: str | None = None) -> dict:
@@ -612,19 +621,26 @@ async def upload_file(
 
     owner_user_id = str(user.get("sub") or "").strip() or None
     owner_user_email = str(user.get("email") or "").strip() or None
+    current_provider = get_current_auth_provider(user)
     if not owner_user_id and not owner_user_email:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Authenticated user identity is required")
     if purpose == FILE_PURPOSE_ASSISTANT_KNOWLEDGE:
         refresh_gpts()
         assistant_config = gpts.get(gid)
+        provider_scope = str(assistant_config.get("provider_scope") or "global").strip().lower() if assistant_config else "global"
         if (
             not assistant_config
             or assistant_config.get("owner") != owner_user_id
             or "gpts.manage" not in resolve_user_permissions(user)
         ):
             raise HTTPException(status.HTTP_404_NOT_FOUND, "GPT not found")
+        if not is_gpt_visible_to_provider(assistant_config, current_provider):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "GPT not found")
         if os.path.splitext(file.filename)[1].lower().lstrip(".") not in DOCUMENT_EXTENSIONS:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Knowledge files must be documents")
+        file_auth_provider = GLOBAL_AUTH_PROVIDER if provider_scope == "global" else current_provider
+    else:
+        file_auth_provider = current_provider
 
     is_allowed, model_rule = allowed_file(file.filename, model_id)
     if not is_allowed:
@@ -659,13 +675,14 @@ async def upload_file(
         file_extension = os.path.splitext(file.filename)[1]
         limits = _get_gptassistant_upload_limits()
         try:
-            reservation_id = reserve_file_upload_slot(
-                gid,
-                owner_user_id=owner_user_id,
-                owner_user_email=owner_user_email,
-                max_user_files=limits["max_active_files_per_user"],
-                max_system_files=limits["max_active_files"],
-            )
+                reservation_id = reserve_file_upload_slot(
+                    gid,
+                    owner_user_id=owner_user_id,
+                    owner_user_email=owner_user_email,
+                    auth_provider=file_auth_provider,
+                    max_user_files=limits["max_active_files_per_user"],
+                    max_system_files=limits["max_active_files"],
+                )
         except FileUploadQuotaExceeded as exc:
             if exc.scope == "user":
                 raise HTTPException(
@@ -700,6 +717,7 @@ async def upload_file(
                     content_sha256,
                     owner_user_id=owner_user_id,
                     owner_user_email=owner_user_email,
+                    auth_provider=file_auth_provider,
                 )
                 if reusable_entry:
                     object_meta = {
@@ -735,6 +753,7 @@ async def upload_file(
                     content_sha256=content_sha256,
                     owner_user_id=owner_user_id,
                     owner_user_email=owner_user_email,
+                    auth_provider=file_auth_provider,
                     gid=gid,
                     purpose=purpose,
                     conversation_id=conversation_id,

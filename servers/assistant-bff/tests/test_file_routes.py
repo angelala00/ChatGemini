@@ -230,6 +230,26 @@ class FileRouteUploadTests(unittest.TestCase):
         self.assertEqual(normalized, "file-1,file-2")
         self.assertEqual(mapping_mock.call_count, 2)
 
+    def test_owned_file_requires_matching_provider(self):
+        entry = {
+            "ownerUserId": "user-1",
+            "authProvider": "a",
+        }
+        with patch.object(file_routes, "get_current_auth_provider", return_value="b"):
+            self.assertFalse(
+                file_routes._is_file_owned_by_user(
+                    entry,
+                    {"sub": "user-1", "email": "user@example.com"},
+                )
+            )
+        with patch.object(file_routes, "get_current_auth_provider", return_value="a"):
+            self.assertTrue(
+                file_routes._is_file_owned_by_user(
+                    entry,
+                    {"sub": "user-1", "email": "user@example.com"},
+                )
+            )
+
     def test_high_compression_office_archive_is_rejected(self):
         archive_file = io.BytesIO()
         with zipfile.ZipFile(archive_file, "w", compression=zipfile.ZIP_DEFLATED) as archive:
