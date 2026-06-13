@@ -12,7 +12,6 @@
 - **`TESTING_GUIDE.md` (Root)**: Regression testing scenarios and quality assurance strategy.
 - **`AGENTS.md` (Subdirectories)**: "Live" architectural descriptions for specific modules (e.g., `apps/assistant-web/AGENTS.md`, `servers/assistant-bff/app/AGENTS.md`).
 - **`docs/proposals/`**: Active design drafts and ongoing architectural discussions.
-- **`docs/archive/`**: Historical design documents and session handoffs for reference.
 
 ## Project Structure & Module Organization
 - `apps/assistant-web`: main ChatGemini web client (React + Vite + Tailwind). Source in `apps/assistant-web/src`, static assets in `apps/assistant-web/public` and `apps/assistant-web/src/assets`.
