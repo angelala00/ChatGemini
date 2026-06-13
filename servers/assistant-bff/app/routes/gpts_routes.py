@@ -28,10 +28,8 @@ from app.storage.business_store import (
     update_custom_gpt,
     list_file_mappings,
     get_file_mapping,
-    delete_file_mapping,
 )
-from app.storage.object_store import delete_object, local_cache_path
-from pathlib import Path
+from app.storage.file_lifecycle import delete_file_reference
 
 router = APIRouter(prefix="/api", tags=["gpts"])
 
@@ -78,11 +76,7 @@ def delete_assistant_knowledge_files(gid: str) -> None:
     for file_id, entry in list_file_mappings(gid).items():
         if entry.get("purpose") != "assistant_knowledge":
             continue
-        delete_object({"file_id": file_id, **entry})
-        cache_path = local_cache_path({"file_id": file_id, **entry})
-        if cache_path and Path(cache_path).exists():
-            Path(cache_path).unlink()
-        delete_file_mapping(file_id)
+        delete_file_reference(file_id, entry)
 
 
 def is_required_pinned_gid(gid: str) -> bool:
@@ -484,11 +478,7 @@ async def delete_gpt_knowledge_file(gid: str, file_id: str, user: dict = Depends
     entry = get_file_mapping(file_id, gid)
     if not entry or entry.get("purpose") != "assistant_knowledge":
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Knowledge file not found")
-    delete_object({"file_id": file_id, **entry})
-    cache_path = local_cache_path({"file_id": file_id, **entry})
-    if cache_path and Path(cache_path).exists():
-        Path(cache_path).unlink()
-    delete_file_mapping(file_id)
+    delete_file_reference(file_id, entry)
     return {"file_id": file_id}
 
 

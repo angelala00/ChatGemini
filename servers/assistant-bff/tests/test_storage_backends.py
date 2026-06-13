@@ -16,6 +16,7 @@ from app.base_config import model_config
 from app.auth.auth_routes import resolve_auth_provider
 from app.metrics import events as metrics_events
 from app.storage import business_store, object_store
+from app.storage.file_lifecycle import delete_file_reference
 from app.storage.config_validation import validate_storage_configuration
 from app import tracing
 
@@ -376,6 +377,50 @@ class StorageBackendFallbackTests(unittest.TestCase):
         )
         self.assertEqual(payload["storage_backend"], "filesystem")
         self.assertEqual(Path(str(payload["object_key"])).read_bytes(), b"streamed content")
+
+    def test_content_addressed_object_key_is_independent_of_user_and_filename(self):
+        key = object_store.build_content_object_key(content_sha256="a" * 64)
+        self.assertEqual(key, f"assistant-files/blobs/sha256/{'a' * 64}")
+
+    def test_shared_object_is_deleted_only_after_last_mapping(self):
+        content_sha256 = "b" * 64
+        payload = object_store.store_file(
+            file_id="file-1",
+            filename="first.txt",
+            content_file=io.BytesIO(b"shared"),
+            length=6,
+            content_type="text/plain",
+            content_sha256=content_sha256,
+        )
+        for file_id, filename in (("file-1", "first.txt"), ("file-2", "second.txt")):
+            business_store.insert_file_mapping(
+                file_id,
+                filename=filename,
+                file_extension=".txt",
+                content_type="text/plain",
+                bucket=str(payload["bucket"]),
+                object_key=str(payload["object_key"]),
+                storage_backend=str(payload["storage_backend"]),
+                size_bytes=6,
+                content_sha256=content_sha256,
+                owner_user_id="user-1",
+            )
+
+        reusable = business_store.find_owned_file_mapping_by_content(
+            content_sha256,
+            owner_user_id="user-1",
+            owner_user_email=None,
+        )
+        self.assertIsNotNone(reusable)
+        object_path = Path(str(payload["object_key"]))
+
+        delete_file_reference("file-1", business_store.get_file_mapping("file-1") or {})
+        self.assertTrue(object_path.exists())
+        self.assertIsNone(business_store.get_file_mapping("file-1"))
+
+        delete_file_reference("file-2", business_store.get_file_mapping("file-2") or {})
+        self.assertFalse(object_path.exists())
+        self.assertIsNone(business_store.get_file_mapping("file-2"))
 
     def test_build_minio_object_key_uses_upload_date(self):
         key = object_store.build_minio_object_key(

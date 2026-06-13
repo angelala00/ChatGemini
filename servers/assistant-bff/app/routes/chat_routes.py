@@ -11,7 +11,6 @@ from starlette.concurrency import run_in_threadpool
 from app.auth.auth_routes import get_current_auth_provider, get_current_user
 from app.storage.business_store import (
     bind_file_mappings_to_conversation,
-    delete_file_mapping,
     delete_session_history,
     get_session_history_meta,
     list_session_history_meta,
@@ -23,7 +22,7 @@ from app.storage.business_store import (
     upsert_session_history_meta,
     list_file_mappings,
 )
-from app.storage.object_store import delete_object, local_cache_path
+from app.storage.file_lifecycle import delete_file_reference
 from .gpts_routes import (
     apply_admin_model_config_overrides,
     apply_runtime_gpt_defaults,
@@ -132,12 +131,7 @@ def _delete_session_attachments(conversation_id: str, gid: str, user: dict) -> i
             or not is_owned
         ):
             continue
-        enriched_entry = {"file_id": file_id, **entry}
-        delete_object(enriched_entry)
-        cache_path = Path(local_cache_path(enriched_entry))
-        if cache_path.exists():
-            cache_path.unlink()
-        delete_file_mapping(file_id)
+        delete_file_reference(file_id, entry)
         deleted += 1
     return deleted
 

@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import time
 import os
 import uuid
@@ -21,8 +22,8 @@ from app.utils.model_tool import (
 from app.utils.image_utils import detect_image_dimensions_from_bytes, is_image_file
 from app.storage.business_store import (
     FileUploadQuotaExceeded,
-    delete_file_mapping,
     distributed_task_lock,
+    find_owned_file_mapping_by_content,
     get_file_mapping,
     insert_file_mapping,
     list_admin_model_configs,
@@ -31,10 +32,13 @@ from app.storage.business_store import (
     reserve_file_upload_slot,
 )
 from app.storage.object_store import (
-    delete_object,
     ensure_local_path,
-    local_cache_path,
     store_file,
+)
+from app.storage.file_lifecycle import (
+    delete_file_reference,
+    delete_unreferenced_object,
+    file_object_lock_name,
 )
 
 router = APIRouter(prefix="/api", tags=["auth"])
@@ -230,17 +234,19 @@ async def _scan_upload(
     filename: str,
     model_rule: dict,
     limits: dict,
-) -> tuple[int, bytes | None]:
+) -> tuple[int, bytes | None, str]:
     max_bytes = _get_upload_max_bytes(filename, model_rule, limits)
     extension = os.path.splitext(filename)[1].lower()
     is_image = extension.lstrip(".") in IMAGE_EXTENSIONS and model_rule.get("images")
     image_content = bytearray() if is_image else None
     file_size = 0
+    content_hasher = hashlib.sha256()
     while True:
         chunk = await file.read(UPLOAD_READ_CHUNK_BYTES)
         if not chunk:
             break
         file_size += len(chunk)
+        content_hasher.update(chunk)
         if file_size > max_bytes:
             gpt_logger.warning(
                 "upload_validation_failed reason=file_too_large filename=%s file_size_over=%s max_bytes=%s",
@@ -254,7 +260,11 @@ async def _scan_upload(
             )
         if image_content is not None:
             image_content.extend(chunk)
-    return file_size, bytes(image_content) if image_content is not None else None
+    return (
+        file_size,
+        bytes(image_content) if image_content is not None else None,
+        content_hasher.hexdigest(),
+    )
 
 
 def _validate_upload_content(
@@ -534,14 +544,23 @@ def ensure_file_ids_owned_by_user(
     return ",".join(normalized_file_ids) or None
 
 
-async def _store_upload_object(**kwargs) -> dict[str, object]:
+async def _store_upload_object(
+    *,
+    cleanup_lock_acquired: bool = False,
+    **kwargs,
+) -> dict[str, object]:
     store_task = asyncio.create_task(asyncio.to_thread(store_file, **kwargs))
     try:
         return await asyncio.shield(store_task)
     except asyncio.CancelledError:
         object_meta = await store_task
         try:
-            await asyncio.to_thread(delete_object, {"file_id": kwargs["file_id"], **object_meta})
+            await asyncio.to_thread(
+                delete_unreferenced_object,
+                kwargs["file_id"],
+                object_meta,
+                lock_acquired=cleanup_lock_acquired,
+            )
         except Exception:
             gpt_logger.exception(
                 "cancelled_upload_orphan_object_delete_failed file_id=%s storage_backend=%s object_key=%s",
@@ -633,6 +652,7 @@ async def upload_file(
 
     object_meta: dict[str, object] | None = None
     mapping_inserted = False
+    object_stored = False
     reservation_id: str | None = None
     try:
         file_id = str(uuid.uuid4())
@@ -657,19 +677,69 @@ async def upload_file(
                 "File upload capacity is temporarily unavailable",
             ) from exc
         async with _UPLOAD_SEMAPHORE:
-            file_size, image_content = await _scan_upload(file, file.filename, model_rule, limits)
+            file_size, image_content, content_sha256 = await _scan_upload(
+                file,
+                file.filename,
+                model_rule,
+                limits,
+            )
             _validate_upload_content(file.filename, file_size, image_content, model_rule, limits)
             await file.seek(0)
             await asyncio.to_thread(_validate_file_signature, file.file, file.filename, image_content)
             await asyncio.to_thread(_validate_office_archive, file.file, file.filename, limits)
-            await file.seek(0)
-            object_meta = await _store_upload_object(
-                file_id=file_id,
-                filename=file.filename,
-                content_file=file.file,
-                length=file_size,
-                content_type=safe_content_type(file.filename, file_extension),
-            )
+            with distributed_task_lock(
+                file_object_lock_name({"content_sha256": content_sha256})
+            ) as acquired:
+                if not acquired:
+                    raise HTTPException(
+                        status.HTTP_503_SERVICE_UNAVAILABLE,
+                        "Identical file content is currently being modified",
+                    )
+                reusable_entry = await asyncio.to_thread(
+                    find_owned_file_mapping_by_content,
+                    content_sha256,
+                    owner_user_id=owner_user_id,
+                    owner_user_email=owner_user_email,
+                )
+                if reusable_entry:
+                    object_meta = {
+                        "bucket": reusable_entry.get("bucket") or "",
+                        "object_key": reusable_entry.get("objectKey") or "",
+                        "storage_backend": reusable_entry.get("storageBackend") or "",
+                        "size_bytes": reusable_entry.get("sizeBytes") or file_size,
+                        "content_sha256": content_sha256,
+                    }
+                else:
+                    await file.seek(0)
+                    object_meta = await _store_upload_object(
+                        file_id=file_id,
+                        filename=file.filename,
+                        content_file=file.file,
+                        length=file_size,
+                        content_type=safe_content_type(file.filename, file_extension),
+                        content_sha256=content_sha256,
+                        cleanup_lock_acquired=True,
+                    )
+                    object_meta["content_sha256"] = content_sha256
+                    object_stored = True
+
+                insert_file_mapping(
+                    file_id,
+                    filename=file.filename,
+                    file_extension=file_extension,
+                    content_type=safe_content_type(file.filename, file_extension),
+                    bucket=str(object_meta["bucket"]),
+                    object_key=str(object_meta["object_key"]),
+                    storage_backend=str(object_meta["storage_backend"]),
+                    size_bytes=int(object_meta["size_bytes"]),
+                    content_sha256=content_sha256,
+                    owner_user_id=owner_user_id,
+                    owner_user_email=owner_user_email,
+                    gid=gid,
+                    purpose=purpose,
+                    conversation_id=conversation_id,
+                )
+                mapping_inserted = True
         gpt_logger.info(
             "upload_request_received model_id=%s filename=%s content_type=%s extension=%s file_size=%s model_rule=%s",
             model_id,
@@ -680,22 +750,6 @@ async def upload_file(
             model_rule,
         )
 
-        insert_file_mapping(
-            file_id,
-            filename=file.filename,
-            file_extension=file_extension,
-            content_type=safe_content_type(file.filename, file_extension),
-            bucket=str(object_meta["bucket"]),
-            object_key=str(object_meta["object_key"]),
-            storage_backend=str(object_meta["storage_backend"]),
-            size_bytes=int(object_meta["size_bytes"]),
-            owner_user_id=owner_user_id,
-            owner_user_email=owner_user_email,
-            gid=gid,
-            purpose=purpose,
-            conversation_id=conversation_id,
-        )
-        mapping_inserted = True
         gpt_logger.info(
             "upload_request_succeeded model_id=%s filename=%s file_id=%s storage_backend=%s object_key=%s",
             model_id,
@@ -717,9 +771,9 @@ async def upload_file(
         )
         raise
     except Exception as e:
-        if object_meta is not None and not mapping_inserted:
+        if object_meta is not None and object_stored and not mapping_inserted:
             try:
-                delete_object({"file_id": file_id, **object_meta})
+                delete_unreferenced_object(file_id, object_meta)
                 gpt_logger.info(
                     "upload_orphan_object_deleted file_id=%s storage_backend=%s object_key=%s",
                     file_id,
@@ -821,14 +875,7 @@ def delete_expired_files():
                     upload_time = upload_time.replace(tzinfo=timezone.utc)
                 if (now - upload_time).total_seconds() <= FILE_LIFETIME_DAYS * 86400:
                     continue
-                delete_object({"file_id": file_id, **file_data})
-                cache_path = local_cache_path({"file_id": file_id, **file_data})
-                if cache_path and Path(cache_path).exists():
-                    try:
-                        Path(cache_path).unlink()
-                    except OSError:
-                        pass
-                delete_file_mapping(file_id)
+                delete_file_reference(file_id, file_data)
             except ValueError:
                 gpt_logger.warning(
                     "expired_file_invalid_upload_time file_id=%s upload_time=%s",

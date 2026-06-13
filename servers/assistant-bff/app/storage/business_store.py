@@ -499,6 +499,7 @@ def _ensure_file_mapping_owner_columns() -> None:
                 "ALTER TABLE file_mapping ADD COLUMN IF NOT EXISTS purpose TEXT NOT NULL DEFAULT 'session_attachment'"
             )
             conn.execute("ALTER TABLE file_mapping ADD COLUMN IF NOT EXISTS conversation_id TEXT")
+            conn.execute("ALTER TABLE file_mapping ADD COLUMN IF NOT EXISTS content_sha256 TEXT")
             conn.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_file_mapping_owner
@@ -507,6 +508,12 @@ def _ensure_file_mapping_owner_columns() -> None:
             )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_file_mapping_resource ON file_mapping(gid, purpose, conversation_id)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_file_mapping_owner_content ON file_mapping(owner_user_id, owner_user_email, content_sha256)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_file_mapping_object ON file_mapping(bucket, object_key)"
             )
         else:
             columns = _sqlite_columns(conn, "file_mapping")
@@ -520,6 +527,8 @@ def _ensure_file_mapping_owner_columns() -> None:
                 )
             if "conversation_id" not in columns:
                 conn.execute("ALTER TABLE file_mapping ADD COLUMN conversation_id TEXT")
+            if "content_sha256" not in columns:
+                conn.execute("ALTER TABLE file_mapping ADD COLUMN content_sha256 TEXT")
             conn.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_file_mapping_owner
@@ -528,6 +537,12 @@ def _ensure_file_mapping_owner_columns() -> None:
             )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_file_mapping_resource ON file_mapping(gid, purpose, conversation_id)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_file_mapping_owner_content ON file_mapping(owner_user_id, owner_user_email, content_sha256)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_file_mapping_object ON file_mapping(bucket, object_key)"
             )
         conn.commit()
 
@@ -558,10 +573,13 @@ def _normalize_sqlite_file_mapping_row(item: dict[str, Any], columns: set[str]) 
             "object_key": item.get("object_key"),
             "storage_backend": item.get("storage_backend"),
             "size_bytes": item.get("size_bytes"),
+            "content_sha256": item.get("content_sha256"),
             "upload_time": item.get("upload_time") or _now_iso(),
             "gid": item.get("gid") or "gptassistant",
             "owner_user_id": item.get("owner_user_id"),
             "owner_user_email": item.get("owner_user_email"),
+            "purpose": item.get("purpose") or "session_attachment",
+            "conversation_id": item.get("conversation_id"),
         }
     if LEGACY_FILE_MAPPING_REQUIRED_COLUMNS.issubset(columns):
         object_key = str(item.get("path") or "").strip()
@@ -582,10 +600,13 @@ def _normalize_sqlite_file_mapping_row(item: dict[str, Any], columns: set[str]) 
             "object_key": object_key,
             "storage_backend": "filesystem",
             "size_bytes": size_bytes,
+            "content_sha256": None,
             "upload_time": item.get("uploadTime") or _now_iso(),
             "gid": item.get("gid") or "gptassistant",
             "owner_user_id": None,
             "owner_user_email": None,
+            "purpose": "session_attachment",
+            "conversation_id": None,
         }
     return None
 
@@ -629,9 +650,9 @@ def _migrate_sqlite_file_mapping_source_to_postgres(source_path: Path) -> dict[s
                 """
                 INSERT INTO file_mapping(
                     file_id, filename, file_extension, content_type, bucket,
-                    object_key, storage_backend, size_bytes, upload_time, gid,
-                    owner_user_id, owner_user_email
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    object_key, storage_backend, size_bytes, content_sha256, upload_time, gid,
+                    owner_user_id, owner_user_email, purpose, conversation_id
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (file_id) DO NOTHING
                 RETURNING file_id
                 """,
@@ -644,10 +665,13 @@ def _migrate_sqlite_file_mapping_source_to_postgres(source_path: Path) -> dict[s
                     normalized.get("object_key"),
                     normalized.get("storage_backend"),
                     normalized.get("size_bytes"),
+                    normalized.get("content_sha256"),
                     normalized.get("upload_time") or _now_iso(),
                     normalized.get("gid") or "gptassistant",
                     normalized.get("owner_user_id"),
                     normalized.get("owner_user_email"),
+                    normalized.get("purpose") or "session_attachment",
+                    normalized.get("conversation_id"),
                 ),
             ).fetchone()
             if result:
@@ -1285,6 +1309,7 @@ def init_business_storage() -> None:
                   object_key TEXT NOT NULL,
                   storage_backend TEXT NOT NULL,
                   size_bytes BIGINT,
+                  content_sha256 TEXT,
                   upload_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                   gid TEXT NOT NULL,
                   owner_user_id TEXT,
@@ -1447,6 +1472,7 @@ def init_business_storage() -> None:
                   object_key TEXT NOT NULL,
                   storage_backend TEXT NOT NULL,
                   size_bytes INTEGER,
+                  content_sha256 TEXT,
                   upload_time TEXT NOT NULL,
                   gid TEXT NOT NULL,
                   owner_user_id TEXT,
@@ -2126,7 +2152,7 @@ def list_file_mappings(gid: str | None = None) -> dict[str, dict[str, Any]]:
                 rows = conn.execute(
                     """
                     SELECT file_id, filename, file_extension, content_type, bucket,
-                           object_key, storage_backend, size_bytes, upload_time, gid,
+                           object_key, storage_backend, size_bytes, content_sha256, upload_time, gid,
                            owner_user_id, owner_user_email, purpose, conversation_id
                       FROM file_mapping
                      WHERE gid=%s
@@ -2137,7 +2163,7 @@ def list_file_mappings(gid: str | None = None) -> dict[str, dict[str, Any]]:
                 rows = conn.execute(
                     """
                     SELECT file_id, filename, file_extension, content_type, bucket,
-                           object_key, storage_backend, size_bytes, upload_time, gid,
+                           object_key, storage_backend, size_bytes, content_sha256, upload_time, gid,
                            owner_user_id, owner_user_email, purpose, conversation_id
                       FROM file_mapping
                      WHERE gid=?
@@ -2148,7 +2174,7 @@ def list_file_mappings(gid: str | None = None) -> dict[str, dict[str, Any]]:
             rows = conn.execute(
                 """
                 SELECT file_id, filename, file_extension, content_type, bucket,
-                       object_key, storage_backend, size_bytes, upload_time, gid,
+                       object_key, storage_backend, size_bytes, content_sha256, upload_time, gid,
                        owner_user_id, owner_user_email, purpose, conversation_id
                   FROM file_mapping
                 """
@@ -2164,6 +2190,7 @@ def list_file_mappings(gid: str | None = None) -> dict[str, dict[str, Any]]:
             "objectKey": item.get("object_key"),
             "storageBackend": item.get("storage_backend"),
             "sizeBytes": item.get("size_bytes"),
+            "contentSha256": item.get("content_sha256"),
             "uploadTime": str(item.get("upload_time")),
             "gid": item.get("gid"),
             "ownerUserId": item.get("owner_user_id"),
@@ -2182,7 +2209,7 @@ def get_file_mapping(file_id: str, gid: str | None = None) -> dict[str, Any] | N
                 row = conn.execute(
                     """
                     SELECT file_id, filename, file_extension, content_type, bucket,
-                           object_key, storage_backend, size_bytes, upload_time, gid,
+                           object_key, storage_backend, size_bytes, content_sha256, upload_time, gid,
                            owner_user_id, owner_user_email, purpose, conversation_id
                       FROM file_mapping
                      WHERE file_id=%s AND gid=%s
@@ -2193,7 +2220,7 @@ def get_file_mapping(file_id: str, gid: str | None = None) -> dict[str, Any] | N
                 row = conn.execute(
                     """
                     SELECT file_id, filename, file_extension, content_type, bucket,
-                           object_key, storage_backend, size_bytes, upload_time, gid,
+                           object_key, storage_backend, size_bytes, content_sha256, upload_time, gid,
                            owner_user_id, owner_user_email, purpose, conversation_id
                       FROM file_mapping
                      WHERE file_id=? AND gid=?
@@ -2205,7 +2232,7 @@ def get_file_mapping(file_id: str, gid: str | None = None) -> dict[str, Any] | N
                 row = conn.execute(
                     """
                     SELECT file_id, filename, file_extension, content_type, bucket,
-                           object_key, storage_backend, size_bytes, upload_time, gid,
+                           object_key, storage_backend, size_bytes, content_sha256, upload_time, gid,
                            owner_user_id, owner_user_email, purpose, conversation_id
                       FROM file_mapping
                      WHERE file_id=%s
@@ -2216,7 +2243,7 @@ def get_file_mapping(file_id: str, gid: str | None = None) -> dict[str, Any] | N
                 row = conn.execute(
                     """
                     SELECT file_id, filename, file_extension, content_type, bucket,
-                           object_key, storage_backend, size_bytes, upload_time, gid,
+                           object_key, storage_backend, size_bytes, content_sha256, upload_time, gid,
                            owner_user_id, owner_user_email, purpose, conversation_id
                       FROM file_mapping
                      WHERE file_id=?
@@ -2235,6 +2262,7 @@ def get_file_mapping(file_id: str, gid: str | None = None) -> dict[str, Any] | N
         "objectKey": item.get("object_key"),
         "storageBackend": item.get("storage_backend"),
         "sizeBytes": item.get("size_bytes"),
+        "contentSha256": item.get("content_sha256"),
         "uploadTime": str(item.get("upload_time")),
         "gid": item.get("gid"),
         "ownerUserId": item.get("owner_user_id"),
@@ -2242,6 +2270,54 @@ def get_file_mapping(file_id: str, gid: str | None = None) -> dict[str, Any] | N
         "purpose": item.get("purpose") or "session_attachment",
         "conversationId": item.get("conversation_id"),
     }
+
+
+def find_owned_file_mapping_by_content(
+    content_sha256: str,
+    *,
+    owner_user_id: str | None,
+    owner_user_email: str | None,
+) -> dict[str, Any] | None:
+    ensure_initialized()
+    placeholder = "%s" if _use_postgres() else "?"
+    if owner_user_id:
+        owner_clause = f"owner_user_id={placeholder}"
+        owner_value = owner_user_id
+    elif owner_user_email:
+        owner_clause = f"owner_user_id IS NULL AND owner_user_email={placeholder}"
+        owner_value = owner_user_email
+    else:
+        return None
+    with _connect() as conn:
+        row = conn.execute(
+            f"""
+            SELECT file_id
+              FROM file_mapping
+             WHERE content_sha256={placeholder}
+               AND {owner_clause}
+             ORDER BY upload_time ASC
+             LIMIT 1
+            """,
+            (content_sha256, owner_value),
+        ).fetchone()
+    if not row:
+        return None
+    return get_file_mapping(str(_normalize_row(row).get("file_id") or ""))
+
+
+def count_file_mapping_object_references(bucket: str, object_key: str) -> int:
+    ensure_initialized()
+    placeholder = "%s" if _use_postgres() else "?"
+    with _connect() as conn:
+        row = conn.execute(
+            f"""
+            SELECT COUNT(*) AS total
+              FROM file_mapping
+             WHERE bucket={placeholder} AND object_key={placeholder}
+            """,
+            (bucket, object_key),
+        ).fetchone()
+    return int((_normalize_row(row) or {}).get("total") or 0)
 
 
 def count_file_mappings(
@@ -2407,6 +2483,7 @@ def insert_file_mapping(
     object_key: str,
     storage_backend: str,
     size_bytes: int | None,
+    content_sha256: str | None = None,
     gid: str = "gptassistant",
     owner_user_id: str | None = None,
     owner_user_email: str | None = None,
@@ -2421,9 +2498,9 @@ def insert_file_mapping(
                 """
                 INSERT INTO file_mapping(
                     file_id, filename, file_extension, content_type, bucket,
-                    object_key, storage_backend, size_bytes, upload_time, gid,
+                    object_key, storage_backend, size_bytes, content_sha256, upload_time, gid,
                     owner_user_id, owner_user_email, purpose, conversation_id
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     file_id,
@@ -2434,6 +2511,7 @@ def insert_file_mapping(
                     object_key,
                     storage_backend,
                     size_bytes,
+                    content_sha256,
                     uploaded_at,
                     gid,
                     owner_user_id,
@@ -2447,9 +2525,9 @@ def insert_file_mapping(
                 """
                 INSERT INTO file_mapping(
                     file_id, filename, file_extension, content_type, bucket,
-                    object_key, storage_backend, size_bytes, upload_time, gid,
+                    object_key, storage_backend, size_bytes, content_sha256, upload_time, gid,
                     owner_user_id, owner_user_email, purpose, conversation_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     file_id,
@@ -2460,6 +2538,7 @@ def insert_file_mapping(
                     object_key,
                     storage_backend,
                     size_bytes,
+                    content_sha256,
                     uploaded_at,
                     gid,
                     owner_user_id,
@@ -3134,6 +3213,7 @@ __all__ = [
     "business_storage_health",
     "close_business_storage",
     "count_file_mappings",
+    "count_file_mapping_object_references",
     "FileUploadQuotaExceeded",
     "delete_custom_gpt",
     "delete_admin_feature_flag",
@@ -3150,6 +3230,7 @@ __all__ = [
     "get_admin_user_permission",
     "insert_admin_audit_log",
     "get_file_mapping",
+    "find_owned_file_mapping_by_content",
     "get_user_config_version",
     "init_business_storage",
     "insert_custom_gpt",

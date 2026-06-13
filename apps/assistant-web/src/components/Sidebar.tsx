@@ -48,9 +48,24 @@ interface SidebarProps {
     readonly onToggleSidebar: () => void;
 }
 
-const APP_VERSION = "v1.3.4";
+const APP_VERSION = "v1.4.0";
 
 const releaseHistory = [
+    {
+        version: "v1.4.0",
+        date: "2026.06",
+        type: "minor",
+        zhTitle: "附件内容去重",
+        zhChanges: [
+            "同一用户重复上传相同文件时复用已有存储对象，减少 MinIO 空间占用。",
+            "会话附件与智能体知识文件共享安全引用计数语义，最后一个引用删除后才清理对象。",
+        ],
+        enTitle: "Attachment Content Deduplication",
+        enChanges: [
+            "Reuses stored objects when the same user uploads identical file content.",
+            "Deletes shared attachment objects only after their final session or agent-knowledge reference is removed.",
+        ],
+    },
     {
         version: "v1.3.4",
         date: "2026.06",

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import io
 import threading
 import unittest
@@ -50,6 +51,21 @@ class FileRouteUploadTests(unittest.TestCase):
 
         self.assertEqual(ctx.exception.status_code, 413)
         self.assertEqual(upload.file.tell(), 4)
+
+    def test_upload_scan_returns_content_sha256(self):
+        upload = UploadFile(filename="demo.txt", file=io.BytesIO(b"demo"))
+        size, image_content, content_sha256 = asyncio.run(
+            file_routes._scan_upload(
+                upload,
+                "demo.txt",
+                {"documents": True, "images": False},
+                self._limits(),
+            )
+        )
+
+        self.assertEqual(size, 4)
+        self.assertIsNone(image_content)
+        self.assertEqual(content_sha256, hashlib.sha256(b"demo").hexdigest())
 
     def test_unknown_model_cannot_fall_back_to_auto_upload_rules(self):
         with (
@@ -268,12 +284,15 @@ class FileRouteUploadTests(unittest.TestCase):
         }
         with (
             patch.object(file_routes, "load_file_mapping", return_value=expired_mapping),
-            patch.object(file_routes, "delete_object", side_effect=RuntimeError("storage unavailable")),
-            patch.object(file_routes, "delete_file_mapping") as delete_mapping_mock,
+            patch.object(
+                file_routes,
+                "delete_file_reference",
+                side_effect=RuntimeError("storage unavailable"),
+            ) as delete_reference_mock,
         ):
             file_routes.delete_expired_files()
 
-        delete_mapping_mock.assert_not_called()
+        delete_reference_mock.assert_called_once_with("file-1", expired_mapping["file-1"])
 
     def test_expired_cleanup_skips_assistant_knowledge_files(self):
         expired_mapping = {
@@ -284,13 +303,11 @@ class FileRouteUploadTests(unittest.TestCase):
         }
         with (
             patch.object(file_routes, "load_file_mapping", return_value=expired_mapping),
-            patch.object(file_routes, "delete_object") as delete_object_mock,
-            patch.object(file_routes, "delete_file_mapping") as delete_mapping_mock,
+            patch.object(file_routes, "delete_file_reference") as delete_reference_mock,
         ):
             file_routes.delete_expired_files()
 
-        delete_object_mock.assert_not_called()
-        delete_mapping_mock.assert_not_called()
+        delete_reference_mock.assert_not_called()
 
     def test_expired_file_cleanup_skips_when_distributed_lock_is_held(self):
         @contextmanager
@@ -317,14 +334,11 @@ class FileRouteUploadTests(unittest.TestCase):
         }
         with (
             patch.object(file_routes, "load_file_mapping", return_value=expired_mapping),
-            patch.object(file_routes, "delete_object") as delete_object_mock,
-            patch.object(file_routes, "local_cache_path", return_value="/tmp/nonexistent-cache"),
-            patch.object(file_routes, "delete_file_mapping") as delete_mapping_mock,
+            patch.object(file_routes, "delete_file_reference") as delete_reference_mock,
         ):
             file_routes.delete_expired_files()
 
-        delete_object_mock.assert_called_once()
-        delete_mapping_mock.assert_called_once_with("file-1")
+        delete_reference_mock.assert_called_once_with("file-1", expired_mapping["file-1"])
 
     def test_expired_file_cleanup_continues_after_one_file_fails(self):
         expired_mapping = {
@@ -340,15 +354,13 @@ class FileRouteUploadTests(unittest.TestCase):
             patch.object(file_routes, "load_file_mapping", return_value=expired_mapping),
             patch.object(
                 file_routes,
-                "delete_object",
+                "delete_file_reference",
                 side_effect=[RuntimeError("storage unavailable"), None],
-            ),
-            patch.object(file_routes, "local_cache_path", return_value="/tmp/nonexistent-cache"),
-            patch.object(file_routes, "delete_file_mapping") as delete_mapping_mock,
+            ) as delete_reference_mock,
         ):
             file_routes.delete_expired_files()
 
-        delete_mapping_mock.assert_called_once_with("file-2")
+        self.assertEqual(delete_reference_mock.call_count, 2)
 
     def test_text_extraction_timeout_returns_gateway_timeout(self):
         with (
@@ -406,9 +418,10 @@ class FileRouteUploadTests(unittest.TestCase):
             patch.object(file_routes, "_validate_upload_content"),
             patch.object(file_routes, "reserve_file_upload_slot", return_value="reservation-1"),
             patch.object(file_routes, "release_file_upload_slot") as release_mock,
+            patch.object(file_routes, "find_owned_file_mapping_by_content", return_value=None),
             patch.object(file_routes, "store_file", return_value=object_meta) as store_mock,
             patch.object(file_routes, "insert_file_mapping", side_effect=RuntimeError("secret database error")),
-            patch.object(file_routes, "delete_object") as delete_mock,
+            patch.object(file_routes, "delete_unreferenced_object") as delete_mock,
         ):
             with self.assertRaises(HTTPException) as ctx:
                 asyncio.run(
@@ -422,11 +435,49 @@ class FileRouteUploadTests(unittest.TestCase):
         self.assertEqual(ctx.exception.status_code, 500)
         self.assertEqual(ctx.exception.detail, "File upload failed")
         delete_mock.assert_called_once()
-        deleted_entry = delete_mock.call_args.args[0]
+        deleted_entry = delete_mock.call_args.args[1]
         self.assertEqual(deleted_entry["object_key"], "/private/storage/demo")
         self.assertEqual(store_mock.call_args.kwargs["content_type"], "text/plain")
         self.assertNotIn("secret", ctx.exception.detail)
         release_mock.assert_called_once_with("reservation-1")
+
+    def test_upload_reuses_same_users_existing_content_object(self):
+        upload = UploadFile(filename="renamed.txt", file=io.BytesIO(b"demo"))
+        reusable_entry = {
+            "bucket": "gptassistant",
+            "objectKey": "assistant-files/blobs/sha256/existing",
+            "storageBackend": "minio",
+            "sizeBytes": 4,
+        }
+        with (
+            patch.object(file_routes, "allowed_file", return_value=(True, {"documents": True})),
+            patch.object(file_routes, "_get_gptassistant_upload_limits", return_value=self._limits()),
+            patch.object(file_routes, "_validate_upload_content"),
+            patch.object(file_routes, "reserve_file_upload_slot", return_value="reservation-1"),
+            patch.object(file_routes, "release_file_upload_slot"),
+            patch.object(
+                file_routes,
+                "find_owned_file_mapping_by_content",
+                return_value=reusable_entry,
+            ) as find_mock,
+            patch.object(file_routes, "store_file") as store_mock,
+            patch.object(file_routes, "insert_file_mapping") as insert_mock,
+        ):
+            response = asyncio.run(
+                file_routes.upload_file(
+                    upload,
+                    model_id="auto",
+                    user={"sub": "user-1", "email": "user@example.com"},
+                )
+            )
+
+        self.assertEqual(response.status_code, 200)
+        find_mock.assert_called_once()
+        store_mock.assert_not_called()
+        self.assertEqual(
+            insert_mock.call_args.kwargs["object_key"],
+            reusable_entry["objectKey"],
+        )
 
     def test_upload_rejects_missing_user_identity_before_storage(self):
         upload = UploadFile(filename="demo.txt", file=io.BytesIO(b"demo"))
@@ -471,11 +522,15 @@ class FileRouteUploadTests(unittest.TestCase):
 
         with (
             patch.object(file_routes, "store_file", side_effect=delayed_store),
-            patch.object(file_routes, "delete_object") as delete_mock,
+            patch.object(file_routes, "delete_unreferenced_object") as delete_mock,
         ):
             asyncio.run(run_cancelled_store())
 
-        delete_mock.assert_called_once_with({"file_id": "file-1", **object_meta})
+        delete_mock.assert_called_once_with(
+            "file-1",
+            object_meta,
+            lock_acquired=False,
+        )
 
 
 if __name__ == "__main__":

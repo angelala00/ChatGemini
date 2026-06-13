@@ -75,6 +75,9 @@
   - `user_config_version`
   - `file_mapping`
 - 文件本体：`MinIO` / 本地开发时可回退到 `filesystem`
+  - 新上传文件按内容 SHA-256 使用 `assistant-files/blobs/sha256/<sha256>` 对象键。
+  - 同一用户重复上传相同内容时复用已有对象，但每次上传仍创建独立 `file_id`，以分别绑定会话附件或智能体知识文件。
+  - 删除逻辑附件时，只有底层对象不存在其他引用才会真正删除对象；历史附件继续兼容原有对象键。
 - 观测数据：节点本地日志文件
   - `usage_events`
   - `chat_traces`

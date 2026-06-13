@@ -106,9 +106,7 @@ class GPTAssistantModelAuthTests(unittest.IsolatedAsyncioTestCase):
         }
         with (
             patch.object(chat_routes, "list_file_mappings", return_value=mappings),
-            patch.object(chat_routes, "delete_object") as delete_object_mock,
-            patch.object(chat_routes, "local_cache_path", return_value="/tmp/nonexistent-cache"),
-            patch.object(chat_routes, "delete_file_mapping") as delete_mapping_mock,
+            patch.object(chat_routes, "delete_file_reference") as delete_reference_mock,
         ):
             deleted = chat_routes._delete_session_attachments(
                 "cid-1",
@@ -117,8 +115,10 @@ class GPTAssistantModelAuthTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertEqual(deleted, 1)
-        delete_object_mock.assert_called_once()
-        delete_mapping_mock.assert_called_once_with("session-current")
+        delete_reference_mock.assert_called_once_with(
+            "session-current",
+            mappings["session-current"],
+        )
 
     async def test_delete_session_cleans_attachments_before_history(self):
         meta = {

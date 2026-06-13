@@ -43,6 +43,13 @@ def build_minio_object_key(
     )
 
 
+def build_content_object_key(*, content_sha256: str) -> str:
+    prefix = model_config.MINIO_BASE_PREFIX.strip("/")
+    return "/".join(
+        part for part in (prefix, "blobs", "sha256", content_sha256) if part
+    )
+
+
 def init_object_store() -> None:
     LOCAL_UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
     LOCAL_CACHE_ROOT.mkdir(parents=True, exist_ok=True)
@@ -117,11 +124,16 @@ def store_file(
     content_file: BinaryIO,
     length: int,
     content_type: str | None = None,
+    content_sha256: str | None = None,
 ) -> dict[str, object]:
     init_object_store()
     if _use_minio():
         client = _get_minio_client()
-        object_key = build_minio_object_key(file_id=file_id, filename=filename)
+        object_key = (
+            build_content_object_key(content_sha256=content_sha256)
+            if content_sha256
+            else build_minio_object_key(file_id=file_id, filename=filename)
+        )
         client.put_object(
             model_config.MINIO_BUCKET,
             object_key,
@@ -136,13 +148,25 @@ def store_file(
             "size_bytes": length,
         }
 
-    target = LOCAL_UPLOAD_ROOT / file_id
+    target = (
+        LOCAL_UPLOAD_ROOT / "blobs" / "sha256" / content_sha256
+        if content_sha256
+        else LOCAL_UPLOAD_ROOT / file_id
+    )
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary_target = (
+        target.with_name(f".{target.name}.{uuid.uuid4().hex}.part")
+        if content_sha256
+        else target
+    )
     try:
-        with target.open("wb") as output_file:
+        with temporary_target.open("wb") as output_file:
             shutil.copyfileobj(content_file, output_file, length=1024 * 1024)
+        if temporary_target != target:
+            os.replace(temporary_target, target)
     except Exception:
-        if target.exists():
-            target.unlink()
+        if temporary_target.exists():
+            temporary_target.unlink()
         raise
     return {
         "bucket": "",
@@ -320,6 +344,7 @@ def cleanup_local_cache(*, retention_days: int | None = None) -> int:
 
 
 __all__ = [
+    "build_content_object_key",
     "cleanup_local_cache",
     "delete_object",
     "ensure_local_path",
