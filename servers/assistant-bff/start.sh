@@ -33,6 +33,72 @@ if [[ -f "${SCRIPT_DIR}/.env" ]]; then
   set +a
 fi
 
+persist_env_value() {
+  local file="$1"
+  local key="$2"
+  local value="$3"
+  local tmp_file
+  local found=0
+
+  tmp_file="$(mktemp)"
+  while IFS= read -r line || [[ -n "${line}" ]]; do
+    if [[ "${line}" == "${key}="* ]]; then
+      printf '%s=%s\n' "${key}" "${value}" >> "${tmp_file}"
+      found=1
+    else
+      printf '%s\n' "${line}" >> "${tmp_file}"
+    fi
+  done < "${file}"
+
+  if [[ "${found}" -eq 0 ]]; then
+    printf '%s=%s\n' "${key}" "${value}" >> "${tmp_file}"
+  fi
+
+  mv "${tmp_file}" "${file}"
+}
+
+detect_primary_ip() {
+  local ip=""
+
+  if command -v python3 >/dev/null 2>&1; then
+    ip="$(python3 -c 'import socket
+try:
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        sock.connect(("8.8.8.8", 80))
+        print(sock.getsockname()[0])
+    finally:
+        sock.close()
+except Exception:
+    pass' 2>/dev/null || true)"
+  fi
+
+  if [[ -z "${ip}" ]] && command -v ip >/dev/null 2>&1; then
+    ip="$(ip route get 1.1.1.1 2>/dev/null | awk '{for (i=1; i<=NF; i++) if ($i == "src") {print $(i+1); exit}}')"
+  fi
+
+  if [[ -z "${ip}" ]] && command -v hostname >/dev/null 2>&1; then
+    ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  fi
+
+  if [[ -z "${ip}" ]]; then
+    ip="127.0.0.1"
+  fi
+
+  printf '%s\n' "${ip}"
+}
+
+if [[ "${BUSINESS_STORAGE_BACKEND:-}" == "postgres" || -n "${POSTGRES_DSN:-}" ]]; then
+  if [[ -z "${SQLITE_MIGRATION_NODE_ID:-}" ]]; then
+    SQLITE_MIGRATION_NODE_ID="$(detect_primary_ip)"
+    export SQLITE_MIGRATION_NODE_ID
+    if [[ -f "${SCRIPT_DIR}/.env" ]]; then
+      persist_env_value "${SCRIPT_DIR}/.env" "SQLITE_MIGRATION_NODE_ID" "${SQLITE_MIGRATION_NODE_ID}"
+    fi
+    echo "assistant-bff: SQLITE_MIGRATION_NODE_ID auto-filled as ${SQLITE_MIGRATION_NODE_ID}"
+  fi
+fi
+
 if [[ ! -d "${VENV_DIR}" ]]; then
   python3 -m venv "${VENV_DIR}"
   # shellcheck disable=SC1091

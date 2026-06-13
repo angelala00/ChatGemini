@@ -32,7 +32,7 @@
 - `POSTGRES_DSN`: Postgres 连接串；当 `BUSINESS_STORAGE_BACKEND=postgres` 时必填。
 - `POSTGRES_POOL_MIN_SIZE`: Postgres 连接池最小连接数，默认 `1`。
 - `POSTGRES_POOL_MAX_SIZE`: Postgres 连接池最大连接数，默认 `5`。
-- `SQLITE_MIGRATION_NODE_ID`: 本节点 sqlite 迁移状态标识；当 `BUSINESS_STORAGE_BACKEND=postgres` 时必填，并且每个节点必须不同，例如 `node-a`、`node-b`。
+- `SQLITE_MIGRATION_NODE_ID`: 本节点 sqlite 迁移状态标识；当 `BUSINESS_STORAGE_BACKEND=postgres` 时会自动回填为当前机器的主 IP，也可以手工覆盖，但每个节点必须不同。
 - `SESSION_HISTORY_ENCRYPTION_KEY`: 会话历史加密密钥。当前要求在 `BUSINESS_STORAGE_BACKEND=postgres` 时必填，格式为 `Fernet` key。
 - `OBJECT_STORAGE_BACKEND`: 文件存储后端。生产建议 `minio`，本地开发可用 `filesystem`。
 - `MINIO_ENDPOINT`: MinIO 地址，例如 `minio.example.com:9000`。
@@ -56,7 +56,7 @@
 
 - 启动阶段会校验存储配置。
 - 当 `BUSINESS_STORAGE_BACKEND=postgres` 且缺少 `POSTGRES_DSN` 时，服务会直接启动失败。
-- 当 `BUSINESS_STORAGE_BACKEND=postgres` 且缺少 `SQLITE_MIGRATION_NODE_ID` 时，服务会直接启动失败。
+- 当 `BUSINESS_STORAGE_BACKEND=postgres` 且缺少 `SQLITE_MIGRATION_NODE_ID` 时，`start.sh` 会先按当前机器主 IP 自动回填，再启动服务。
 - 当 `BUSINESS_STORAGE_BACKEND=postgres` 且缺少 `SESSION_HISTORY_ENCRYPTION_KEY` 时，服务会直接启动失败。
 - 当 `BUSINESS_STORAGE_BACKEND=postgres` 且连接池大小配置不合法时，服务会直接启动失败。
 - 当 `OBJECT_STORAGE_BACKEND=minio` 且缺少 `MINIO_*` 关键配置时，服务会直接启动失败。
@@ -93,7 +93,7 @@
 2. 在目标节点配置：
    - `BUSINESS_STORAGE_BACKEND=postgres`
    - `POSTGRES_DSN=...`
-   - `SQLITE_MIGRATION_NODE_ID=node-b`
+   - 如不手工配置，`start.sh` 会自动回填为当前机器主 IP
    - `OBJECT_STORAGE_BACKEND=filesystem`
 3. 在目标节点检查本地 sqlite 表结构和待迁移数据；正式启动时 `start.sh` 会自动执行迁移，也可手动提前执行：
 
