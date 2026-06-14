@@ -155,7 +155,7 @@ const Chat = (props: RouterComponentProps) => {
                 reasoningEnabled,
             );
             onAbortUpdate(abort)
-            await start()
+            void start()
         } else if (ai.busy) {
             sendUserAlert(t("views.Chat.handleRefresh.not_available"), true);
         }

@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
     ArrowPathIcon,
     CheckCircleIcon,
+    DocumentDuplicateIcon,
     EyeIcon,
+    MagnifyingGlassIcon,
     PencilSquareIcon,
     PlusIcon,
     SparklesIcon,
@@ -329,6 +331,7 @@ const AdminConfig = () => {
     const [savedProductFlagsDraft, setSavedProductFlagsDraft] = useState<ProductFlagsDraft>(
         createEmptyProductFlagsDraft(),
     );
+    const [flagSearchQuery, setFlagSearchQuery] = useState("");
 
     useEffect(() => {
         document.title = t("views.Admin.page_title");
@@ -435,10 +438,18 @@ const AdminConfig = () => {
         () => new Set(splitCsvValue(assistantDefaultsDraft.default_visible_models_input)),
         [assistantDefaultsDraft.default_visible_models_input],
     );
-    const genericFeatureFlags = useMemo(
-        () => featureFlags.filter((item) => !STRUCTURED_FLAG_KEYS.has(item.config_key)),
-        [featureFlags],
-    );
+    const genericFeatureFlags = useMemo(() => {
+        const base = featureFlags.filter((item) => !STRUCTURED_FLAG_KEYS.has(item.config_key));
+        if (!flagSearchQuery.trim()) {
+            return base;
+        }
+        const query = flagSearchQuery.toLowerCase();
+        return base.filter(
+            (item) =>
+                item.config_key.toLowerCase().includes(query) ||
+                item.description.toLowerCase().includes(query),
+        );
+    }, [featureFlags, flagSearchQuery]);
     const sectionNavItems = useMemo(
         () => [
             {
@@ -951,17 +962,66 @@ const AdminConfig = () => {
         }
     };
 
+    const toggleFlag = async (flag: AdminFeatureFlag) => {
+        if (flag.value_type !== "boolean") {
+            return;
+        }
+        const newValue = !flag.config_value;
+        const payload = {
+            config_key: flag.config_key,
+            config_value: newValue,
+            value_type: "boolean",
+            description: flag.description,
+        };
+        const currentBusyKey = `flag-toggle:${flag.config_key}`;
+        setBusyKey(currentBusyKey);
+        try {
+            const response = await requestJson(
+                "PUT",
+                getFullPath(`/api/admin/feature-flags/${encodeURIComponent(flag.config_key)}`),
+                payload,
+            );
+            syncPermissionsFromResponse(response);
+            if (response?.item) {
+                setFeatureFlags((state) =>
+                    sortAdminFeatureFlags([
+                        ...state.filter((item) => item.config_key !== response.item.config_key),
+                        response.item as AdminFeatureFlag,
+                    ]),
+                );
+            }
+            await refreshAuditLogs();
+            sendUserAlert(t("views.Admin.save_success"));
+        } catch (error) {
+            sendUserAlert(
+                error instanceof Error ? error.message : t("views.Admin.save_error"),
+                true,
+                2200,
+            );
+        } finally {
+            setBusyKey("");
+        }
+    };
+
     const toggleAssistantVisibleModel = (modelId: string) => {
         setAssistantDefaultsDraft((state) => {
             const nextValues = splitCsvValue(state.default_visible_models_input);
             const nextSet = new Set(nextValues);
+            let nextDefaultModel = state.default_model;
+
             if (nextSet.has(modelId)) {
                 nextSet.delete(modelId);
+                // If we are hiding the model that was set as default, clear the default setting
+                if (nextDefaultModel === modelId) {
+                    nextDefaultModel = "";
+                }
             } else {
                 nextSet.add(modelId);
             }
+
             return {
                 ...state,
+                default_model: nextDefaultModel,
                 default_visible_models_input: Array.from(nextSet).join(", "),
             };
         });
@@ -974,6 +1034,16 @@ const AdminConfig = () => {
         }
         const defaultModel = assistantDefaultsDraft.default_model.trim();
         const visibleModels = splitCsvValue(assistantDefaultsDraft.default_visible_models_input);
+        
+        if (visibleModels.length === 0) {
+            sendUserAlert(t("views.Admin.validation_visible_models_required"), true, 2200);
+            return;
+        }
+        if (!defaultModel) {
+            sendUserAlert(t("views.Admin.validation_default_model_required"), true, 2200);
+            return;
+        }
+
         const unknownVisibleModels = visibleModels.filter((item) => !modelIdSet.has(item));
         if (defaultModel && !modelIdSet.has(defaultModel)) {
             sendUserAlert(t("views.Admin.validation_default_model_unknown"), true, 2200);
@@ -1526,7 +1596,7 @@ const AdminConfig = () => {
                                     <div className="mt-4 flex flex-wrap gap-2.5">
                                         <button
                                             type="button"
-                                            className={`${buttonClass} bg-[#279ab3] text-white hover:bg-[#1e7f95]`}
+                                            className={`${buttonClass} bg-[#279ab3] text-white hover:bg-[#1e7f95] disabled:bg-[#a3ccd4] disabled:cursor-not-allowed`}
                                             onClick={saveModel}
                                             disabled={busyKey === "model-save" || !modelEditorDirty}
                                         >
@@ -1536,7 +1606,7 @@ const AdminConfig = () => {
                                         </button>
                                         <button
                                             type="button"
-                                            className={`${buttonClass} border border-[rgba(214,223,229,0.98)] bg-white text-[#2f3a46] hover:bg-[rgba(245,248,250,0.96)]`}
+                                            className={`${buttonClass} border border-[rgba(214,223,229,0.98)] bg-white text-[#2f3a46] hover:bg-[rgba(245,248,250,0.96)] disabled:opacity-30 disabled:cursor-not-allowed`}
                                             onClick={() => setModelDraft(savedModelDraft)}
                                             disabled={busyKey === "model-save" || !modelEditorDirty}
                                         >
@@ -1913,7 +1983,7 @@ const AdminConfig = () => {
                                         <div className="mt-4 flex flex-wrap gap-2.5">
                                             <button
                                                 type="button"
-                                                className={`${buttonClass} bg-[#279ab3] text-white hover:bg-[#1e7f95]`}
+                                                className={`${buttonClass} bg-[#279ab3] text-white hover:bg-[#1e7f95] disabled:bg-[#a3ccd4] disabled:cursor-not-allowed`}
                                                 onClick={savePermission}
                                                 disabled={
                                                     busyKey === "permission-save" ||
@@ -1926,7 +1996,7 @@ const AdminConfig = () => {
                                             </button>
                                             <button
                                                 type="button"
-                                                className={`${buttonClass} border border-[rgba(214,223,229,0.98)] bg-white text-[#2f3a46] hover:bg-[rgba(245,248,250,0.96)]`}
+                                                className={`${buttonClass} border border-[rgba(214,223,229,0.98)] bg-white text-[#2f3a46] hover:bg-[rgba(245,248,250,0.96)] disabled:opacity-30 disabled:cursor-not-allowed`}
                                                 onClick={() =>
                                                     setPermissionDraft(savedPermissionDraft)
                                                 }
@@ -2013,468 +2083,465 @@ const AdminConfig = () => {
                         {activeSection === "flags" && (
                             <section
                                 id="admin-section-flags"
-                                className="scroll-mt-28 rounded-[22px] border border-[rgba(223,231,236,0.96)] bg-white/95 px-5 py-5 shadow-[0_14px_30px_rgba(23,28,38,0.045)]"
+                                className="scroll-mt-28 space-y-4"
                             >
-                                <div className="flex flex-col gap-3 border-b border-[rgba(231,237,242,0.95)] pb-4 md:flex-row md:items-end md:justify-between">
-                                    <div>
-                                        <h2 className="text-lg font-semibold text-[#25313c]">
-                                            {t("views.Admin.flags_title")}
-                                        </h2>
-                                        <p className="mt-1 text-sm text-[#66717d]">
-                                            {t("views.Admin.flags_subtitle")}
-                                        </p>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        className={`${buttonClass} bg-[#25313c] text-white hover:bg-[#1b242d]`}
-                                        onClick={startCreateFlag}
-                                        disabled={!canManageFlags}
-                                    >
-                                        <PlusIcon className="mr-2 size-4" />
-                                        {t("views.Admin.add_flag")}
-                                    </button>
-                                </div>
-
-                                {!canManageFlags && (
-                                    <p className="mt-4 text-sm text-[#8a95a0]">
-                                        {t("views.Admin.flags_read_only_hint")}
-                                    </p>
-                                )}
-                                {structuredConfigDirty && (
-                                    <div className="mt-4 rounded-[18px] border border-[rgba(251,214,163,0.98)] bg-[rgba(255,248,236,0.98)] px-4 py-3 text-sm text-[#8a5a17]">
-                                        {t("views.Admin.unsaved_changes_banner")}
-                                    </div>
-                                )}
-                                <div className="mt-4 rounded-[20px] border border-[rgba(213,223,229,0.98)] bg-[linear-gradient(180deg,rgba(245,249,251,0.98),rgba(250,252,253,0.96))] p-4">
-                                    <div className="flex flex-col gap-2 border-b border-[rgba(231,237,242,0.95)] pb-4">
-                                        <div className="flex flex-wrap items-center gap-2">
-                                            <h3 className="text-base font-semibold text-[#25313c]">
-                                                {t("views.Admin.assistant_defaults_title")}
-                                            </h3>
-                                            {assistantDefaultsDirty && (
-                                                <span className="rounded-full border border-[rgba(251,214,163,0.98)] bg-[rgba(255,248,236,0.98)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8a5a17]">
-                                                    {t("views.Admin.unsaved_changes_short")}
-                                                </span>
-                                            )}
+                                <div className="rounded-[22px] border border-[rgba(223,231,236,0.96)] bg-white/95 px-5 py-5 shadow-[0_14px_30px_rgba(23,28,38,0.045)]">
+                                    <div className="flex flex-col gap-3 border-b border-[rgba(231,237,242,0.95)] pb-4 md:flex-row md:items-end md:justify-between">
+                                        <div>
+                                            <h2 className="text-lg font-semibold text-[#25313c]">
+                                                {t("views.Admin.flags_title")}
+                                            </h2>
+                                            <p className="mt-1 text-sm text-[#66717d]">
+                                                {t("views.Admin.flags_subtitle")}
+                                            </p>
                                         </div>
-                                        <p className="text-sm leading-6 text-[#66717d]">
-                                            {t("views.Admin.assistant_defaults_subtitle")}
-                                        </p>
+                                        <button
+                                            type="button"
+                                            className={`${buttonClass} bg-[#25313c] text-white hover:bg-[#1b242d]`}
+                                            onClick={startCreateFlag}
+                                            disabled={!canManageFlags}
+                                        >
+                                            <PlusIcon className="mr-2 size-4" />
+                                            {t("views.Admin.add_flag")}
+                                        </button>
                                     </div>
-                                    <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,240px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(0,260px)_minmax(0,1fr)]">
-                                        <div className="grid gap-3">
-                                            <label className="grid gap-2">
-                                                <span className={formLabelClass}>
-                                                    {t("views.Admin.assistant_defaults_default_model")}
-                                                </span>
-                                                <select
-                                                    className={inputClass}
-                                                    value={assistantDefaultsDraft.default_model}
-                                                    onChange={(event) =>
-                                                        setAssistantDefaultsDraft((state) => ({
-                                                            ...state,
-                                                            default_model: event.target.value,
-                                                        }))
-                                                    }
-                                                    disabled={!canManageFlags}
-                                                >
-                                                    <option value="">
-                                                        {t("views.Admin.assistant_defaults_default_model_placeholder")}
-                                                    </option>
-                                                    {assistantDefaultsDraft.default_model &&
-                                                        !modelIdSet.has(
-                                                            assistantDefaultsDraft.default_model,
-                                                        ) && (
-                                                            <option
-                                                                value={
-                                                                    assistantDefaultsDraft.default_model
-                                                                }
-                                                            >
-                                                                {assistantDefaultsDraft.default_model}
-                                                            </option>
-                                                        )}
-                                                    {modelOptions.map((model) => (
-                                                        <option
-                                                            key={model.model_id}
-                                                            value={model.model_id}
+
+                                    {!canManageFlags && (
+                                        <p className="mt-4 text-sm text-[#8a95a0]">
+                                            {t("views.Admin.flags_read_only_hint")}
+                                        </p>
+                                    )}
+                                    {structuredConfigDirty && (
+                                        <div className="mt-4 rounded-[18px] border border-[rgba(251,214,163,0.98)] bg-[rgba(255,248,236,0.98)] px-4 py-3 text-sm text-[#8a5a17]">
+                                            {t("views.Admin.unsaved_changes_banner")}
+                                        </div>
+                                    )}
+
+                                    <div className="mt-4 space-y-4">
+                                        {/* Assistant Defaults Card */}
+                                        <div className="rounded-[20px] border border-[rgba(213,223,229,0.98)] bg-[rgba(250,252,253,0.96)] p-4 shadow-sm">
+                                            <div className="flex items-center justify-between gap-3 border-b border-[rgba(231,237,242,0.95)] pb-3">
+                                                <h3 className="text-base font-semibold text-[#25313c]">
+                                                    {t("views.Admin.assistant_defaults_title")}
+                                                </h3>
+                                                {assistantDefaultsDirty && (
+                                                    <span className="rounded-full border border-[rgba(251,214,163,0.98)] bg-[rgba(255,248,236,0.98)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8a5a17]">
+                                                        {t("views.Admin.unsaved_changes_short")}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className="mt-2 text-xs text-[#8a95a0]">
+                                                {t("views.Admin.assistant_defaults_subtitle")}
+                                            </p>
+                                            <div className="mt-4 grid gap-5 xl:grid-cols-2">
+                                                <div className="space-y-4">
+                                                    <label className="grid gap-2">
+                                                        <span className={formLabelClass}>
+                                                            {t("views.Admin.assistant_defaults_default_model")}
+                                                        </span>
+                                                        <select
+                                                            className={inputClass}
+                                                            value={assistantDefaultsDraft.default_model}
+                                                            onChange={(event) =>
+                                                                setAssistantDefaultsDraft((state) => ({
+                                                                    ...state,
+                                                                    default_model: event.target.value,
+                                                                }))
+                                                            }
+                                                            disabled={!canManageFlags}
                                                         >
-                                                            {model.display_name || model.model_id}
-                                                            {" · "}
-                                                            {model.model_id}
-                                                            {model.enabled
-                                                                ? ""
-                                                                : ` (${t("views.Admin.disabled")})`}
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                            </label>
-                                            <label className="grid gap-2">
-                                                <span className={formLabelClass}>
-                                                    {t(
-                                                        "views.Admin.assistant_defaults_default_visible_models",
-                                                    )}
-                                                </span>
-                                                <input
-                                                    className={inputClass}
-                                                    value={
-                                                        assistantDefaultsDraft.default_visible_models_input
-                                                    }
-                                                    placeholder={t(
-                                                        "views.Admin.assistant_defaults_visible_models_placeholder",
-                                                    )}
-                                                    onChange={(event) =>
-                                                        setAssistantDefaultsDraft((state) => ({
-                                                            ...state,
-                                                            default_visible_models_input:
-                                                                event.target.value,
-                                                        }))
-                                                    }
-                                                    disabled={!canManageFlags}
-                                                />
-                                                <span className="text-xs leading-5 text-[#8a95a0]">
-                                                    {t(
-                                                        "views.Admin.assistant_defaults_visible_models_hint",
-                                                    )}
-                                                </span>
-                                            </label>
-                                            <label className="inline-flex items-center gap-3 rounded-2xl border border-[rgba(213,223,229,0.98)] bg-white/92 px-4 py-3 text-sm text-[#2f3a46]">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={
-                                                        assistantDefaultsDraft.default_reasoning_enabled
-                                                    }
-                                                    onChange={(event) =>
-                                                        setAssistantDefaultsDraft((state) => ({
-                                                            ...state,
-                                                            default_reasoning_enabled:
-                                                                event.target.checked,
-                                                        }))
-                                                    }
-                                                    disabled={!canManageFlags}
-                                                />
-                                                <div>
-                                                    <div className="font-medium text-[#25313c]">
-                                                        {t(
-                                                            "views.Admin.assistant_defaults_default_reasoning",
-                                                        )}
-                                                    </div>
-                                                    <div className="mt-1 text-xs leading-5 text-[#8a95a0]">
-                                                        {t(
-                                                            "views.Admin.assistant_defaults_default_reasoning_hint",
-                                                        )}
+                                                            <option value="">
+                                                                {t("views.Admin.assistant_defaults_default_model_placeholder")}
+                                                            </option>
+                                                            {modelOptions.map((model) => (
+                                                                <option key={model.model_id} value={model.model_id}>
+                                                                    {model.display_name || model.model_id} ({model.model_id})
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </label>
+                                                    <label className="flex items-start gap-3 rounded-2xl border border-[rgba(213,223,229,0.98)] bg-white/80 px-4 py-3 text-sm text-[#2f3a46]">
+                                                        <input
+                                                            type="checkbox"
+                                                            className="mt-1 h-4 w-4 rounded border-gray-300 text-[#279ab3] focus:ring-[#279ab3]"
+                                                            checked={assistantDefaultsDraft.default_reasoning_enabled}
+                                                            onChange={(event) =>
+                                                                setAssistantDefaultsDraft((state) => ({
+                                                                    ...state,
+                                                                    default_reasoning_enabled: event.target.checked,
+                                                                }))
+                                                            }
+                                                            disabled={!canManageFlags}
+                                                        />
+                                                        <div>
+                                                            <div className="font-medium text-[#25313c]">
+                                                                {t("views.Admin.assistant_defaults_default_reasoning")}
+                                                            </div>
+                                                            <div className="mt-1 text-xs text-[#8a95a0]">
+                                                                {t("views.Admin.assistant_defaults_default_reasoning_hint")}
+                                                            </div>
+                                                        </div>
+                                                    </label>
+                                                    <div className="flex flex-wrap gap-2.5">
+                                                        <button
+                                                            type="button"
+                                                            className={`${buttonClass} bg-[#279ab3] text-white hover:bg-[#1e7f95] disabled:bg-[#a3ccd4] disabled:cursor-not-allowed`}
+                                                            onClick={saveAssistantDefaults}
+                                                            disabled={!canManageFlags || busyKey === "assistant-defaults-save" || !assistantDefaultsDirty}
+                                                        >
+                                                            {busyKey === "assistant-defaults-save" ? t("views.Admin.saving") : t("views.Admin.save")}
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className={`${buttonClass} border border-[rgba(214,223,229,0.98)] bg-white text-[#2f3a46] hover:bg-[rgba(245,248,250,0.96)] disabled:opacity-30 disabled:cursor-not-allowed`}
+                                                            onClick={() => setAssistantDefaultsDraft(savedAssistantDefaultsDraft)}
+                                                            disabled={!canManageFlags || !assistantDefaultsDirty}
+                                                        >
+                                                            {t("views.Admin.reset")}
+                                                        </button>
                                                     </div>
                                                 </div>
-                                            </label>
-                                            <div className="flex flex-wrap gap-2.5">
+                                                <div className="rounded-2xl border border-[rgba(219,228,233,0.98)] bg-white/60 p-4">
+                                                    <div className="flex items-center justify-between gap-3 border-b border-[rgba(231,237,242,0.95)] pb-3">
+                                                        <h4 className="text-sm font-semibold text-[#25313c]">
+                                                            {t("views.Admin.assistant_defaults_default_visible_models")}
+                                                        </h4>
+                                                        <span className="text-[11px] font-bold text-[#8a95a0]">
+                                                            {t("views.Admin.assistant_defaults_model_count", {
+                                                                count: assistantVisibleModelSet.size,
+                                                            })}
+                                                        </span>
+                                                    </div>
+                                                    <div className="mt-4 flex flex-wrap gap-2">
+                                                        {modelOptions.map((model) => {
+                                                            const selected = assistantVisibleModelSet.has(model.model_id);
+                                                            return (
+                                                                <button
+                                                                    key={model.model_id}
+                                                                    type="button"
+                                                                    className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-all ${
+                                                                        selected
+                                                                            ? "border-[rgba(99,169,185,0.98)] bg-[rgba(231,245,248,0.98)] text-[#206c7b] shadow-sm"
+                                                                            : "border-[rgba(213,223,229,0.98)] bg-white text-[#66717d] hover:border-[rgba(167,199,208,0.98)] hover:text-[#2f3a46]"
+                                                                    }`}
+                                                                    onClick={() => toggleAssistantVisibleModel(model.model_id)}
+                                                                    disabled={!canManageFlags}
+                                                                >
+                                                                    {model.display_name || model.model_id}
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                    <p className="mt-4 text-[11px] leading-relaxed text-[#8a95a0]">
+                                                        {t("views.Admin.assistant_defaults_visible_models_hint")}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Product Flags Card */}
+                                        <div className="rounded-[20px] border border-[rgba(213,223,229,0.98)] bg-[rgba(249,250,245,0.96)] p-4 shadow-sm">
+                                            <div className="flex items-center justify-between gap-3 border-b border-[rgba(231,237,242,0.95)] pb-3">
+                                                <h3 className="text-base font-semibold text-[#25313c]">
+                                                    {t("views.Admin.product_flags_title")}
+                                                </h3>
+                                                {productFlagsDirty && (
+                                                    <span className="rounded-full border border-[rgba(251,214,163,0.98)] bg-[rgba(255,248,236,0.98)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8a5a17]">
+                                                        {t("views.Admin.unsaved_changes_short")}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className="mt-2 text-xs text-[#8a95a0]">
+                                                {t("views.Admin.product_flags_subtitle")}
+                                            </p>
+                                            <div className="mt-4 space-y-4">
+                                                <div className="flex items-start gap-4 rounded-2xl border border-[rgba(213,223,229,0.98)] bg-white/80 px-4 py-3">
+                                                    {canManageFlags && (
+                                                        <button
+                                                            type="button"
+                                                            className={`mt-1 relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                                                productFlagsDraft.gpts_feature_enabled
+                                                                    ? "bg-[#279ab3]"
+                                                                    : "bg-[rgba(223,231,236,0.96)]"
+                                                            }`}
+                                                            onClick={() => {
+                                                                setProductFlagsDraft({
+                                                                    gpts_feature_enabled: !productFlagsDraft.gpts_feature_enabled,
+                                                                });
+                                                            }}
+                                                        >
+                                                            <span
+                                                                aria-hidden="true"
+                                                                className={`pointer-events-none inline-block size-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                                                    productFlagsDraft.gpts_feature_enabled
+                                                                        ? "translate-x-4"
+                                                                        : "translate-x-0"
+                                                                }`}
+                                                            />
+                                                        </button>
+                                                    )}
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-sm font-medium text-[#25313c]">
+                                                            {t("views.Admin.product_flags_gpts_label")}
+                                                        </p>
+                                                        <p className="mt-1 text-xs text-[#8a95a0]">
+                                                            {t("views.Admin.product_flags_gpts_hint")}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <div className="flex flex-wrap gap-2.5">
+                                                    <button
+                                                        type="button"
+                                                        className={`${buttonClass} bg-[#279ab3] text-white hover:bg-[#1e7f95] disabled:bg-[#a3ccd4] disabled:cursor-not-allowed`}
+                                                        onClick={saveProductFlags}
+                                                        disabled={!canManageFlags || busyKey === "product-flags-save" || !productFlagsDirty}
+                                                    >
+                                                        {busyKey === "product-flags-save" ? t("views.Admin.saving") : t("views.Admin.save")}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className={`${buttonClass} border border-[rgba(214,223,229,0.98)] bg-white text-[#2f3a46] hover:bg-[rgba(245,248,250,0.96)] disabled:opacity-30 disabled:cursor-not-allowed`}
+                                                        onClick={() => setProductFlagsDraft(savedProductFlagsDraft)}
+                                                        disabled={!canManageFlags || !productFlagsDirty}
+                                                    >
+                                                        {t("views.Admin.reset")}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Generic Flags list starts here */}
+                                    {editingFlagKey && (
+                                        <div className="mt-4 rounded-[20px] border border-[rgba(213,223,229,0.98)] bg-[rgba(246,249,251,0.96)] p-4 shadow-inner">
+                                            <div className="flex items-center justify-between gap-3 border-b border-[rgba(231,237,242,0.95)] pb-3">
+                                                <h3 className="text-base font-semibold text-[#25313c]">
+                                                    {editingFlagKey === NEW_FLAG_KEY
+                                                        ? t("views.Admin.create_flag_title")
+                                                        : t("views.Admin.edit_flag_title")}
+                                                </h3>
                                                 <button
                                                     type="button"
-                                                    className={`${buttonClass} bg-[#279ab3] text-white hover:bg-[#1e7f95]`}
-                                                    onClick={saveAssistantDefaults}
-                                                    disabled={
-                                                        !canManageFlags ||
-                                                        busyKey === "assistant-defaults-save" ||
-                                                        !assistantDefaultsDirty
-                                                    }
+                                                    className="text-sm font-medium text-[#7b8792] hover:text-[#25313c]"
+                                                    onClick={resetFlagEditor}
                                                 >
-                                                    {busyKey === "assistant-defaults-save"
-                                                        ? t("views.Admin.saving")
-                                                        : t("views.Admin.save")}
+                                                    {t("views.Admin.cancel")}
+                                                </button>
+                                            </div>
+                                            <div className="mt-4 grid gap-4 xl:grid-cols-2">
+                                                <label className="grid gap-2">
+                                                    <span className={formLabelClass}>
+                                                        {t("views.Admin.form_config_key")}
+                                                    </span>
+                                                    <input
+                                                        className={inputClass}
+                                                        value={flagDraft.config_key}
+                                                        onChange={(event) =>
+                                                            setFlagDraft((state) => ({
+                                                                ...state,
+                                                                config_key: event.target.value,
+                                                            }))
+                                                        }
+                                                        disabled={editingFlagKey !== NEW_FLAG_KEY}
+                                                    />
+                                                </label>
+                                                <label className="grid gap-2">
+                                                    <span className={formLabelClass}>
+                                                        {t("views.Admin.form_value_type")}
+                                                    </span>
+                                                    <select
+                                                        className={inputClass}
+                                                        value={flagDraft.value_type}
+                                                        onChange={(event) =>
+                                                            setFlagDraft((state) => ({
+                                                                ...state,
+                                                                value_type: event.target.value,
+                                                            }))
+                                                        }
+                                                    >
+                                                        <option value="string">string</option>
+                                                        <option value="number">number</option>
+                                                        <option value="boolean">boolean</option>
+                                                        <option value="json">json</option>
+                                                    </select>
+                                                </label>
+                                                <label className="grid gap-2 xl:col-span-2">
+                                                    <span className={formLabelClass}>
+                                                        {t("views.Admin.form_description")}
+                                                    </span>
+                                                    <input
+                                                        className={inputClass}
+                                                        value={flagDraft.description}
+                                                        onChange={(event) =>
+                                                            setFlagDraft((state) => ({
+                                                                ...state,
+                                                                description: event.target.value,
+                                                            }))
+                                                        }
+                                                    />
+                                                </label>
+                                                <label className="grid gap-2 xl:col-span-2">
+                                                    <span className={formLabelClass}>
+                                                        {t("views.Admin.form_config_value")}
+                                                    </span>
+                                                    <textarea
+                                                        className={textareaClass}
+                                                        value={flagDraft.config_value_input}
+                                                        onChange={(event) =>
+                                                            setFlagDraft((state) => ({
+                                                                ...state,
+                                                                config_value_input: event.target.value,
+                                                            }))
+                                                        }
+                                                    />
+                                                </label>
+                                            </div>
+                                            <div className="mt-5 flex flex-wrap gap-2.5">
+                                                <button
+                                                    type="button"
+                                                    className={`${buttonClass} bg-[#279ab3] text-white hover:bg-[#1e7f95] disabled:bg-[#a3ccd4] disabled:cursor-not-allowed`}
+                                                    onClick={saveFlag}
+                                                    disabled={busyKey === "flag-save" || !flagEditorDirty}
+                                                >
+                                                    {busyKey === "flag-save" ? t("views.Admin.saving") : t("views.Admin.save")}
                                                 </button>
                                                 <button
                                                     type="button"
-                                                    className={`${buttonClass} border border-[rgba(214,223,229,0.98)] bg-white text-[#2f3a46] hover:bg-[rgba(245,248,250,0.96)]`}
-                                                    onClick={() =>
-                                                        setAssistantDefaultsDraft(
-                                                            savedAssistantDefaultsDraft,
-                                                        )
-                                                    }
-                                                    disabled={
-                                                        !canManageFlags ||
-                                                        !assistantDefaultsDirty ||
-                                                        busyKey === "assistant-defaults-save"
-                                                    }
+                                                    className={`${buttonClass} border border-[rgba(214,223,229,0.98)] bg-white text-[#2f3a46] hover:bg-[rgba(245,248,250,0.96)] disabled:opacity-30 disabled:cursor-not-allowed`}
+                                                    onClick={() => setFlagDraft(savedFlagDraft)}
+                                                    disabled={busyKey === "flag-save" || !flagEditorDirty}
                                                 >
                                                     {t("views.Admin.reset")}
                                                 </button>
                                             </div>
                                         </div>
-                                        <div className="rounded-[18px] border border-[rgba(219,228,233,0.98)] bg-white/88 p-3.5">
-                                            <div className="flex items-center justify-between gap-3">
-                                                <h4 className="text-sm font-semibold text-[#25313c]">
-                                                    {t("views.Admin.assistant_defaults_model_palette")}
-                                                </h4>
-                                                <span className="text-xs text-[#8a95a0]">
-                                                    {t("views.Admin.assistant_defaults_model_count", {
-                                                        count: modelOptions.length,
-                                                    })}
-                                                </span>
-                                            </div>
-                                            <div className="mt-4 flex flex-wrap gap-2">
-                                                {modelOptions.map((model) => {
-                                                    const selected = assistantVisibleModelSet.has(
-                                                        model.model_id,
-                                                    );
-                                                    return (
-                                                        <button
-                                                            key={model.model_id}
-                                                            type="button"
-                                                            className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-                                                                selected
-                                                                    ? "border-[rgba(99,169,185,0.98)] bg-[rgba(231,245,248,0.98)] text-[#206c7b]"
-                                                                    : "border-[rgba(213,223,229,0.98)] bg-white text-[#66717d] hover:border-[rgba(167,199,208,0.98)] hover:text-[#2f3a46]"
-                                                            }`}
-                                                            onClick={() =>
-                                                                toggleAssistantVisibleModel(
-                                                                    model.model_id,
-                                                                )
-                                                            }
-                                                            disabled={!canManageFlags}
-                                                        >
-                                                            {model.display_name || model.model_id}
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="mt-4 rounded-[20px] border border-[rgba(213,223,229,0.98)] bg-[linear-gradient(180deg,rgba(249,250,245,0.98),rgba(252,253,250,0.96))] p-4">
-                                    <div className="flex flex-col gap-2 border-b border-[rgba(231,237,242,0.95)] pb-4">
-                                        <div className="flex flex-wrap items-center gap-2">
-                                            <h3 className="text-base font-semibold text-[#25313c]">
-                                                {t("views.Admin.product_flags_title")}
-                                            </h3>
-                                            {productFlagsDirty && (
-                                                <span className="rounded-full border border-[rgba(251,214,163,0.98)] bg-[rgba(255,248,236,0.98)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8a5a17]">
-                                                    {t("views.Admin.unsaved_changes_short")}
-                                                </span>
-                                            )}
-                                        </div>
-                                        <p className="text-sm leading-6 text-[#66717d]">
-                                            {t("views.Admin.product_flags_subtitle")}
-                                        </p>
-                                    </div>
-                                    <div className="mt-4 flex flex-col gap-3">
-                                        <label className="inline-flex items-start gap-3 rounded-2xl border border-[rgba(213,223,229,0.98)] bg-white/92 px-4 py-3 text-sm text-[#2f3a46]">
-                                            <input
-                                                type="checkbox"
-                                                className="mt-0.5"
-                                                checked={productFlagsDraft.gpts_feature_enabled}
-                                                onChange={(event) =>
-                                                    setProductFlagsDraft({
-                                                        gpts_feature_enabled: event.target.checked,
-                                                    })
-                                                }
-                                                disabled={!canManageFlags}
-                                            />
-                                            <div>
-                                                <div className="font-medium text-[#25313c]">
-                                                    {t("views.Admin.product_flags_gpts_label")}
-                                                </div>
-                                                <div className="mt-1 text-xs leading-5 text-[#8a95a0]">
-                                                    {t("views.Admin.product_flags_gpts_hint")}
-                                                </div>
-                                            </div>
-                                        </label>
-                                        <div className="flex flex-wrap gap-3">
-                                            <button
-                                                type="button"
-                                                className={`${buttonClass} bg-[#279ab3] text-white hover:bg-[#1e7f95]`}
-                                                onClick={saveProductFlags}
-                                                disabled={
-                                                    !canManageFlags ||
-                                                    busyKey === "product-flags-save" ||
-                                                    !productFlagsDirty
-                                                }
-                                            >
-                                                {busyKey === "product-flags-save"
-                                                    ? t("views.Admin.saving")
-                                                    : t("views.Admin.save")}
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className={`${buttonClass} border border-[rgba(214,223,229,0.98)] bg-white text-[#2f3a46] hover:bg-[rgba(245,248,250,0.96)]`}
-                                                onClick={() =>
-                                                    setProductFlagsDraft(savedProductFlagsDraft)
-                                                }
-                                                disabled={
-                                                    !canManageFlags ||
-                                                    !productFlagsDirty ||
-                                                    busyKey === "product-flags-save"
-                                                }
-                                            >
-                                                {t("views.Admin.reset")}
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                                {editingFlagKey && (
-                                    <div className="mt-4 rounded-[20px] border border-[rgba(213,223,229,0.98)] bg-[rgba(246,249,251,0.96)] p-4">
-                                        <div className="flex items-center justify-between gap-3">
-                                            <h3 className="text-base font-semibold text-[#25313c]">
-                                                {editingFlagKey === NEW_FLAG_KEY
-                                                    ? t("views.Admin.create_flag_title")
-                                                    : t("views.Admin.edit_flag_title")}
-                                            </h3>
-                                            {flagEditorDirty && (
-                                                <span className="rounded-full border border-[rgba(251,214,163,0.98)] bg-[rgba(255,248,236,0.98)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8a5a17]">
-                                                    {t("views.Admin.unsaved_changes_short")}
-                                                </span>
-                                            )}
-                                            <button
-                                                type="button"
-                                                className="text-sm text-[#7b8792] hover:text-[#25313c]"
-                                                onClick={resetFlagEditor}
-                                            >
-                                                {t("views.Admin.cancel")}
-                                            </button>
-                                        </div>
-                                        <div className="mt-4 grid gap-3 xl:grid-cols-2">
-                                            <label className="grid gap-2">
-                                                <span className={formLabelClass}>
-                                                    {t("views.Admin.form_config_key")}
-                                                </span>
-                                                <input
-                                                    className={inputClass}
-                                                    value={flagDraft.config_key}
-                                                    onChange={(event) =>
-                                                        setFlagDraft((state) => ({
-                                                            ...state,
-                                                            config_key: event.target.value,
-                                                        }))
-                                                    }
-                                                />
-                                            </label>
-                                            <label className="grid gap-2">
-                                                <span className={formLabelClass}>
-                                                    {t("views.Admin.form_value_type")}
-                                                </span>
-                                                <select
-                                                    className={inputClass}
-                                                    value={flagDraft.value_type}
-                                                    onChange={(event) =>
-                                                        setFlagDraft((state) => ({
-                                                            ...state,
-                                                            value_type: event.target.value,
-                                                        }))
-                                                    }
-                                                >
-                                                    <option value="string">string</option>
-                                                    <option value="number">number</option>
-                                                    <option value="boolean">boolean</option>
-                                                    <option value="json">json</option>
-                                                </select>
-                                            </label>
-                                            <label className="grid gap-2">
-                                                <span className={formLabelClass}>
-                                                    {t("views.Admin.form_description")}
-                                                </span>
-                                                <input
-                                                    className={inputClass}
-                                                    value={flagDraft.description}
-                                                    onChange={(event) =>
-                                                        setFlagDraft((state) => ({
-                                                            ...state,
-                                                            description: event.target.value,
-                                                        }))
-                                                    }
-                                                />
-                                            </label>
-                                            <label className="grid gap-2">
-                                                <span className={formLabelClass}>
-                                                    {t("views.Admin.form_config_value")}
-                                                </span>
-                                                <textarea
-                                                    className={textareaClass}
-                                                    value={flagDraft.config_value_input}
-                                                    onChange={(event) =>
-                                                        setFlagDraft((state) => ({
-                                                            ...state,
-                                                            config_value_input: event.target.value,
-                                                        }))
-                                                    }
-                                                />
-                                            </label>
-                                        </div>
-                                        <div className="mt-4 flex flex-wrap gap-2.5">
-                                            <button
-                                                type="button"
-                                                className={`${buttonClass} bg-[#279ab3] text-white hover:bg-[#1e7f95]`}
-                                                onClick={saveFlag}
-                                                disabled={busyKey === "flag-save" || !flagEditorDirty}
-                                            >
-                                                {busyKey === "flag-save"
-                                                    ? t("views.Admin.saving")
-                                                    : t("views.Admin.save")}
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className={`${buttonClass} border border-[rgba(214,223,229,0.98)] bg-white text-[#2f3a46] hover:bg-[rgba(245,248,250,0.96)]`}
-                                                onClick={() => setFlagDraft(savedFlagDraft)}
-                                                disabled={busyKey === "flag-save" || !flagEditorDirty}
-                                            >
-                                                {t("views.Admin.reset")}
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className={`${buttonClass} border border-[rgba(214,223,229,0.98)] bg-white text-[#2f3a46] hover:bg-[rgba(245,248,250,0.96)]`}
-                                                onClick={resetFlagEditor}
-                                            >
-                                                {t("views.Admin.cancel")}
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
+                                    )}
 
-                                <div className="mt-4 grid gap-3 xl:grid-cols-2">
-                                    {genericFeatureFlags.map((flag) => (
-                                        <article
-                                            key={flag.config_key}
-                                            className="rounded-[18px] border border-[rgba(228,234,239,0.98)] bg-[rgba(249,251,252,0.98)] p-3.5"
-                                        >
-                                            <div className="flex flex-wrap items-center justify-between gap-2">
-                                                <h3 className="text-sm font-semibold text-[#25313c]">
-                                                    {flag.config_key}
-                                                </h3>
-                                                <div className="flex items-center gap-2">
-                                                    <span className="rounded-full border border-[rgba(213,222,228,0.98)] bg-white/90 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.06em] text-[#66717d]">
-                                                        {flag.value_type || "string"}
-                                                    </span>
-                                                    {canManageFlags && (
-                                                        <>
+                                    {/* Search Bar */}
+                                    <div className="mt-10 flex flex-wrap items-center justify-between gap-4 border-t border-[rgba(231,237,242,0.95)] pt-6">
+                                        <h3 className="text-base font-semibold text-[#25313c]">
+                                            {t("views.Admin.generic_flags_title")}
+                                        </h3>
+                                        <div className="relative w-full max-w-xs">
+                                            <MagnifyingGlassIcon className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-[#8a95a0]" />
+                                            <input
+                                                type="text"
+                                                className={`${inputClass} h-10 pl-10`}
+                                                placeholder={t("views.Admin.flag_search_placeholder")}
+                                                value={flagSearchQuery}
+                                                onChange={(e) => setFlagSearchQuery(e.target.value)}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {genericFeatureFlags.length === 0 && flagSearchQuery && (
+                                        <div className="mt-8 flex flex-col items-center justify-center py-12 text-center">
+                                            <div className="rounded-full bg-[rgba(245,248,250,0.96)] p-5 text-[#8a95a0]">
+                                                <MagnifyingGlassIcon className="size-10 stroke-1" />
+                                            </div>
+                                            <p className="mt-4 font-medium text-[#25313c]">
+                                                {t("views.Admin.no_flags_found")}
+                                            </p>
+                                            <button
+                                                className="mt-2 text-sm text-[#279ab3] transition-colors hover:text-[#1e7f95]"
+                                                onClick={() => setFlagSearchQuery("")}
+                                            >
+                                                {t("views.Admin.clear_search")}
+                                            </button>
+                                        </div>
+                                    )}
+
+                                    <div className="mt-6 grid gap-4 xl:grid-cols-2">
+                                        {genericFeatureFlags.map((flag) => (
+                                            <article
+                                                key={flag.config_key}
+                                                className="group relative flex flex-col overflow-hidden rounded-[22px] border border-[rgba(228,234,239,0.98)] bg-white/95 p-4 shadow-sm transition-all hover:border-[rgba(213,223,229,0.98)] hover:shadow-md"
+                                            >
+                                                <div className="flex flex-wrap items-start justify-between gap-2">
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="flex items-center gap-2">
+                                                            <h3 className="truncate text-[14px] font-bold tracking-tight text-[#25313c]">
+                                                                {flag.config_key}
+                                                            </h3>
                                                             <button
                                                                 type="button"
-                                                                className="rounded-xl p-2 text-[#66717d] transition-colors hover:bg-white hover:text-[#25313c]"
+                                                                className="rounded-lg p-1 text-[#8a95a0] opacity-0 transition-all hover:bg-[rgba(245,248,250,0.96)] hover:text-[#25313c] group-hover:opacity-100"
+                                                                onClick={() => {
+                                                                    navigator.clipboard.writeText(flag.config_key);
+                                                                    sendUserAlert(t("views.Admin.copy_success"));
+                                                                }}
+                                                                title={t("views.Admin.copy_key")}
+                                                            >
+                                                                <DocumentDuplicateIcon className="size-3.5" />
+                                                            </button>
+                                                        </div>
+                                                        <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-[#66717d]">
+                                                            {flag.description || "--"}
+                                                        </p>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        {flag.value_type === "boolean" && canManageFlags && (
+                                                            <button
+                                                                type="button"
+                                                                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                                                    flag.config_value === true
+                                                                        ? "bg-[#279ab3]"
+                                                                        : "bg-[rgba(223,231,236,0.96)]"
+                                                                }`}
+                                                                onClick={() => toggleFlag(flag)}
+                                                                disabled={busyKey === `flag-toggle:${flag.config_key}`}
+                                                            >
+                                                                <span
+                                                                    aria-hidden="true"
+                                                                    className={`pointer-events-none inline-block size-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                                                        flag.config_value === true
+                                                                            ? "translate-x-4"
+                                                                            : "translate-x-0"
+                                                                    }`}
+                                                                />
+                                                            </button>
+                                                        )}
+                                                        <span className="rounded-full border border-[rgba(213,222,228,0.98)] bg-[rgba(249,251,252,0.98)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#7b8792]">
+                                                            {flag.value_type || "string"}
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                <div className="mt-4 flex-1">
+                                                    <pre className="max-h-[140px] overflow-y-auto rounded-xl bg-[#25313c] px-3 py-2.5 text-[11px] leading-5 text-[#e6edf3] scrollbar-thin scrollbar-thumb-[rgba(255,255,255,0.1)]">
+                                                        {formatFlagValue(flag.config_value)}
+                                                    </pre>
+                                                </div>
+
+                                                <div className="mt-4 flex items-center justify-between border-t border-[rgba(231,237,242,0.6)] pt-3">
+                                                    <div className="flex items-center gap-1 text-[10px] font-medium text-[#8a95a0]">
+                                                        <span className="max-w-[100px] truncate">{flag.updated_by || "--"}</span>
+                                                        <span>·</span>
+                                                        <span>{formatDateTime(flag.updated_at)}</span>
+                                                    </div>
+                                                    {canManageFlags && (
+                                                        <div className="flex items-center gap-1">
+                                                            <button
+                                                                type="button"
+                                                                className="rounded-xl p-2 text-[#66717d] transition-colors hover:bg-[rgba(245,248,250,0.96)] hover:text-[#25313c]"
                                                                 onClick={() => startEditFlag(flag)}
                                                             >
                                                                 <PencilSquareIcon className="size-4" />
                                                             </button>
                                                             <button
                                                                 type="button"
-                                                                className="rounded-xl p-2 text-[#a34f4f] transition-colors hover:bg-white hover:text-[#8c2f2f]"
+                                                                className="rounded-xl p-2 text-[#a34f4f] transition-colors hover:bg-[rgba(252,242,242,0.98)] hover:text-[#8c2f2f]"
                                                                 onClick={() => deleteFlag(flag.config_key)}
                                                                 disabled={busyKey === `flag-delete:${flag.config_key}`}
                                                             >
                                                                 <TrashIcon className="size-4" />
                                                             </button>
-                                                        </>
+                                                        </div>
                                                     )}
                                                 </div>
-                                            </div>
-                                            <p className="mt-2 text-sm text-[#66717d]">
-                                                {flag.description || "--"}
-                                            </p>
-                                            <pre className="mt-3 overflow-x-auto rounded-2xl bg-[#25313c] px-3 py-2.5 text-xs leading-5 text-[#e6edf3]">
-                                                {formatFlagValue(flag.config_value)}
-                                            </pre>
-                                            <p className="mt-3 text-xs text-[#8a95a0]">
-                                                {t("views.Admin.updated_by_label", {
-                                                    updatedBy: flag.updated_by || "--",
-                                                    updatedAt: formatDateTime(flag.updated_at),
-                                                })}
-                                            </p>
-                                        </article>
-                                    ))}
+                                            </article>
+                                        ))}
+                                    </div>
                                 </div>
                             </section>
                         )}

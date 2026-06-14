@@ -1154,15 +1154,7 @@ const App = () => {
             effectiveReasoningEnabled,
         );
         onAbortUpdate(abort)
-        try {
-            await start();
-        } catch (err: any) {
-            // console.log("errrrrrr")
-            if (err.name !== "AbortError"){
-                console.error(err)
-            }
-        }
-        flushSessionDispatch(_sessions);
+        void start();
         setUploadInlineData({ data: "", mimeType: "" });
         return true;
     };
