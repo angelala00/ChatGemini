@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ChatGemini AI 助手规划架构图</title>
+  <style>
+    :root {
+      --bg: #f3efe6;
+      --panel: rgba(255, 252, 245, 0.9);
+      --panel-strong: #fffdf8;
+      --ink: #1f2937;
+      --muted: #5b6470;
+      --line: #c9bfa9;
+      --accent: #b5542f;
+      --accent-soft: rgba(181, 84, 47, 0.14);
+      --teal: #2f6f6d;
+      --teal-soft: rgba(47, 111, 109, 0.14);
+      --gold: #9c6b17;
+      --gold-soft: rgba(156, 107, 23, 0.14);
+      --shadow: 0 20px 60px rgba(70, 52, 24, 0.10);
+      --radius: 22px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "SF Pro Display", "PingFang SC", "Noto Sans SC", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(181, 84, 47, 0.18), transparent 28%),
+        radial-gradient(circle at top right, rgba(47, 111, 109, 0.14), transparent 26%),
+        linear-gradient(180deg, #f7f3eb 0%, #f0eadf 100%);
+    }
+
+    .page {
+      width: min(1440px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: 40px 0 56px;
+    }
+
+    .hero {
+      background: var(--panel);
+      border: 1px solid rgba(201, 191, 169, 0.8);
+      border-radius: 28px;
+      box-shadow: var(--shadow);
+      padding: 32px;
+      backdrop-filter: blur(8px);
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(31, 41, 55, 0.05);
+      color: var(--muted);
+      font-size: 13px;
+      letter-spacing: 0.04em;
+    }
+
+    h1 {
+      margin: 18px 0 10px;
+      font-size: clamp(32px, 4vw, 54px);
+      line-height: 1.02;
+      letter-spacing: -0.04em;
+    }
+
+    .hero p {
+      margin: 0;
+      max-width: 960px;
+      font-size: 16px;
+      line-height: 1.7;
+      color: var(--muted);
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 13px;
+      background: var(--panel-strong);
+      border: 1px solid rgba(201, 191, 169, 0.8);
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .grid {
+      display: grid;
+      gap: 18px;
+      margin-top: 24px;
+    }
+
+    .layer {
+      background: var(--panel);
+      border: 1px solid rgba(201, 191, 169, 0.8);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .layer-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      padding: 18px 22px;
+      border-bottom: 1px solid rgba(201, 191, 169, 0.65);
+    }
+
+    .layer-title {
+      margin: 0;
+      font-size: 19px;
+      font-weight: 700;
+    }
+
+    .layer-subtitle {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .badge {
+      flex: 0 0 auto;
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      border: 1px solid transparent;
+    }
+
+    .tone-accent {
+      background: var(--accent-soft);
+      color: var(--accent);
+      border-color: rgba(181, 84, 47, 0.18);
+    }
+
+    .tone-teal {
+      background: var(--teal-soft);
+      color: var(--teal);
+      border-color: rgba(47, 111, 109, 0.18);
+    }
+
+    .tone-gold {
+      background: var(--gold-soft);
+      color: var(--gold);
+      border-color: rgba(156, 107, 23, 0.18);
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      gap: 14px;
+      padding: 18px;
+    }
+
+    .card {
+      background: var(--panel-strong);
+      border: 1px solid rgba(201, 191, 169, 0.8);
+      border-radius: 18px;
+      padding: 16px;
+      min-height: 100%;
+    }
+
+    .card h3 {
+      margin: 0 0 10px;
+      font-size: 16px;
+    }
+
+    .card p {
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.65;
+      color: var(--muted);
+    }
+
+    .card ul {
+      margin: 10px 0 0;
+      padding-left: 18px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.65;
+    }
+
+    .span-2 { grid-column: span 2; }
+    .span-3 { grid-column: span 3; }
+    .span-4 { grid-column: span 4; }
+    .span-5 { grid-column: span 5; }
+    .span-6 { grid-column: span 6; }
+    .span-7 { grid-column: span 7; }
+    .span-8 { grid-column: span 8; }
+    .span-12 { grid-column: span 12; }
+
+    .flow {
+      padding: 12px 18px 18px;
+      border-top: 1px dashed rgba(201, 191, 169, 0.9);
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.7;
+    }
+
+    .flow strong {
+      color: var(--ink);
+    }
+
+    .summary {
+      margin-top: 24px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .summary .card {
+      padding: 18px;
+    }
+
+    .summary h2 {
+      margin: 0 0 10px;
+      font-size: 18px;
+    }
+
+    .summary ul {
+      margin: 0;
+      padding-left: 18px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.75;
+    }
+
+    .footer-note {
+      margin-top: 18px;
+      padding: 18px 20px;
+      border-radius: 18px;
+      background: rgba(255, 253, 248, 0.8);
+      border: 1px solid rgba(201, 191, 169, 0.8);
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.7;
+    }
+
+    @media (max-width: 1080px) {
+      .cards,
+      .summary {
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+      }
+
+      .span-7,
+      .span-8,
+      .span-6,
+      .span-5,
+      .span-4,
+      .span-3,
+      .span-2 {
+        grid-column: span 6;
+      }
+
+      .summary .card {
+        grid-column: span 6;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .page {
+        width: min(100% - 20px, 1440px);
+        padding: 20px 0 32px;
+      }
+
+      .hero,
+      .layer-header,
+      .cards,
+      .flow {
+        padding-left: 16px;
+        padding-right: 16px;
+      }
+
+      .cards,
+      .summary {
+        grid-template-columns: 1fr;
+      }
+
+      .span-12,
+      .span-8,
+      .span-7,
+      .span-6,
+      .span-5,
+      .span-4,
+      .span-3,
+      .span-2,
+      .summary .card {
+        grid-column: span 1;
+      }
+
+      .layer-header {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <div class="eyebrow">ChatGemini / AI 助手规划架构图</div>
+      <h1>统一主助手体验，兼容资料库、知识库、RAG、工具与沙箱能力</h1>
+      <p>
+        这张图不是“当前代码实现细节图”，而是面向未来 3-6 个月的目标架构。核心思想是：
+        <strong>主助手负责统一入口和主链路，资料库作为通用文件资产底座，知识库/RAG 作为资料库上的增强能力，其他同事的能力都按层接入，而不是直接打散到核心链路里。</strong>
+      </p>
+      <div class="legend">
+        <span><i class="dot" style="background: var(--accent);"></i> 主助手核心</span>
+        <span><i class="dot" style="background: var(--teal);"></i> 可协作扩展层</span>
+        <span><i class="dot" style="background: var(--gold);"></i> 基础设施与治理</span>
+      </div>
+    </section>
+
+    <section class="grid">
+      <article class="layer">
+        <div class="layer-header">
+          <div>
+            <h2 class="layer-title">L1 统一入口与产品体验层</h2>
+            <p class="layer-subtitle">所有渠道统一收敛到主助手，保持会话、权限、资料引用、工具使用体验一致。</p>
+          </div>
+          <span class="badge tone-accent">Core Experience</span>
+        </div>
+        <div class="cards">
+          <div class="card span-3">
+            <h3>Web 主端</h3>
+            <p>当前主阵地，承载聊天、资料库、知识库入口、工具使用和灰度试验。</p>
+          </div>
+          <div class="card span-3">
+            <h3>企业微信 / IM</h3>
+            <p>适合轻交互、通知、快捷问答，核心能力仍由主助手统一编排。</p>
+          </div>
+          <div class="card span-3">
+            <h3>其他内部系统入口</h3>
+            <p>通过嵌入页、跳转页、组件化入口接入，不单独复制核心逻辑。</p>
+          </div>
+          <div class="card span-3">
+            <h3>统一交互壳</h3>
+            <p>负责会话框架、用户身份、权限上下文、统一菜单、消息输入区和结果展示框架。</p>
+          </div>
+        </div>
+        <div class="flow"><strong>讲法：</strong>无论入口在哪里，用户都应该感知为“同一个 AI 助手”，而不是多个各自为政的小工具。</div>
+      </article>
+
+      <article class="layer">
+        <div class="layer-header">
+          <div>
+            <h2 class="layer-title">L2 会话与上下文编排层</h2>
+            <p class="layer-subtitle">把消息、文件、知识库、工具、身份和任务状态绑定到一次完整的助手交互里。</p>
+          </div>
+          <span class="badge tone-accent">Core Workflow</span>
+        </div>
+        <div class="cards">
+          <div class="card span-4">
+            <h3>会话上下文管理</h3>
+            <p>维护 session、消息历史、用户选择的文件/知识库、当前任务状态和多轮对话记忆。</p>
+          </div>
+          <div class="card span-4">
+            <h3>Agent / 工作流编排</h3>
+            <p>根据用户意图决定是否调用模型、知识库、业务工具、沙箱或多模态解析能力。</p>
+          </div>
+          <div class="card span-4">
+            <h3>结果回传与呈现</h3>
+            <p>把编排结果回到统一聊天体验中，而不是散落在多个孤立页面里。</p>
+          </div>
+        </div>
+        <div class="flow"><strong>讲法：</strong>这一层是主链路，不建议多人直接分散改动；扩展能力优先通过标准接口挂进来。</div>
+      </article>
+
+      <article class="layer">
+        <div class="layer-header">
+          <div>
+            <h2 class="layer-title">L3 资料库 / 文件资产底座</h2>
+            <p class="layer-subtitle">这是你规划中的关键底座，不只服务文档问答，还服务多模态理解、沙箱输入输出和后续生成资产沉淀。</p>
+          </div>
+          <span class="badge tone-teal">Shared Asset Base</span>
+        </div>
+        <div class="cards">
+          <div class="card span-3">
+            <h3>文件接入</h3>
+            <ul>
+              <li>上传文件</li>
+              <li>会话文件</li>
+              <li>最近使用</li>
+              <li>历史资产</li>
+            </ul>
+          </div>
+          <div class="card span-3">
+            <h3>对象存储</h3>
+            <ul>
+              <li>MinIO / OSS</li>
+              <li>原始文件保存</li>
+              <li>衍生文件保存</li>
+              <li>版本与生命周期</li>
+            </ul>
+          </div>
+          <div class="card span-3">
+            <h3>元数据与权限</h3>
+            <ul>
+              <li>文件类型</li>
+              <li>标签 / 归属</li>
+              <li>会话关联</li>
+              <li>用户 / 组织权限</li>
+            </ul>
+          </div>
+          <div class="card span-3">
+            <h3>统一资料操作</h3>
+            <ul>
+              <li>选中文件参与聊天</li>
+              <li>查看详情</li>
+              <li>加入知识库</li>
+              <li>作为工具 / 沙箱输入</li>
+            </ul>
+          </div>
+        </div>
+        <div class="flow"><strong>讲法：</strong>资料库是通用文件资产中心，知识库只是它的一种增强组织方式，不应该反过来吞掉整个文件体系。</div>
+      </article>
+
+      <article class="layer">
+        <div class="layer-header">
+          <div>
+            <h2 class="layer-title">L4 文件理解与处理管道</h2>
+            <p class="layer-subtitle">不同类型的文件按统一管道进入后续能力层，这里很适合多人并行建设。</p>
+          </div>
+          <span class="badge tone-teal">Extension Zone</span>
+        </div>
+        <div class="cards">
+          <div class="card span-2">
+            <h3>文档解析</h3>
+            <p>PDF、Word、TXT、Markdown 等文本型文档提取。</p>
+          </div>
+          <div class="card span-2">
+            <h3>图片理解 / OCR</h3>
+            <p>图片问答、表格截图、扫描件识别、视觉摘要。</p>
+          </div>
+          <div class="card span-2">
+            <h3>表格解析</h3>
+            <p>Excel、CSV 数据结构化、字段识别、分析前置处理。</p>
+          </div>
+          <div class="card span-2">
+            <h3>ZIP / 代码包解析</h3>
+            <p>解压、目录结构识别、代码包说明、项目级问答入口。</p>
+          </div>
+          <div class="card span-2">
+            <h3>音视频处理</h3>
+            <p>转写、摘要、问答，作为后续可扩展能力预留。</p>
+          </div>
+          <div class="card span-2">
+            <h3>沙箱文件 I/O</h3>
+            <p>脚本运行输入、运行输出、结果文件沉淀回资料库。</p>
+          </div>
+        </div>
+        <div class="flow"><strong>讲法：</strong>这里是天然的分工区域，别人可以做具体处理能力，但不需要直接改主助手主链路。</div>
+      </article>
+
+      <article class="layer">
+        <div class="layer-header">
+          <div>
+            <h2 class="layer-title">L5 知识库与 RAG 增强层</h2>
+            <p class="layer-subtitle">把 A 的能力放在合理位置上: 它很重要，但它是资料库上的增强能力，不是整个文件体系的上位概念。</p>
+          </div>
+          <span class="badge tone-teal">Knowledge Augmentation</span>
+        </div>
+        <div class="cards">
+          <div class="card span-3">
+            <h3>知识库空间</h3>
+            <p>知识库创建、命名、归属、成员管理和权限控制。</p>
+          </div>
+          <div class="card span-3">
+            <h3>文件入库</h3>
+            <p>从资料库选择文件加入知识库，而不是重新发明一套独立文件体系。</p>
+          </div>
+          <div class="card span-3">
+            <h3>索引与切片</h3>
+            <p>Chunk、Embedding、索引状态、增量更新、重建策略。</p>
+          </div>
+          <div class="card span-3">
+            <h3>RAG 检索与问答</h3>
+            <p>适合长期沉淀、跨文档问答、知识场景增强，是主助手的一种能力源。</p>
+          </div>
+        </div>
+        <div class="flow"><strong>讲法：</strong>这样定义以后，A 的知识库能力被抬到了平台能力层，但不会压住图片、ZIP、沙箱、表格等更广义的资料能力。</div>
+      </article>
+
+      <article class="layer">
+        <div class="layer-header">
+          <div>
+            <h2 class="layer-title">L6 业务工具与外部系统接入层</h2>
+            <p class="layer-subtitle">其他同事最适合切入的位置之一，能力可以快速扩展，又不直接破坏主助手架构。</p>
+          </div>
+          <span class="badge tone-teal">Tool Integrations</span>
+        </div>
+        <div class="cards">
+          <div class="card span-3">
+            <h3>OA / 内部系统</h3>
+            <p>审批、流程、单据、组织信息、业务数据查询。</p>
+          </div>
+          <div class="card span-3">
+            <h3>企业搜索</h3>
+            <p>检索组织内站点、文档、公告、人员、流程资料。</p>
+          </div>
+          <div class="card span-3">
+            <h3>业务 API 工具</h3>
+            <p>统一定义工具协议，供 Agent 编排调用。</p>
+          </div>
+          <div class="card span-3">
+            <h3>沙箱执行环境</h3>
+            <p>代码执行、数据处理、文件转换、报表生成等需要运行时能力的场景。</p>
+          </div>
+        </div>
+        <div class="flow"><strong>讲法：</strong>工具是能力供给，主助手负责调度；工具本身可以由不同同事负责，各自独立演进。</div>
+      </article>
+
+      <article class="layer">
+        <div class="layer-header">
+          <div>
+            <h2 class="layer-title">L7 模型网关与治理层</h2>
+            <p class="layer-subtitle">真正的核心基础设施层，承载稳定性、审计、安全和成本治理，不适合被各方随意打穿。</p>
+          </div>
+          <span class="badge tone-gold">Infra & Governance</span>
+        </div>
+        <div class="cards">
+          <div class="card span-4">
+            <h3>模型网关</h3>
+            <ul>
+              <li>模型路由</li>
+              <li>多模型切换</li>
+              <li>多模态能力选择</li>
+              <li>统一调用协议</li>
+            </ul>
+          </div>
+          <div class="card span-4">
+            <h3>安全与审计</h3>
+            <ul>
+              <li>鉴权</li>
+              <li>权限校验</li>
+              <li>操作审计</li>
+              <li>敏感数据边界</li>
+            </ul>
+          </div>
+          <div class="card span-4">
+            <h3>稳定性与成本治理</h3>
+            <ul>
+              <li>限流 / 熔断</li>
+              <li>日志 / Trace</li>
+              <li>反馈 / 评测</li>
+              <li>调用成本观测</li>
+            </ul>
+          </div>
+        </div>
+        <div class="flow"><strong>讲法：</strong>这一层决定线上可控性，所以多人协作可以补能力，但核心网关和治理边界必须统一收口。</div>
+      </article>
+    </section>
+
+    <section class="summary">
+      <article class="card">
+        <h2>建议你的定位</h2>
+        <ul>
+          <li>主助手统一体验负责人</li>
+          <li>资料库底座负责人</li>
+          <li>会话与编排主链路负责人</li>
+        </ul>
+      </article>
+      <article class="card">
+        <h2>建议 A 的定位</h2>
+        <ul>
+          <li>知识库能力负责人</li>
+          <li>RAG 索引与检索负责人</li>
+          <li>知识库内部交互与接口负责人</li>
+        </ul>
+      </article>
+      <article class="card">
+        <h2>其他同事的切入点</h2>
+        <ul>
+          <li>业务工具接入</li>
+          <li>解析能力扩展</li>
+          <li>企业微信 / 多入口接入</li>
+          <li>评测、监控、运营治理</li>
+        </ul>
+      </article>
+    </section>
+
+    <div class="footer-note">
+      你在会上可以用一句话收口：
+      <strong>“我们不是把所有能力都塞进知识库，而是先做统一资料底座，再把知识库、RAG、工具、沙箱、多模态能力按层挂上去。这样既能兼容大家的方向，也能保证线上主助手的体验和稳定性。”</strong>
+    </div>
+  </main>
+</body>
+</html>
