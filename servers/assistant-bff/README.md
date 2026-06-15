@@ -36,7 +36,7 @@
 - `SESSION_HISTORY_ENCRYPTION_KEY`: 会话历史加密密钥。当前要求在 `BUSINESS_STORAGE_BACKEND=postgres` 时必填，格式为 `Fernet` key。
 - `OBJECT_STORAGE_BACKEND`: 文件存储后端。生产建议 `minio`，本地开发可用 `filesystem`。
 - `FILE_LIFETIME_DAYS`: 会话附件自动过期天数；设为 `0` 时关闭自动过期清理，默认 `7`。
-- `MINIO_ENDPOINT`: MinIO 地址，例如 `minio.example.com:9000`。
+- `MINIO_ENDPOINT`: MinIO 地址，例如 `minio.example.com:9000`。支持单个地址，或使用英文逗号/分号分隔的多个地址，例如 `10.0.0.1:9000,10.0.0.2:9000`；服务会按顺序自动切换到下一个可用 endpoint。
 - `MINIO_ACCESS_KEY`: MinIO access key。
 - `MINIO_SECRET_KEY`: MinIO secret key。
 - `MINIO_BUCKET`: MinIO bucket 名称，默认 `gptassistant`。

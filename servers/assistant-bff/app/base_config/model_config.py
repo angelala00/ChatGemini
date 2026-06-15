@@ -31,6 +31,13 @@ def _parse_list_env(value: str | None) -> Set[str]:
     return {item.strip() for item in re.split(r"[,;]", value) if item.strip()}
 
 
+def parse_minio_endpoints(value: str | None = None) -> List[str]:
+    raw_value = MINIO_ENDPOINT if value is None else value
+    if not raw_value:
+        return []
+    return [item.strip() for item in re.split(r"[,;]", raw_value) if item.strip()]
+
+
 def _parse_int_env(value: str | None, default: int) -> int:
     if value is None or not value.strip():
         return default

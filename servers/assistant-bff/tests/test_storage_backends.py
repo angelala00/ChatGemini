@@ -62,6 +62,7 @@ class StorageBackendFallbackTests(unittest.TestCase):
 
         business_store._INITIALIZED = False
         object_store._CLIENT = None
+        object_store._ACTIVE_MINIO_ENDPOINT = None
         business_store.init_business_storage()
         object_store.init_object_store()
         metrics_events.init_metrics_storage()
@@ -86,6 +87,7 @@ class StorageBackendFallbackTests(unittest.TestCase):
         business_store._INITIALIZED = False
         business_store._FERNET = None
         object_store._CLIENT = None
+        object_store._ACTIVE_MINIO_ENDPOINT = None
         self.temp_dir.cleanup()
 
     def test_business_store_round_trip_uses_sqlite_fallback(self):
@@ -571,7 +573,7 @@ class StorageBackendFallbackTests(unittest.TestCase):
         client.put_object = put_object
         with patch.object(model_config, "OBJECT_STORAGE_BACKEND", "minio"), \
              patch.object(object_store, "OBJECT_BACKEND", "minio"), \
-             patch.object(object_store, "_get_minio_client", return_value=client):
+             patch.object(object_store, "_run_with_minio_retry", side_effect=lambda operation: operation(client)):
             payload = object_store.store_local_file(
                 file_id="file-1",
                 filename="source.txt",
@@ -589,6 +591,112 @@ class StorageBackendFallbackTests(unittest.TestCase):
         self.assertEqual(captured["length"], len(b"migrate me"))
         self.assertEqual(captured["content_type"], "text/plain")
         self.assertEqual(captured["body"], b"migrate me")
+
+    def test_minio_endpoint_supports_multiple_addresses(self):
+        client = SimpleNamespace()
+        bucket_exists_calls = []
+
+        def bucket_exists(bucket):
+            bucket_exists_calls.append(bucket)
+            return True
+
+        client.bucket_exists = bucket_exists
+        with (
+            patch.object(model_config, "MINIO_ENDPOINT", "10.0.0.1:9000,10.0.0.2:9000"),
+            patch.object(object_store, "Minio", return_value=client) as minio_ctor,
+        ):
+            object_store._CLIENT = None
+            object_store._ACTIVE_MINIO_ENDPOINT = None
+            result = object_store._get_minio_client()
+
+        self.assertIs(result, client)
+        minio_ctor.assert_called_once_with(
+            "10.0.0.1:9000",
+            access_key=model_config.MINIO_ACCESS_KEY,
+            secret_key=model_config.MINIO_SECRET_KEY,
+            secure=model_config.MINIO_SECURE,
+            region=model_config.MINIO_REGION or None,
+        )
+        self.assertEqual(bucket_exists_calls, [model_config.MINIO_BUCKET])
+        self.assertEqual(object_store._ACTIVE_MINIO_ENDPOINT, "10.0.0.1:9000")
+
+    def test_minio_operations_fail_over_to_next_endpoint(self):
+        attempts = []
+        clients = {
+            "10.0.0.1:9000": SimpleNamespace(),
+            "10.0.0.2:9000": SimpleNamespace(),
+        }
+
+        def first_put_object(*_args, **_kwargs):
+            attempts.append("10.0.0.1:9000")
+            raise RuntimeError("primary unavailable")
+
+        def second_put_object(bucket, object_key, content_file, length, content_type):
+            attempts.append("10.0.0.2:9000")
+            self.assertEqual(bucket, "gptassistant")
+            self.assertEqual(object_key, "assistant-files/2026/03/04/file-1.txt")
+            self.assertEqual(length, len(b"migrate me"))
+            self.assertEqual(content_type, "text/plain")
+            self.assertEqual(content_file.read(), b"migrate me")
+            return None
+
+        clients["10.0.0.1:9000"].put_object = first_put_object
+        clients["10.0.0.2:9000"].put_object = second_put_object
+
+        source = Path(self.file_base) / "source.txt"
+        source.write_text("migrate me", encoding="utf-8")
+
+        with (
+            patch.object(model_config, "OBJECT_STORAGE_BACKEND", "minio"),
+            patch.object(model_config, "MINIO_ENDPOINT", "10.0.0.1:9000,10.0.0.2:9000"),
+            patch.object(object_store, "OBJECT_BACKEND", "minio"),
+            patch.object(object_store, "init_object_store"),
+            patch.object(object_store, "_build_minio_client", side_effect=lambda endpoint: clients[endpoint]),
+        ):
+            object_store._CLIENT = clients["10.0.0.1:9000"]
+            object_store._ACTIVE_MINIO_ENDPOINT = "10.0.0.1:9000"
+            payload = object_store.store_local_file(
+                file_id="file-1",
+                filename="source.txt",
+                source_path=source,
+                content_type="text/plain",
+                upload_time="2026-03-04T05:06:07+00:00",
+            )
+
+        self.assertEqual(attempts, ["10.0.0.1:9000", "10.0.0.2:9000"])
+        self.assertEqual(payload["storage_backend"], "minio")
+        self.assertEqual(object_store._ACTIVE_MINIO_ENDPOINT, "10.0.0.2:9000")
+        self.assertIs(object_store._CLIENT, clients["10.0.0.2:9000"])
+
+    def test_minio_operations_raise_combined_error_when_all_endpoints_fail(self):
+        clients = {
+            "10.0.0.1:9000": SimpleNamespace(
+                put_object=lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("primary unavailable"))
+            ),
+            "10.0.0.2:9000": SimpleNamespace(
+                put_object=lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("secondary unavailable"))
+            ),
+        }
+        source = Path(self.file_base) / "source.txt"
+        source.write_text("migrate me", encoding="utf-8")
+
+        with (
+            patch.object(model_config, "OBJECT_STORAGE_BACKEND", "minio"),
+            patch.object(model_config, "MINIO_ENDPOINT", "10.0.0.1:9000,10.0.0.2:9000"),
+            patch.object(object_store, "OBJECT_BACKEND", "minio"),
+            patch.object(object_store, "init_object_store"),
+            patch.object(object_store, "_build_minio_client", side_effect=lambda endpoint: clients[endpoint]),
+        ):
+            object_store._CLIENT = None
+            object_store._ACTIVE_MINIO_ENDPOINT = None
+            with self.assertRaisesRegex(RuntimeError, "All configured MinIO endpoints failed"):
+                object_store.store_local_file(
+                    file_id="file-1",
+                    filename="source.txt",
+                    source_path=source,
+                    content_type="text/plain",
+                    upload_time="2026-03-04T05:06:07+00:00",
+                )
 
     def test_minio_cache_download_is_published_atomically(self):
         cache_path = Path(object_store.LOCAL_CACHE_ROOT) / "file-1.pdf"
@@ -608,7 +716,7 @@ class StorageBackendFallbackTests(unittest.TestCase):
         }
         with (
             patch.object(object_store, "init_object_store"),
-            patch.object(object_store, "_get_minio_client", return_value=client),
+            patch.object(object_store, "_run_with_minio_retry", side_effect=lambda operation: operation(client)),
         ):
             result = object_store.ensure_local_path(entry)
 
@@ -635,7 +743,7 @@ class StorageBackendFallbackTests(unittest.TestCase):
         }
         with (
             patch.object(object_store, "init_object_store"),
-            patch.object(object_store, "_get_minio_client", return_value=client),
+            patch.object(object_store, "_run_with_minio_retry", side_effect=lambda operation: operation(client)),
         ):
             with self.assertRaises(RuntimeError):
                 object_store.ensure_local_path(entry)
@@ -661,7 +769,7 @@ class StorageBackendFallbackTests(unittest.TestCase):
         }
         with (
             patch.object(object_store, "init_object_store"),
-            patch.object(object_store, "_get_minio_client", return_value=client),
+            patch.object(object_store, "_run_with_minio_retry", side_effect=lambda operation: operation(client)),
         ):
             with self.assertRaisesRegex(RuntimeError, "Downloaded object size mismatch"):
                 object_store.ensure_local_path(entry)
@@ -689,7 +797,7 @@ class StorageBackendFallbackTests(unittest.TestCase):
         }
         with (
             patch.object(object_store, "init_object_store"),
-            patch.object(object_store, "_get_minio_client", return_value=client),
+            patch.object(object_store, "_run_with_minio_retry", side_effect=lambda operation: operation(client)),
         ):
             object_store.ensure_local_path(entry)
 
@@ -715,7 +823,7 @@ class StorageBackendFallbackTests(unittest.TestCase):
         }
         with (
             patch.object(object_store, "init_object_store"),
-            patch.object(object_store, "_get_minio_client", return_value=client),
+            patch.object(object_store, "_run_with_minio_retry", side_effect=lambda operation: operation(client)),
         ):
             object_store.ensure_local_path(entry)
 
@@ -1112,6 +1220,14 @@ class ConfigValidationTests(unittest.TestCase):
              patch.object(model_config, "MINIO_BUCKET", ""):
             with self.assertRaisesRegex(RuntimeError, "Missing required MinIO settings"):
                 validate_storage_configuration()
+
+    def test_minio_backend_accepts_multiple_endpoints(self):
+        with patch.object(model_config, "OBJECT_STORAGE_BACKEND", "minio"), \
+             patch.object(model_config, "MINIO_ENDPOINT", "10.0.0.1:9000;10.0.0.2:9000"), \
+             patch.object(model_config, "MINIO_ACCESS_KEY", "access"), \
+             patch.object(model_config, "MINIO_SECRET_KEY", "secret"), \
+             patch.object(model_config, "MINIO_BUCKET", "bucket"):
+            validate_storage_configuration()
 
 
 if __name__ == "__main__":

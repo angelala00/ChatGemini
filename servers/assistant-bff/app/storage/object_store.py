@@ -19,6 +19,7 @@ OBJECT_BACKEND = model_config.OBJECT_STORAGE_BACKEND
 LOCAL_UPLOAD_ROOT = Path(model_config.FILE_BASE) / "gptassistant" / "uploads"
 LOCAL_CACHE_ROOT = Path(model_config.FILE_BASE) / "gptassistant" / "cache"
 _CLIENT: Minio | None = None
+_ACTIVE_MINIO_ENDPOINT: str | None = None
 
 
 def object_storage_backend() -> str:
@@ -55,12 +56,16 @@ def init_object_store() -> None:
     LOCAL_CACHE_ROOT.mkdir(parents=True, exist_ok=True)
     if not _use_minio():
         return
-    client = _get_minio_client()
-    if not client.bucket_exists(model_config.MINIO_BUCKET):
+    bucket_exists = _run_with_minio_retry(
+        lambda client: client.bucket_exists(model_config.MINIO_BUCKET)
+    )
+    if not bucket_exists:
         bucket_kwargs = {}
         if model_config.MINIO_REGION:
             bucket_kwargs["location"] = model_config.MINIO_REGION
-        client.make_bucket(model_config.MINIO_BUCKET, **bucket_kwargs)
+        _run_with_minio_retry(
+            lambda client: client.make_bucket(model_config.MINIO_BUCKET, **bucket_kwargs)
+        )
 
 
 def _get_minio_client() -> Minio:
@@ -69,16 +74,81 @@ def _get_minio_client() -> Minio:
         return _CLIENT
     if Minio is None:
         raise RuntimeError("minio is required when OBJECT_STORAGE_BACKEND=minio")
-    if not model_config.MINIO_ENDPOINT:
+    endpoints = _minio_endpoints()
+    if not endpoints:
         raise RuntimeError("MINIO_ENDPOINT is required when OBJECT_STORAGE_BACKEND=minio")
-    _CLIENT = Minio(
-        model_config.MINIO_ENDPOINT,
+    errors: list[str] = []
+    for endpoint in _candidate_minio_endpoints():
+        client = _build_minio_client(endpoint)
+        try:
+            client.bucket_exists(model_config.MINIO_BUCKET)
+        except Exception as exc:
+            errors.append(f"{endpoint}: {exc}")
+            continue
+        _set_active_minio_client(endpoint, client)
+        return client
+    raise RuntimeError(
+        "Unable to connect to any configured MinIO endpoint: " + "; ".join(errors)
+    )
+
+
+def _run_with_minio_retry(operation):
+    errors: list[str] = []
+    attempted: set[str] = set()
+    for endpoint in _candidate_minio_endpoints():
+        attempted.add(endpoint)
+        client = _build_minio_client(endpoint) if endpoint != _ACTIVE_MINIO_ENDPOINT or _CLIENT is None else _CLIENT
+        try:
+            result = operation(client)
+        except Exception as exc:
+            errors.append(f"{endpoint}: {exc}")
+            if endpoint == _ACTIVE_MINIO_ENDPOINT:
+                _clear_active_minio_client()
+            continue
+        _set_active_minio_client(endpoint, client)
+        return result
+    if not attempted:
+        raise RuntimeError("MINIO_ENDPOINT is required when OBJECT_STORAGE_BACKEND=minio")
+    raise RuntimeError(
+        "All configured MinIO endpoints failed: " + "; ".join(errors)
+    )
+
+
+def _minio_endpoints() -> list[str]:
+    return model_config.parse_minio_endpoints()
+
+
+def _candidate_minio_endpoints() -> list[str]:
+    endpoints = _minio_endpoints()
+    if not endpoints:
+        return []
+    if _ACTIVE_MINIO_ENDPOINT and _ACTIVE_MINIO_ENDPOINT in endpoints:
+        return [_ACTIVE_MINIO_ENDPOINT] + [item for item in endpoints if item != _ACTIVE_MINIO_ENDPOINT]
+    return endpoints
+
+
+def _build_minio_client(endpoint: str) -> Minio:
+    if Minio is None:
+        raise RuntimeError("minio is required when OBJECT_STORAGE_BACKEND=minio")
+    return Minio(
+        endpoint,
         access_key=model_config.MINIO_ACCESS_KEY,
         secret_key=model_config.MINIO_SECRET_KEY,
         secure=model_config.MINIO_SECURE,
         region=model_config.MINIO_REGION or None,
     )
-    return _CLIENT
+
+
+def _set_active_minio_client(endpoint: str, client: Minio) -> None:
+    global _CLIENT, _ACTIVE_MINIO_ENDPOINT
+    _CLIENT = client
+    _ACTIVE_MINIO_ENDPOINT = endpoint
+
+
+def _clear_active_minio_client() -> None:
+    global _CLIENT, _ACTIVE_MINIO_ENDPOINT
+    _CLIENT = None
+    _ACTIVE_MINIO_ENDPOINT = None
 
 
 def store_bytes(
@@ -90,14 +160,15 @@ def store_bytes(
 ) -> dict[str, object]:
     init_object_store()
     if _use_minio():
-        client = _get_minio_client()
         object_key = build_minio_object_key(file_id=file_id, filename=filename)
-        client.put_object(
-            model_config.MINIO_BUCKET,
-            object_key,
-            io.BytesIO(content),
-            length=len(content),
-            content_type=content_type or "application/octet-stream",
+        _run_with_minio_retry(
+            lambda client: client.put_object(
+                model_config.MINIO_BUCKET,
+                object_key,
+                io.BytesIO(content),
+                length=len(content),
+                content_type=content_type or "application/octet-stream",
+            )
         )
         return {
             "bucket": model_config.MINIO_BUCKET,
@@ -128,18 +199,23 @@ def store_file(
 ) -> dict[str, object]:
     init_object_store()
     if _use_minio():
-        client = _get_minio_client()
         object_key = (
             build_content_object_key(content_sha256=content_sha256)
             if content_sha256
             else build_minio_object_key(file_id=file_id, filename=filename)
         )
-        client.put_object(
-            model_config.MINIO_BUCKET,
-            object_key,
-            content_file,
-            length=length,
-            content_type=content_type or "application/octet-stream",
+        def _put_object(client: Minio):
+            if hasattr(content_file, "seek"):
+                content_file.seek(0)
+            return client.put_object(
+                model_config.MINIO_BUCKET,
+                object_key,
+                content_file,
+                length=length,
+                content_type=content_type or "application/octet-stream",
+            )
+        _run_with_minio_retry(
+            _put_object
         )
         return {
             "bucket": model_config.MINIO_BUCKET,
@@ -190,19 +266,23 @@ def store_local_file(
         raise FileNotFoundError(source)
     with source.open("rb") as content_file:
         if _use_minio():
-            client = _get_minio_client()
             object_key = build_minio_object_key(
                 file_id=file_id,
                 filename=filename,
                 upload_time=upload_time,
             )
             size_bytes = source.stat().st_size
-            client.put_object(
-                model_config.MINIO_BUCKET,
-                object_key,
-                content_file,
-                length=size_bytes,
-                content_type=content_type or "application/octet-stream",
+            def _put_object(client: Minio):
+                content_file.seek(0)
+                return client.put_object(
+                    model_config.MINIO_BUCKET,
+                    object_key,
+                    content_file,
+                    length=size_bytes,
+                    content_type=content_type or "application/octet-stream",
+                )
+            _run_with_minio_retry(
+                _put_object
             )
             return {
                 "bucket": model_config.MINIO_BUCKET,
@@ -243,13 +323,14 @@ def ensure_local_path(entry: dict[str, object]) -> str:
             return str(cache_path)
         cache_path.unlink()
 
-    client = _get_minio_client()
     temporary_path = cache_path.with_name(f".{cache_path.name}.{uuid.uuid4().hex}.part")
     try:
-        client.fget_object(
-            str(entry.get("bucket") or model_config.MINIO_BUCKET),
-            object_key,
-            str(temporary_path),
+        _run_with_minio_retry(
+            lambda client: client.fget_object(
+                str(entry.get("bucket") or model_config.MINIO_BUCKET),
+                object_key,
+                str(temporary_path),
+            )
         )
         if isinstance(expected_size, int) and temporary_path.stat().st_size != expected_size:
             raise RuntimeError(
@@ -273,8 +354,12 @@ def delete_object(entry: dict[str, object]) -> None:
             path.unlink()
         return
 
-    client = _get_minio_client()
-    client.remove_object(str(entry.get("bucket") or model_config.MINIO_BUCKET), object_key)
+    _run_with_minio_retry(
+        lambda client: client.remove_object(
+            str(entry.get("bucket") or model_config.MINIO_BUCKET),
+            object_key,
+        )
+    )
 
 
 def get_object_bytes(entry: dict[str, object]) -> bytes:
@@ -313,10 +398,12 @@ def object_storage_health() -> dict[str, Any]:
         init_object_store()
         details["cache_dir"] = str(LOCAL_CACHE_ROOT)
         if _use_minio():
-            client = _get_minio_client()
             details["bucket"] = model_config.MINIO_BUCKET
-            details["endpoint"] = model_config.MINIO_ENDPOINT
-            details["bucket_exists"] = client.bucket_exists(model_config.MINIO_BUCKET)
+            details["configured_endpoints"] = _minio_endpoints()
+            details["endpoint"] = _ACTIVE_MINIO_ENDPOINT or (_minio_endpoints()[0] if _minio_endpoints() else "")
+            details["bucket_exists"] = _run_with_minio_retry(
+                lambda client: client.bucket_exists(model_config.MINIO_BUCKET)
+            )
         else:
             details["upload_root"] = str(LOCAL_UPLOAD_ROOT)
         details["healthy"] = True

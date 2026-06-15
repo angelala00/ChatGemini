@@ -49,6 +49,7 @@
 - **普通附件 (Session Attachment)**：属于特定会话，随会话生命周期管理（默认 7 天过期）。
 - **知识文件 (Assistant Knowledge)**：属于智能体资产，仅随智能体手动删除时清理。
 - **内容去重**：上传时基于 SHA-256 进行内容寻址，同一用户重复上传相同内容仅增加引用，不重复占用存储空间。
+- **MinIO endpoint 故障切换**：`MINIO_ENDPOINT` 支持配置单个地址，或用英文逗号/分号分隔多个 `host:port`；对象存储层会优先复用当前活跃 endpoint，失败时按配置顺序切换到下一个可用 endpoint。
 - **统一智能体主表**：新版本已切换到 `agents` 作为统一智能体主表，承载系统智能体与普通自定义智能体；旧 `custom_gpts` 仅保留给未升级节点兼容读取，新代码不再向其中写入。
 - **制度助手执行器**：数据库仅保存可序列化的 `handler_key=kernel_regulation`；后端聊天路由通过执行器 registry 将其解析为 `chat_with_kernel_regulation`，不从数据库保存或读取 Python 函数。
 - **制度目录一致性**：`document_catalog.json` 可保留人工维护的目录描述，但制度助手读取目录时会用当前 `file_mapping` 中的 `assistant_knowledge` 文件校准条目，移除已删除文件并补入新增文件，确保后续正文读取使用真实文件名。

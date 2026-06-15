@@ -44,10 +44,11 @@ def validate_storage_configuration() -> None:
             raise RuntimeError("POSTGRES_POOL_MIN_SIZE must be <= POSTGRES_POOL_MAX_SIZE")
 
     if model_config.OBJECT_STORAGE_BACKEND == "minio":
+        minio_endpoints = model_config.parse_minio_endpoints()
         missing = [
             name
             for name, value in (
-                ("MINIO_ENDPOINT", model_config.MINIO_ENDPOINT),
+                ("MINIO_ENDPOINT", minio_endpoints),
                 ("MINIO_ACCESS_KEY", model_config.MINIO_ACCESS_KEY),
                 ("MINIO_SECRET_KEY", model_config.MINIO_SECRET_KEY),
                 ("MINIO_BUCKET", model_config.MINIO_BUCKET),
