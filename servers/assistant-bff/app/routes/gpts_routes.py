@@ -3,14 +3,13 @@ import uuid
 from typing import Tuple, Optional
 from fastapi import APIRouter, Request, Depends, HTTPException, status
 from app.admin.access_control import (
-    get_feature_flag_value,
-    get_feature_flag_string_list,
     is_feature_flag_enabled,
     resolve_user_permissions,
+    user_keys,
 )
 from app.auth.auth_routes import GLOBAL_AUTH_PROVIDER, get_current_auth_provider, get_current_user
 from app.logger import gpt_logger
-from app.gpts.config_gpts import gpts, fetch_gpts, refresh_gpts, BUILTIN_GIDS
+from app.gpts.config_gpts import gpts, fetch_gpts, refresh_gpts, BUILTIN_GIDS, builtin_gpts
 from app.gpts.model_metadata import resolve_model_configs
 from app.base_config import model_config
 from app.storage.business_store import (
@@ -38,6 +37,8 @@ MAX_SAMPLES = 5
 MAX_MODEL_ID_CHARS = 200
 GPT_PROVIDER_SCOPE_PROVIDER = "provider"
 GPT_PROVIDER_SCOPE_GLOBAL = "global"
+REGULATION_GPT_ID = "regulationassistant"
+GPTASSISTANT_GPT_ID = "gptassistant"
 
 GPTS_WHITE_LIST = model_config.GPTS_WHITE_LIST
 
@@ -82,6 +83,113 @@ def _get_gpt_auth_provider(gpt_dict: dict) -> str:
     return value or GLOBAL_AUTH_PROVIDER
 
 
+def is_regulation_gpt(gid: str) -> bool:
+    return gid == REGULATION_GPT_ID
+
+
+def is_main_gpt(gid: str) -> bool:
+    return gid == GPTASSISTANT_GPT_ID
+
+
+def is_manageable_system_gpt(gid: str, gpt_dict: dict | None = None) -> bool:
+    if is_regulation_gpt(gid) or is_main_gpt(gid):
+        return True
+    return bool(gpt_dict and str(gpt_dict.get("assistant_kind") or "").strip() == "system")
+
+
+def can_manage_regulation_gpt(user: dict) -> bool:
+    return bool(set(user_keys(user)) & model_config.GPTS_WHITE_LIST)
+
+
+def can_manage_main_gpt(user: dict) -> bool:
+    return bool(set(user_keys(user)) & model_config.GPTS_WHITE_LIST)
+
+
+def _normalize_identity_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    items: list[str] = []
+    for item in value:
+        if isinstance(item, str):
+            normalized = item.strip()
+            if normalized and normalized not in items:
+                items.append(normalized)
+    return items
+
+
+def _gpt_owner(gpt_dict: dict) -> str:
+    return str(gpt_dict.get("owner") or "").strip()
+
+
+def _gpt_admins(gpt_dict: dict) -> list[str]:
+    return _normalize_identity_list(gpt_dict.get("admins"))
+
+
+def _gpt_viewers(gpt_dict: dict) -> list[str]:
+    return _normalize_identity_list(gpt_dict.get("viewers"))
+
+
+def _default_manageable_system_owner(gid: str) -> str:
+    if not is_manageable_system_gpt(gid):
+        return ""
+    seeded_keys = sorted(item for item in model_config.GPTS_WHITE_LIST if str(item).strip())
+    return seeded_keys[0] if seeded_keys else ""
+
+
+def _effective_gpt_owner(gid: str, gpt_dict: dict) -> str:
+    return _gpt_owner(gpt_dict) or _default_manageable_system_owner(gid)
+
+
+def _user_key_set(user: dict) -> set[str]:
+    return {item for item in user_keys(user) if item}
+
+
+def _gpt_can_view(user: dict, gpt_dict: dict) -> bool:
+    keys = _user_key_set(user)
+    if not keys:
+        return False
+    owner = _gpt_owner(gpt_dict)
+    if owner and owner in keys:
+        return True
+    if keys & set(_gpt_admins(gpt_dict)):
+        return True
+    if keys & set(_gpt_viewers(gpt_dict)):
+        return True
+    return False
+
+
+def _gpt_can_manage(user: dict, gpt_dict: dict) -> bool:
+    keys = _user_key_set(user)
+    if not keys:
+        return False
+    owner = _gpt_owner(gpt_dict)
+    if owner and owner in keys:
+        return True
+    return bool(keys & set(_gpt_admins(gpt_dict)))
+
+
+def _normalize_acl_state(
+    owner: object,
+    admins: object,
+    viewers: object,
+) -> tuple[str, list[str], list[str]]:
+    normalized_owner = str(owner or "").strip()
+    normalized_admins = _normalize_identity_list(admins)
+    normalized_viewers = _normalize_identity_list(viewers)
+
+    if normalized_owner:
+        normalized_admins = [item for item in normalized_admins if item != normalized_owner]
+        normalized_viewers = [
+            item
+            for item in normalized_viewers
+            if item != normalized_owner and item not in normalized_admins
+        ]
+    else:
+        normalized_viewers = [item for item in normalized_viewers if item not in normalized_admins]
+
+    return normalized_owner, normalized_admins, normalized_viewers
+
+
 def is_gpt_visible_to_provider(gpt_dict: dict, current_provider: str) -> bool:
     if _get_gpt_provider_scope(gpt_dict) == GPT_PROVIDER_SCOPE_PROVIDER:
         return _get_gpt_auth_provider(gpt_dict) == current_provider
@@ -91,13 +199,24 @@ def is_gpt_visible_to_provider(gpt_dict: dict, current_provider: str) -> bool:
 def ensure_owned_custom_gpt(gid: str, user: dict) -> dict:
     ensure_gpts_manage_allowed(user)
     refresh_gpts()
-    if gid in BUILTIN_GIDS or gid not in gpts:
+    if gid not in gpts:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "GPT not found")
     current_provider = get_current_auth_provider(user)
     gpt_item = gpts[gid]
-    if gpt_item.get("owner") != user.get("sub") or not is_gpt_visible_to_provider(
-        gpt_item, current_provider
-    ):
+    if is_manageable_system_gpt(gid, gpt_item):
+        if (
+            not (
+                _gpt_can_manage(user, gpt_item)
+                or can_manage_regulation_gpt(user)
+                or can_manage_main_gpt(user)
+            )
+            or not is_gpt_visible_to_provider(gpt_item, current_provider)
+        ):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "GPT not found")
+        return gpt_item
+    if gid in BUILTIN_GIDS:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "GPT not found")
+    if not _gpt_can_manage(user, gpt_item) or not is_gpt_visible_to_provider(gpt_item, current_provider):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "GPT not found")
     return gpt_item
 
@@ -133,7 +252,7 @@ def is_gpt_pinned_for_user(user_id: str, gid: str) -> bool:
 
 
 def can_access_gpt(user: dict, gid: str) -> bool:
-    if gid == "gptassistant":
+    if gid == GPTASSISTANT_GPT_ID:
         return True
     user_id = user.get("sub") or user.get("email") or ""
     if not user_id:
@@ -231,12 +350,19 @@ def get_sidebar_gpts(user: dict) -> list[dict]:
 
 
 def apply_runtime_model_visibility(
-    gid: str,
+    _gid: str,
     models: list[dict],
+    assistant_config: dict | None = None,
 ) -> list[dict]:
-    if gid != "gptassistant":
+    config = assistant_config or {}
+    raw_visible_model_ids = config.get("visible_model_ids")
+    if not isinstance(raw_visible_model_ids, list):
         return models
-    visible_model_ids = set(get_feature_flag_string_list("default_visible_models"))
+    visible_model_ids = {
+        str(item).strip()
+        for item in raw_visible_model_ids
+        if isinstance(item, str) and item.strip()
+    }
     if not visible_model_ids:
         return models
     filtered = [
@@ -244,18 +370,15 @@ def apply_runtime_model_visibility(
         for item in models
         if isinstance(item, dict) and str(item.get("id") or "").strip() in visible_model_ids
     ]
-    return filtered or models
+    return filtered
 
 
 def apply_admin_model_config_overrides(
-    gid: str,
+    _gid: str,
     models: list[dict],
     *,
     include_missing: bool = True,
 ) -> list[dict]:
-    if gid != "gptassistant":
-        return models
-
     admin_configs = [
         item
         for item in list_admin_model_configs()
@@ -321,7 +444,6 @@ def apply_admin_model_config_overrides(
         existing_model_ids.add(model_id)
         admin_config = config_map.get(model_id)
         if not admin_config:
-            overridden.append(model)
             continue
         if admin_config.get("enabled"):
             overridden.append(merge_admin_config(model, admin_config))
@@ -344,21 +466,72 @@ def apply_admin_model_config_overrides(
 
 
 def apply_runtime_gpt_defaults(
-    gid: str,
+    _gid: str,
     config: dict,
 ) -> dict:
-    if gid != "gptassistant":
-        return config
     next_config = dict(config)
-    configured_default_model = get_feature_flag_value("default_model")
-    if isinstance(configured_default_model, str) and configured_default_model.strip():
-        next_config["default_model"] = configured_default_model.strip()
-    current_default_reasoning = bool(next_config.get("default_reasoning", True))
-    next_config["default_reasoning"] = is_feature_flag_enabled(
-        "default_reasoning_enabled",
-        current_default_reasoning,
-    )
+    next_config["default_reasoning"] = bool(next_config.get("default_reasoning", True))
     return next_config
+
+
+def _base_builtin_model_catalog() -> list[dict]:
+    config = builtin_gpts.get(GPTASSISTANT_GPT_ID, {})
+    models = config.get("models")
+    if not isinstance(models, list):
+        return []
+    return [dict(item) for item in models if isinstance(item, dict)]
+
+
+def _assistant_model_catalog(config: dict) -> list[dict]:
+    models = config.get("models")
+    base_models = models if isinstance(models, list) and models else _base_builtin_model_catalog()
+    return apply_admin_model_config_overrides(GPTASSISTANT_GPT_ID, base_models)
+
+
+def _normalize_visible_model_ids(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    items: list[str] = []
+    for item in value:
+        if isinstance(item, str):
+            normalized = item.strip()
+            if normalized and normalized not in items:
+                items.append(normalized)
+    return items
+
+
+def normalize_visible_models(body: dict, base_config: dict | None = None) -> None:
+    assistant_config = {**(base_config or {}), **body}
+    catalog = _assistant_model_catalog(assistant_config)
+    valid_ids = {
+        str(item.get("id") or "").strip()
+        for item in catalog
+        if isinstance(item, dict) and str(item.get("id") or "").strip()
+    }
+    submitted_ids = _normalize_visible_model_ids(body.get("visible_model_ids"))
+    base_ids = _normalize_visible_model_ids((base_config or {}).get("visible_model_ids"))
+    if submitted_ids:
+        invalid_ids = [item for item in submitted_ids if item not in valid_ids]
+        if invalid_ids:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                f"unknown visible model ids: {', '.join(invalid_ids)}",
+            )
+        body["visible_model_ids"] = submitted_ids
+    elif base_ids:
+        body["visible_model_ids"] = [item for item in base_ids if item in valid_ids]
+    else:
+        body["visible_model_ids"] = list(valid_ids)
+
+    preferred_model = str(body.get("default_model") or "").strip()
+    visible_ids = body["visible_model_ids"]
+    if preferred_model and preferred_model not in visible_ids:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "default_model must be included in visible_model_ids",
+        )
+    if not preferred_model and visible_ids:
+        body["default_model"] = visible_ids[0]
 
 
 def get_user_identity(user: dict) -> tuple[str, str]:
@@ -383,9 +556,12 @@ async def gpts_permission(user: dict = Depends(get_current_user)):
 
 
 @router.get("/gpts/available-models")
-async def get_available_gpt_models(user: dict = Depends(get_current_user)):
+async def get_available_gpt_models(
+    gid: str | None = None,
+    user: dict = Depends(get_current_user),
+):
     ensure_gpts_manage_allowed(user)
-    return await resolve_available_gpt_models(user)
+    return await resolve_available_gpt_models(user, gid=gid)
 
 
 @router.get("/gpts")
@@ -397,10 +573,16 @@ async def get_gpts(user: dict = Depends(get_current_user)):
     pinned_ids = list_pinned_gids(user_id)
     current_provider = get_current_auth_provider(user)
 
-    gpts_list = [{"gid": key, **{k: v for k, v in value.items() if k not in {"system_prompt", "model_name", "auth"}},
-                  "is_pinned": key in pinned_ids or is_required_pinned_gid(key),
-                  "is_required_pinned": is_required_pinned_gid(key)} for key, value in fetch_gpts().items() if
-                 auth_ok(value, user['email'], user['sub'], current_provider=current_provider) and key != 'gptassistant']
+    gpts_list = [
+        {
+            "gid": key,
+            **{k: v for k, v in value.items() if k not in {"system_prompt", "model_name", "auth"}},
+            "is_pinned": key in pinned_ids or is_required_pinned_gid(key),
+            "is_required_pinned": is_required_pinned_gid(key),
+        }
+        for key, value in fetch_gpts().items()
+        if auth_ok(value, user["email"], user["sub"], current_provider=current_provider) and key != "gptassistant"
+    ]
     return gpts_list
 
 
@@ -456,13 +638,29 @@ async def gpts_created(user: dict = Depends(get_current_user)):
     current_provider = get_current_auth_provider(user)
     created = []
     for gid, data in gpts.items():
-        if gid in BUILTIN_GIDS:
+        if gid in BUILTIN_GIDS and not is_manageable_system_gpt(gid, data):
             continue
-        if data.get("owner") != user['sub']:
+        if is_manageable_system_gpt(gid, data):
+            if not (
+                _gpt_can_manage(user, data)
+                or can_manage_regulation_gpt(user)
+                or can_manage_main_gpt(user)
+            ):
+                continue
+        elif not _gpt_can_manage(user, data):
             continue
         if not is_gpt_visible_to_provider(data, current_provider):
             continue
-        item = {"gid": gid, "name": data["name"]}
+        item = {
+            "gid": gid,
+            "name": data["name"],
+            "owner": _effective_gpt_owner(gid, data),
+            "can_edit": True,
+            "can_delete": (
+                (_gpt_owner(data) == user["sub"] or is_gpts_manage_allowed(user))
+                and gid not in BUILTIN_GIDS
+            ),
+        }
         if "logo" in data:
             item["logo"] = data["logo"]
         created.append(item)
@@ -480,21 +678,48 @@ async def get_gpts_detail(gid: str, user: dict = Depends(get_current_user)):
     gpt_item = apply_runtime_gpt_defaults(gid, gpts[gid])
 
     exclude_fields = {"model_name"}
-    if gpt_item.get("owner") != user['sub']:
+    system_manage_fallback = False
+    if is_regulation_gpt(gid):
+        system_manage_fallback = can_manage_regulation_gpt(user)
+    elif is_main_gpt(gid):
+        system_manage_fallback = can_manage_main_gpt(user)
+    can_manage = _gpt_can_manage(user, gpt_item) or system_manage_fallback
+    if not can_manage:
         exclude_fields.update({"system_prompt", "auth"})
 
     gpts_detail = {k: v for k, v in gpt_item.items() if k not in exclude_fields}
+    gpts_detail["can_edit"] = can_manage
+    gpts_detail["can_transfer_owner"] = bool(
+        _effective_gpt_owner(gid, gpt_item) == user["sub"]
+        or (not _effective_gpt_owner(gid, gpt_item) and can_manage)
+    )
+    gpts_detail["can_delete"] = (
+        (_effective_gpt_owner(gid, gpt_item) == user["sub"] or is_gpts_manage_allowed(user))
+        and gid not in BUILTIN_GIDS
+    )
     if isinstance(gpts_detail.get("models"), list):
-        runtime_models = apply_admin_model_config_overrides(gid, gpts_detail["models"])
-        runtime_visible_models = apply_runtime_model_visibility(gid, runtime_models)
+        full_runtime_models = _assistant_model_catalog(gpt_item)
+        runtime_visible_models = apply_runtime_model_visibility(gid, full_runtime_models, gpt_item)
         visible_models = sanitize_models_for_detail(runtime_visible_models, user["email"], user["sub"])
         visible_models = await resolve_model_configs(visible_models)
         visible_models = apply_admin_model_config_overrides(
-            gid,
+            GPTASSISTANT_GPT_ID,
             visible_models,
             include_missing=False,
         )
         gpts_detail["models"] = visible_models
+        if can_manage:
+            model_options = sanitize_models_for_detail(full_runtime_models, user["email"], user["sub"])
+            model_options = await resolve_model_configs(model_options)
+            model_options = apply_admin_model_config_overrides(
+                GPTASSISTANT_GPT_ID,
+                model_options,
+                include_missing=False,
+            )
+            gpts_detail["model_options"] = model_options
+            gpts_detail["visible_model_ids"] = _normalize_visible_model_ids(
+                gpt_item.get("visible_model_ids")
+            )
         if isinstance(gpts_detail.get("default_model"), str):
             default_model = gpts_detail["default_model"]
             visible_model_ids = {item.get("id") for item in visible_models if isinstance(item, dict)}
@@ -571,7 +796,13 @@ async def create_gpt(request: Request, user: dict = Depends(get_current_user)):
     elif auth.get("type") not in {"all", "self"}:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid auth type")
     body["auth"] = auth
+    owner, admins, viewers = _normalize_acl_state(user["sub"], body.get("admins"), body.get("viewers"))
+    body["owner"] = owner or user["sub"]
+    body["admins"] = admins
+    body["viewers"] = viewers
     normalize_preferred_model(body)
+    normalize_visible_models(body)
+    body["models"] = _assistant_model_catalog(body)
     insert_custom_gpt(gid, body)
     refresh_gpts()
     return {"gid": gid}
@@ -581,13 +812,29 @@ async def create_gpt(request: Request, user: dict = Depends(get_current_user)):
 async def update_gpt(gid: str, request: Request, user: dict = Depends(get_current_user)):
     ensure_gpts_manage_allowed(user)
     refresh_gpts()
-    if gid in BUILTIN_GIDS:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "builtin gpts cannot be modified")
     if gid not in gpts:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "gid not found")
-    if gpts[gid].get("owner") != user['sub']:
+    if is_manageable_system_gpt(gid, gpts[gid]):
+        if not (
+            _gpt_can_manage(user, gpts[gid])
+            or can_manage_regulation_gpt(user)
+            or can_manage_main_gpt(user)
+        ):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "gid not found")
+    elif gid in BUILTIN_GIDS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "builtin gpts cannot be modified")
+    if not is_manageable_system_gpt(gid, gpts[gid]) and not _gpt_can_manage(user, gpts[gid]):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "No Authorized")
-    body = await request.json()
+    submitted_body = await request.json()
+    existing_config = {
+        key: value
+        for key, value in gpts[gid].items()
+        if key != "chat_function" and not callable(value)
+    }
+    body = {**existing_config, **submitted_body}
+    for protected_field in ("gid", "assistant_kind", "handler_key", "required_pinned"):
+        if protected_field in existing_config:
+            body[protected_field] = existing_config[protected_field]
     current_provider = get_current_auth_provider(user)
     provider_scope = _normalize_provider_scope(body.get("provider_scope", gpts[gid].get("provider_scope")))
     if provider_scope == GPT_PROVIDER_SCOPE_PROVIDER:
@@ -610,13 +857,22 @@ async def update_gpt(gid: str, request: Request, user: dict = Depends(get_curren
     elif auth.get("type") not in {"all", "self"}:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid auth type")
     body["auth"] = auth
+    requested_owner = str(body.get("owner") or gpts[gid].get("owner") or "").strip()
+    current_owner = _effective_gpt_owner(gid, gpts[gid])
+    if current_owner and requested_owner != current_owner and current_owner != user["sub"]:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the owner can transfer ownership")
+    owner, admins, viewers = _normalize_acl_state(requested_owner or current_owner, body.get("admins"), body.get("viewers"))
+    body["owner"] = owner or current_owner or user["sub"]
+    body["admins"] = admins
+    body["viewers"] = viewers
     samples = body.get("samples", [])
     if not isinstance(samples, list) or any(not isinstance(s, str) for s in samples):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "samples must be list of strings")
     if len(samples) > MAX_SAMPLES:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "samples limit exceeded")
-    body["owner"] = gpts[gid].get("owner", user['sub'])
     normalize_preferred_model(body)
+    normalize_visible_models(body, existing_config)
+    body["models"] = _assistant_model_catalog(body)
     update_custom_gpt(gid, body)
     refresh_gpts()
     return {"gid": gid}
@@ -626,11 +882,13 @@ async def update_gpt(gid: str, request: Request, user: dict = Depends(get_curren
 async def delete_gpt(gid: str, user: dict = Depends(get_current_user)):
     ensure_gpts_manage_allowed(user)
     refresh_gpts()
+    if is_regulation_gpt(gid):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "builtin gpts cannot be deleted")
     if gid in BUILTIN_GIDS:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "builtin gpts cannot be deleted")
     if gid not in gpts:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "gid not found")
-    if gpts[gid].get("owner") != user['sub']:
+    if _effective_gpt_owner(gid, gpts[gid]) != user["sub"] and not is_gpts_manage_allowed(user):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "No Authorized")
     delete_assistant_knowledge_files(gid)
     delete_custom_gpt(gid)
@@ -648,7 +906,9 @@ def auth_ok(
 ):
     if current_provider and not is_gpt_visible_to_provider(gpt_dict, current_provider):
         return False
-    if user_id and gpt_dict.get("owner") == user_id:
+    if user_id and _gpt_owner(gpt_dict) == user_id:
+        return True
+    if user_id and _gpt_can_view({"sub": user_id, "email": user}, gpt_dict):
         return True
     auth = gpt_dict.get("auth") or {"type": "all"}
     if auth['type'] == "all":
@@ -676,39 +936,42 @@ def sanitize_models_for_detail(models: list[dict], user: str, user_id: Optional[
     return [{k: v for k, v in item.items() if k != "auth"} for item in visible_models]
 
 
-async def resolve_available_gpt_models(user: dict) -> dict:
+async def resolve_available_gpt_models(user: dict, *, gid: str | None = None) -> dict:
     refresh_gpts()
+    target_gid = gid or GPTASSISTANT_GPT_ID
     assistant_config = apply_runtime_gpt_defaults(
-        "gptassistant",
-        gpts.get("gptassistant", {}),
+        target_gid,
+        gpts.get(target_gid, gpts.get(GPTASSISTANT_GPT_ID, {})),
     )
-    runtime_models = apply_admin_model_config_overrides(
-        "gptassistant",
-        assistant_config.get("models", []),
-    )
-    runtime_visible_models = apply_runtime_model_visibility("gptassistant", runtime_models)
+    runtime_models = _assistant_model_catalog(assistant_config)
     visible_models = sanitize_models_for_detail(
-        runtime_visible_models,
+        runtime_models,
         user["email"],
         user.get("sub"),
     )
     visible_models = await resolve_model_configs(visible_models)
     visible_models = apply_admin_model_config_overrides(
-        "gptassistant",
+        GPTASSISTANT_GPT_ID,
         visible_models,
         include_missing=False,
     )
-    visible_model_ids = {
+    configured_visible_model_ids = _normalize_visible_model_ids(
+        assistant_config.get("visible_model_ids")
+    )
+    visible_model_ids = [
         item.get("id")
         for item in visible_models
-        if isinstance(item, dict)
-    }
-    default_model = assistant_config.get("default_model", "")
-    if default_model not in visible_model_ids:
-        default_model = visible_models[0].get("id", "") if visible_models else ""
+        if isinstance(item, dict) and item.get("id")
+    ]
+    if not configured_visible_model_ids:
+        configured_visible_model_ids = visible_model_ids
+    default_model = str(assistant_config.get("default_model") or "").strip()
+    if default_model not in configured_visible_model_ids:
+        default_model = configured_visible_model_ids[0] if configured_visible_model_ids else ""
     return {
         "default_model": default_model,
         "models": visible_models,
+        "visible_model_ids": configured_visible_model_ids,
     }
 
 

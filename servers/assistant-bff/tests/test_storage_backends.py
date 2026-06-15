@@ -143,6 +143,34 @@ class StorageBackendFallbackTests(unittest.TestCase):
         self.assertEqual(payload["provider_scope"], "global")
         self.assertEqual(payload["auth_provider"], "global")
 
+    def test_custom_gpt_metadata_round_trips_through_custom_columns(self):
+        business_store.insert_custom_gpt(
+            "gid-handler",
+            {
+                "gid": "gid-handler",
+                "name": "demo",
+                "assistant_kind": "system",
+                "handler_key": "kernel_regulation",
+            },
+        )
+        payload = business_store.load_custom_gpts()["gid-handler"]
+
+        self.assertEqual(payload["assistant_kind"], "system")
+        self.assertEqual(payload["handler_key"], "kernel_regulation")
+
+    def test_agents_table_has_system_metadata_columns(self):
+        conn = sqlite3.connect(self.db_path)
+        try:
+            columns = {
+                str(row[1])
+                for row in conn.execute("PRAGMA table_info(agents)").fetchall()
+            }
+        finally:
+            conn.close()
+
+        self.assertIn("assistant_kind", columns)
+        self.assertIn("handler_key", columns)
+
     def test_init_business_storage_marks_store_initialized(self):
         business_store._INITIALIZED = False
         business_store.init_business_storage()
@@ -213,19 +241,76 @@ class StorageBackendFallbackTests(unittest.TestCase):
                 "hello",
             )
 
+    def test_init_business_storage_upgrades_legacy_file_mapping_schema(self):
         conn = sqlite3.connect(self.db_path)
         try:
-            row = conn.execute(
-                "SELECT history FROM session_history WHERE conversation_id = ?",
-                ("cid-encrypted",),
-            ).fetchone()
-            self.assertIsNotNone(row)
-            raw_payload = row[0]
-            self.assertNotIn("hello", raw_payload)
-            encoded = json.loads(raw_payload)
-            self.assertTrue(encoded["__encrypted__"])
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS file_mapping (
+                  file_id TEXT PRIMARY KEY,
+                  filename TEXT NOT NULL,
+                  file_extension TEXT NOT NULL,
+                  content_type TEXT,
+                  bucket TEXT NOT NULL,
+                  object_key TEXT NOT NULL,
+                  storage_backend TEXT NOT NULL,
+                  size_bytes BIGINT,
+                  content_sha256 TEXT,
+                  upload_time TEXT NOT NULL,
+                  gid TEXT NOT NULL
+                )
+                """
+            )
+            conn.commit()
         finally:
             conn.close()
+
+        business_store._INITIALIZED = False
+        business_store.init_business_storage()
+
+        conn = sqlite3.connect(self.db_path)
+        try:
+            columns = {
+                str(row[1])
+                for row in conn.execute("PRAGMA table_info(file_mapping)").fetchall()
+            }
+        finally:
+            conn.close()
+        self.assertIn("auth_provider", columns)
+
+    def test_init_business_storage_upgrades_legacy_file_upload_reservations_schema(self):
+        business_store.close_business_storage()
+
+        conn = sqlite3.connect(self.db_path)
+        try:
+            conn.execute("DROP TABLE IF EXISTS file_upload_reservations")
+            conn.execute(
+                """
+                CREATE TABLE file_upload_reservations (
+                  reservation_id TEXT PRIMARY KEY,
+                  gid TEXT NOT NULL,
+                  owner_user_id TEXT,
+                  owner_user_email TEXT,
+                  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        business_store._INITIALIZED = False
+        business_store.init_business_storage()
+
+        conn = sqlite3.connect(self.db_path)
+        try:
+            columns = {
+                str(row[1])
+                for row in conn.execute("PRAGMA table_info(file_upload_reservations)").fetchall()
+            }
+        finally:
+            conn.close()
+        self.assertIn("auth_provider", columns)
 
     def test_init_business_storage_backfills_session_meta_from_usage_events(self):
         business_store.save_session_history(

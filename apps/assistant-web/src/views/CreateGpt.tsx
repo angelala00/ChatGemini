@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { KeyboardEvent, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -28,6 +28,88 @@ interface AvailableModel {
     readonly description?: string;
 }
 
+const normalizeModelIds = (ids: string[], models: AvailableModel[]) => {
+    const validIds = new Set(models.map((item) => item.id));
+    const nextIds: string[] = [];
+    for (const item of ids) {
+        const normalized = item.trim();
+        if (!normalized || !validIds.has(normalized) || nextIds.includes(normalized)) {
+            continue;
+        }
+        nextIds.push(normalized);
+    }
+    return nextIds;
+};
+
+interface TagInputProps {
+    readonly label: string;
+    readonly placeholder: string;
+    readonly values: string[];
+    readonly onChange: (values: string[]) => void;
+}
+
+const TagInput = ({ label, placeholder, values, onChange }: TagInputProps) => {
+    const [inputValue, setInputValue] = useState("");
+
+    const commitValue = (rawValue: string) => {
+        const normalized = rawValue.trim();
+        if (!normalized || values.includes(normalized)) {
+            return;
+        }
+        onChange([...values, normalized]);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+        if (event.key === "Enter" || event.key === ",") {
+            event.preventDefault();
+            commitValue(inputValue);
+            setInputValue("");
+            return;
+        }
+        if (event.key === "Backspace" && !inputValue && values.length > 0) {
+            onChange(values.slice(0, -1));
+        }
+    };
+
+    return (
+        <label className="text-sm font-medium text-[var(--assist-text-soft)]">
+            {label}
+            <div className="mt-2 rounded-[14px] border border-[var(--assist-line)] bg-[rgba(252,253,254,0.88)] px-3 py-2.5 shadow-[var(--assist-shadow-sm)]">
+                <div className="flex flex-wrap gap-2">
+                    {values.map((value) => (
+                        <span
+                            key={value}
+                            className="inline-flex items-center gap-2 rounded-full border border-[var(--assist-line-strong)] bg-white px-3 py-1 text-xs text-[var(--assist-text)]"
+                        >
+                            {value}
+                            <button
+                                type="button"
+                                className="text-[var(--assist-text-faint)] transition hover:text-[var(--assist-text)]"
+                                onClick={() => onChange(values.filter((item) => item !== value))}
+                                aria-label={`remove-${value}`}
+                            >
+                                ×
+                            </button>
+                        </span>
+                    ))}
+                    <input
+                        type="text"
+                        value={inputValue}
+                        onChange={(event) => setInputValue(event.target.value)}
+                        onKeyDown={handleKeyDown}
+                        onBlur={() => {
+                            commitValue(inputValue);
+                            setInputValue("");
+                        }}
+                        placeholder={placeholder}
+                        className="min-w-[10rem] flex-1 border-none bg-transparent px-0 py-1 text-sm outline-none placeholder:text-[var(--assist-text-faint)]"
+                    />
+                </div>
+            </div>
+        </label>
+    );
+};
+
 const fieldClassName =
     "mt-2 w-full rounded-[14px] border border-[var(--assist-line)] bg-[rgba(252,253,254,0.88)] px-3.5 py-2.5 text-sm text-[var(--assist-text)] shadow-[var(--assist-shadow-sm)] outline-none transition placeholder:text-[var(--assist-text-faint)] focus:border-[var(--assist-accent)] focus:ring-2 focus:ring-[var(--assist-accent)]/15";
 
@@ -47,8 +129,13 @@ const CreateGpt = () => {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [authType, setAuthType] = useState<"self" | "white" | "all">("all");
     const [authUsers, setAuthUsers] = useState("");
+    const [ownerUser, setOwnerUser] = useState("");
+    const [adminUsers, setAdminUsers] = useState<string[]>([]);
+    const [viewerUsers, setViewerUsers] = useState<string[]>([]);
+    const [canTransferOwner, setCanTransferOwner] = useState(false);
     const [knowledgeFiles, setKnowledgeFiles] = useState<KnowledgeFile[]>([]);
     const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
+    const [visibleModelIds, setVisibleModelIds] = useState<string[]>([]);
     const [preferredModel, setPreferredModel] = useState("");
     const [modelsLoaded, setModelsLoaded] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
@@ -94,8 +181,19 @@ const CreateGpt = () => {
                 setName(data.name ?? "");
                 setDesc(data.desc ?? "");
                 setSystemPrompt(data.system_prompt ?? "");
+                const nextModels = Array.isArray(data.model_options)
+                    ? data.model_options
+                    : Array.isArray(data.models)
+                      ? data.models
+                      : [];
+                setAvailableModels(nextModels);
                 if (typeof data.default_model === "string" && data.default_model) {
                     setPreferredModel(data.default_model);
+                }
+                if (Array.isArray(data.visible_model_ids)) {
+                    setVisibleModelIds(normalizeModelIds(data.visible_model_ids, nextModels));
+                } else if (Array.isArray(nextModels)) {
+                    setVisibleModelIds(nextModels.map((item: AvailableModel) => item.id).filter(Boolean));
                 }
                 const sampleData = data.samples ?? [];
                 setSamples(sampleData.length ? [...sampleData, ""] : [""]);
@@ -105,6 +203,10 @@ const CreateGpt = () => {
                         setAuthUsers((data.auth.user || []).join(","));
                     }
                 }
+                setOwnerUser(typeof data.owner === "string" ? data.owner : "");
+                setAdminUsers(Array.isArray(data.admins) ? data.admins : []);
+                setViewerUsers(Array.isArray(data.viewers) ? data.viewers : []);
+                setCanTransferOwner(Boolean(data.can_transfer_owner));
             })
             .catch(() => {});
         handleRequest("GET", getFullPath(`/api/gpts/${gid}/knowledge-files`))
@@ -113,7 +215,10 @@ const CreateGpt = () => {
     }, [gid]);
 
     useEffect(() => {
-        handleRequest("GET", getFullPath("/api/gpts/available-models"))
+        const url = gid
+            ? getFullPath(`/api/gpts/available-models?gid=${encodeURIComponent(gid)}`)
+            : getFullPath("/api/gpts/available-models");
+        handleRequest("GET", url)
             .then((data) => {
                 const nextModels = Array.isArray(data.models)
                     ? data.models.filter(
@@ -125,13 +230,20 @@ const CreateGpt = () => {
                       )
                     : [];
                 setAvailableModels(nextModels);
+                if (Array.isArray(data.visible_model_ids) && data.visible_model_ids.length) {
+                    setVisibleModelIds(normalizeModelIds(data.visible_model_ids, nextModels));
+                } else {
+                    setVisibleModelIds((current) =>
+                        current.length ? normalizeModelIds(current, nextModels) : nextModels.map((item) => item.id),
+                    );
+                }
                 setPreferredModel(
                     (current) => current || data.default_model || nextModels[0]?.id || "",
                 );
             })
             .catch(() => setAvailableModels([]))
             .finally(() => setModelsLoaded(true));
-    }, []);
+    }, [gid]);
 
     const handleKnowledgeUpload = async (file: File) => {
         if (!gid || isUploading) return;
@@ -167,15 +279,26 @@ const CreateGpt = () => {
         event.preventDefault();
         if (isSubmitting) return;
         setIsSubmitting(true);
+        const normalizedVisibleModelIds = visibleModelIds.filter((item) =>
+            availableModels.some((model) => model.id === item),
+        );
+        const nextPreferredModel =
+            normalizedVisibleModelIds.includes(preferredModel)
+                ? preferredModel
+                : normalizedVisibleModelIds[0] || "";
         const body: Record<string, any> = {
             name,
             desc,
             system_prompt: systemPrompt,
-            default_model: preferredModel,
+            default_model: nextPreferredModel,
+            visible_model_ids: normalizedVisibleModelIds,
         };
         const sanitizedSamples = samples.map((sample) => sample.trim()).filter(Boolean);
         if (sanitizedSamples.length > 0) {
             body.samples = sanitizedSamples;
+        }
+        if (gid && ownerUser.trim()) {
+            body.owner = ownerUser.trim();
         }
         body.auth =
             authType === "white"
@@ -187,6 +310,8 @@ const CreateGpt = () => {
                           .filter(Boolean),
                   }
                 : { type: authType };
+        body.admins = adminUsers;
+        body.viewers = viewerUsers;
         const method = gid ? "PUT" : "POST";
         const url = gid ? getFullPath(`/api/gpts/${gid}`) : getFullPath("/api/gpts");
         handleRequest(method, url, JSON.stringify(body), { "Content-Type": "application/json" })
@@ -210,6 +335,37 @@ const CreateGpt = () => {
     const preferredModelOption = availableModels.find((item) => item.id === preferredModel);
     const preferredModelUnavailable =
         !!preferredModel && modelsLoaded && !preferredModelOption;
+    const normalizedVisibleModelIds = normalizeModelIds(visibleModelIds, availableModels);
+    const visibleModelOptions = availableModels.filter((model) =>
+        normalizedVisibleModelIds.includes(model.id),
+    );
+
+    useEffect(() => {
+        if (!modelsLoaded) {
+            return;
+        }
+        if (normalizedVisibleModelIds.length === 0) {
+            setPreferredModel("");
+            return;
+        }
+        if (!normalizedVisibleModelIds.includes(preferredModel)) {
+            setPreferredModel(normalizedVisibleModelIds[0] || "");
+        }
+    }, [modelsLoaded, normalizedVisibleModelIds, preferredModel]);
+
+    const toggleVisibleModel = (modelId: string) => {
+        setVisibleModelIds((current) => {
+            const normalizedCurrent = normalizeModelIds(current, availableModels);
+            if (normalizedCurrent.includes(modelId)) {
+                const next = normalizedCurrent.filter((item) => item !== modelId);
+                if (preferredModel === modelId) {
+                    setPreferredModel(next[0] || "");
+                }
+                return next;
+            }
+            return [...normalizedCurrent, modelId];
+        });
+    };
 
     return (
         <Container className="min-h-full w-full flex-1 overflow-y-auto bg-[var(--assist-bg)] text-[var(--assist-text)]">
@@ -338,19 +494,63 @@ const CreateGpt = () => {
                                 </div>
                                 <div>
                                     <h2 className="text-sm font-semibold">
-                                        {t("views.CreateGpt.model_label")}
+                                        {t("views.CreateGpt.model_settings_label")}
                                     </h2>
                                     <p className="mt-0.5 text-xs text-[var(--assist-text-faint)]">
-                                        {t("views.CreateGpt.model_description")}
+                                        {t("views.CreateGpt.model_settings_description")}
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="mt-5">
+                                <div className="flex items-center justify-between gap-3">
+                                    <div>
+                                        <h3 className="text-sm font-semibold">
+                                            {t("views.CreateGpt.visible_models_label")}
+                                        </h3>
+                                        <p className="mt-1 text-xs text-[var(--assist-text-faint)]">
+                                            {t("views.CreateGpt.visible_models_description")}
+                                        </p>
+                                    </div>
+                                    <span className="text-[11px] font-semibold text-[var(--assist-text-faint)]">
+                                        {normalizedVisibleModelIds.length}/{availableModels.length}
+                                    </span>
+                                </div>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                    {availableModels.map((model) => {
+                                        const selected = normalizedVisibleModelIds.includes(model.id);
+                                        return (
+                                            <button
+                                                key={model.id}
+                                                type="button"
+                                                onClick={() => toggleVisibleModel(model.id)}
+                                                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                                                    selected
+                                                        ? "border-[var(--assist-accent)] bg-[var(--assist-accent-soft)] text-[var(--assist-accent-strong)]"
+                                                        : "border-[var(--assist-line)] bg-white text-[var(--assist-text-faint)] hover:border-[var(--assist-line-strong)] hover:text-[var(--assist-text)]"
+                                                }`}
+                                            >
+                                                {model.name}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                            <div className="mt-5">
+                                <div className="mb-2">
+                                    <h3 className="text-sm font-semibold">
+                                        {t("views.CreateGpt.preferred_model_label")}
+                                    </h3>
+                                    <p className="mt-1 text-xs text-[var(--assist-text-faint)]">
+                                        {t("views.CreateGpt.preferred_model_description")}
                                     </p>
                                 </div>
                             </div>
                             <select
+                                className={fieldClassName}
                                 value={preferredModel}
                                 onChange={(event) => setPreferredModel(event.target.value)}
-                                className={fieldClassName}
                                 required
-                                disabled={!modelsLoaded || availableModels.length === 0}
+                                disabled={!modelsLoaded || visibleModelOptions.length === 0}
                             >
                                 {!preferredModel && (
                                     <option value="">
@@ -366,7 +566,7 @@ const CreateGpt = () => {
                                         })}
                                     </option>
                                 )}
-                                {availableModels.map((model) => (
+                                {visibleModelOptions.map((model) => (
                                     <option key={model.id} value={model.id}>
                                         {model.name}
                                     </option>
@@ -492,6 +692,44 @@ const CreateGpt = () => {
                                     className={fieldClassName}
                                 />
                             )}
+                            <div className="mt-5 space-y-4">
+                                {gid ? (
+                                    <>
+                                        <label className="text-sm font-medium text-[var(--assist-text-soft)]">
+                                            {t("views.CreateGpt.permission_owner")}
+                                            <input
+                                                type="text"
+                                                value={ownerUser}
+                                                onChange={(event) => setOwnerUser(event.target.value)}
+                                                className={fieldClassName}
+                                                placeholder={t("views.CreateGpt.permission_owner_placeholder")}
+                                                disabled={!canTransferOwner}
+                                            />
+                                        </label>
+                                        <p className="text-xs leading-5 text-[var(--assist-text-faint)]">
+                                            {canTransferOwner
+                                                ? t("views.CreateGpt.permission_owner_hint")
+                                                : t("views.CreateGpt.permission_owner_view_only_hint")}
+                                        </p>
+                                    </>
+                                ) : (
+                                    <p className="text-xs leading-5 text-[var(--assist-text-faint)]">
+                                        {t("views.CreateGpt.permission_owner_create_hint")}
+                                    </p>
+                                )}
+                                <TagInput
+                                    label={t("views.CreateGpt.permission_admins")}
+                                    placeholder={t("views.CreateGpt.permission_members_placeholder")}
+                                    values={adminUsers}
+                                    onChange={setAdminUsers}
+                                />
+                                <TagInput
+                                    label={t("views.CreateGpt.permission_viewers")}
+                                    placeholder={t("views.CreateGpt.permission_members_placeholder")}
+                                    values={viewerUsers}
+                                    onChange={setViewerUsers}
+                                />
+                            </div>
                         </section>
 
                         <button

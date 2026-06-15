@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from app.storage.business_store import load_custom_gpts
+from app.storage.business_store import load_custom_gpts as load_agents
 
 builtin_gpts: Dict[str, Dict[str, Any]] = {}
 
@@ -22,7 +22,7 @@ def fetch_gpts() -> Dict[str, Dict[str, Any]]:
     """Return combined GPT configuration including user created ones."""
 
     combined = builtin_gpts.copy()
-    combined.update(load_custom_gpts())
+    combined.update(load_agents())
     return dict(sorted(combined.items(), key=lambda kv: kv[1].get("sort", float("inf"))))
 
 
@@ -46,6 +46,8 @@ def register_gpt(config):
     """Register built-in GPT definitions and refresh cached state."""
 
     builtin_gpts.update(config)
+    BUILTIN_GIDS.clear()
+    BUILTIN_GIDS.update(builtin_gpts.keys())
     gpts.update(config)
     if _DEFER_REFRESH:
         return

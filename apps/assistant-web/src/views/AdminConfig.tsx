@@ -510,16 +510,28 @@ const AdminConfig = () => {
 
     useEffect(() => {
         const flagMap = new Map(featureFlags.map((item) => [item.config_key, item]));
+        const rawVisibleModels = getStringArrayFlagValue(
+            flagMap.get("default_visible_models")?.config_value,
+        );
+        const nextVisibleModels = rawVisibleModels.filter((item) => modelIdSet.has(item));
+        let nextDefaultModel = getStringFlagValue(flagMap.get("default_model")?.config_value);
+        if (
+            nextDefaultModel &&
+            (!modelIdSet.has(nextDefaultModel) || !nextVisibleModels.includes(nextDefaultModel))
+        ) {
+            nextDefaultModel = nextVisibleModels[0] || "";
+        }
+        if (!nextDefaultModel && nextVisibleModels.length > 0) {
+            nextDefaultModel = nextVisibleModels[0];
+        }
         const nextProductFlagsDraft = {
             gpts_feature_enabled: getBooleanFlagValue(
                 flagMap.get("gpts_feature_enabled")?.config_value,
             ),
         };
         const nextAssistantDefaultsDraft = {
-            default_model: getStringFlagValue(flagMap.get("default_model")?.config_value),
-            default_visible_models_input: getStringArrayFlagValue(
-                flagMap.get("default_visible_models")?.config_value,
-            ).join(", "),
+            default_model: nextDefaultModel,
+            default_visible_models_input: nextVisibleModels.join(", "),
             default_reasoning_enabled: getBooleanFlagValue(
                 flagMap.get("default_reasoning_enabled")?.config_value,
             ),
@@ -1034,33 +1046,22 @@ const AdminConfig = () => {
         }
         const defaultModel = assistantDefaultsDraft.default_model.trim();
         const visibleModels = splitCsvValue(assistantDefaultsDraft.default_visible_models_input);
-        
-        if (visibleModels.length === 0) {
+        const validVisibleModels = visibleModels.filter((item) => modelIdSet.has(item));
+        let nextDefaultModel = defaultModel;
+
+        if (validVisibleModels.length === 0) {
             sendUserAlert(t("views.Admin.validation_visible_models_required"), true, 2200);
             return;
         }
-        if (!defaultModel) {
+        if (
+            !nextDefaultModel ||
+            !modelIdSet.has(nextDefaultModel) ||
+            !validVisibleModels.includes(nextDefaultModel)
+        ) {
+            nextDefaultModel = validVisibleModels[0] || "";
+        }
+        if (!nextDefaultModel) {
             sendUserAlert(t("views.Admin.validation_default_model_required"), true, 2200);
-            return;
-        }
-
-        const unknownVisibleModels = visibleModels.filter((item) => !modelIdSet.has(item));
-        if (defaultModel && !modelIdSet.has(defaultModel)) {
-            sendUserAlert(t("views.Admin.validation_default_model_unknown"), true, 2200);
-            return;
-        }
-        if (unknownVisibleModels.length > 0) {
-            sendUserAlert(
-                t("views.Admin.validation_visible_models_unknown", {
-                    models: unknownVisibleModels.join(", "),
-                }),
-                true,
-                2400,
-            );
-            return;
-        }
-        if (defaultModel && visibleModels.length > 0 && !visibleModels.includes(defaultModel)) {
-            sendUserAlert(t("views.Admin.validation_default_model_not_visible"), true, 2200);
             return;
         }
         setBusyKey("assistant-defaults-save");
@@ -1071,7 +1072,7 @@ const AdminConfig = () => {
                     getFullPath("/api/admin/feature-flags/default_model"),
                     {
                         config_key: "default_model",
-                        config_value: defaultModel,
+                        config_value: nextDefaultModel,
                         value_type: "string",
                         description: t("views.Admin.assistant_defaults_default_model_description"),
                     },
@@ -1081,7 +1082,7 @@ const AdminConfig = () => {
                     getFullPath("/api/admin/feature-flags/default_visible_models"),
                     {
                         config_key: "default_visible_models",
-                        config_value: visibleModels,
+                        config_value: validVisibleModels,
                         value_type: "json",
                         description: t(
                             "views.Admin.assistant_defaults_default_visible_models_description",
@@ -2118,124 +2119,23 @@ const AdminConfig = () => {
                                     )}
 
                                     <div className="mt-4 space-y-4">
-                                        {/* Assistant Defaults Card */}
                                         <div className="rounded-[20px] border border-[rgba(213,223,229,0.98)] bg-[rgba(250,252,253,0.96)] p-4 shadow-sm">
                                             <div className="flex items-center justify-between gap-3 border-b border-[rgba(231,237,242,0.95)] pb-3">
                                                 <h3 className="text-base font-semibold text-[#25313c]">
                                                     {t("views.Admin.assistant_defaults_title")}
                                                 </h3>
-                                                {assistantDefaultsDirty && (
-                                                    <span className="rounded-full border border-[rgba(251,214,163,0.98)] bg-[rgba(255,248,236,0.98)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8a5a17]">
-                                                        {t("views.Admin.unsaved_changes_short")}
-                                                    </span>
-                                                )}
                                             </div>
-                                            <p className="mt-2 text-xs text-[#8a95a0]">
+                                            <p className="mt-3 text-sm leading-6 text-[#55626e]">
                                                 {t("views.Admin.assistant_defaults_subtitle")}
                                             </p>
-                                            <div className="mt-4 grid gap-5 xl:grid-cols-2">
-                                                <div className="space-y-4">
-                                                    <label className="grid gap-2">
-                                                        <span className={formLabelClass}>
-                                                            {t("views.Admin.assistant_defaults_default_model")}
-                                                        </span>
-                                                        <select
-                                                            className={inputClass}
-                                                            value={assistantDefaultsDraft.default_model}
-                                                            onChange={(event) =>
-                                                                setAssistantDefaultsDraft((state) => ({
-                                                                    ...state,
-                                                                    default_model: event.target.value,
-                                                                }))
-                                                            }
-                                                            disabled={!canManageFlags}
-                                                        >
-                                                            <option value="">
-                                                                {t("views.Admin.assistant_defaults_default_model_placeholder")}
-                                                            </option>
-                                                            {modelOptions.map((model) => (
-                                                                <option key={model.model_id} value={model.model_id}>
-                                                                    {model.display_name || model.model_id} ({model.model_id})
-                                                                </option>
-                                                            ))}
-                                                        </select>
-                                                    </label>
-                                                    <label className="flex items-start gap-3 rounded-2xl border border-[rgba(213,223,229,0.98)] bg-white/80 px-4 py-3 text-sm text-[#2f3a46]">
-                                                        <input
-                                                            type="checkbox"
-                                                            className="mt-1 h-4 w-4 rounded border-gray-300 text-[#279ab3] focus:ring-[#279ab3]"
-                                                            checked={assistantDefaultsDraft.default_reasoning_enabled}
-                                                            onChange={(event) =>
-                                                                setAssistantDefaultsDraft((state) => ({
-                                                                    ...state,
-                                                                    default_reasoning_enabled: event.target.checked,
-                                                                }))
-                                                            }
-                                                            disabled={!canManageFlags}
-                                                        />
-                                                        <div>
-                                                            <div className="font-medium text-[#25313c]">
-                                                                {t("views.Admin.assistant_defaults_default_reasoning")}
-                                                            </div>
-                                                            <div className="mt-1 text-xs text-[#8a95a0]">
-                                                                {t("views.Admin.assistant_defaults_default_reasoning_hint")}
-                                                            </div>
-                                                        </div>
-                                                    </label>
-                                                    <div className="flex flex-wrap gap-2.5">
-                                                        <button
-                                                            type="button"
-                                                            className={`${buttonClass} bg-[#279ab3] text-white hover:bg-[#1e7f95] disabled:bg-[#a3ccd4] disabled:cursor-not-allowed`}
-                                                            onClick={saveAssistantDefaults}
-                                                            disabled={!canManageFlags || busyKey === "assistant-defaults-save" || !assistantDefaultsDirty}
-                                                        >
-                                                            {busyKey === "assistant-defaults-save" ? t("views.Admin.saving") : t("views.Admin.save")}
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            className={`${buttonClass} border border-[rgba(214,223,229,0.98)] bg-white text-[#2f3a46] hover:bg-[rgba(245,248,250,0.96)] disabled:opacity-30 disabled:cursor-not-allowed`}
-                                                            onClick={() => setAssistantDefaultsDraft(savedAssistantDefaultsDraft)}
-                                                            disabled={!canManageFlags || !assistantDefaultsDirty}
-                                                        >
-                                                            {t("views.Admin.reset")}
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                                <div className="rounded-2xl border border-[rgba(219,228,233,0.98)] bg-white/60 p-4">
-                                                    <div className="flex items-center justify-between gap-3 border-b border-[rgba(231,237,242,0.95)] pb-3">
-                                                        <h4 className="text-sm font-semibold text-[#25313c]">
-                                                            {t("views.Admin.assistant_defaults_default_visible_models")}
-                                                        </h4>
-                                                        <span className="text-[11px] font-bold text-[#8a95a0]">
-                                                            {t("views.Admin.assistant_defaults_model_count", {
-                                                                count: assistantVisibleModelSet.size,
-                                                            })}
-                                                        </span>
-                                                    </div>
-                                                    <div className="mt-4 flex flex-wrap gap-2">
-                                                        {modelOptions.map((model) => {
-                                                            const selected = assistantVisibleModelSet.has(model.model_id);
-                                                            return (
-                                                                <button
-                                                                    key={model.model_id}
-                                                                    type="button"
-                                                                    className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-all ${
-                                                                        selected
-                                                                            ? "border-[rgba(99,169,185,0.98)] bg-[rgba(231,245,248,0.98)] text-[#206c7b] shadow-sm"
-                                                                            : "border-[rgba(213,223,229,0.98)] bg-white text-[#66717d] hover:border-[rgba(167,199,208,0.98)] hover:text-[#2f3a46]"
-                                                                    }`}
-                                                                    onClick={() => toggleAssistantVisibleModel(model.model_id)}
-                                                                    disabled={!canManageFlags}
-                                                                >
-                                                                    {model.display_name || model.model_id}
-                                                                </button>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                    <p className="mt-4 text-[11px] leading-relaxed text-[#8a95a0]">
-                                                        {t("views.Admin.assistant_defaults_visible_models_hint")}
-                                                    </p>
-                                                </div>
+                                            <div className="mt-4 flex flex-wrap gap-2.5">
+                                                <button
+                                                    type="button"
+                                                    className={`${buttonClass} bg-[#279ab3] text-white hover:bg-[#1e7f95]`}
+                                                    onClick={() => navigate("/my-gpts")}
+                                                >
+                                                    {t("views.Admin.assistant_defaults_manage_in_my_gpts")}
+                                                </button>
                                             </div>
                                         </div>
 

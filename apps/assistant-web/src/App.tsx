@@ -281,7 +281,9 @@ const App = () => {
     }
     // console.log("====id:" + id + " ====gid:" + gid)
     let r_gid = gid?gid:"gptassistant"
-    const isRequiredPinnedGpt = gid === "regulationassistant";
+    const isRequiredPinnedGpt = pinnedGpts.some(
+        (item) => item.gid === gid && item.is_required_pinned,
+    );
     const isPinnedGpt = pinnedGpts.some((item) => item.gid === gid);
     const canOpenCurrentGpt =
         !gid ||

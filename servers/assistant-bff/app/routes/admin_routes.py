@@ -23,6 +23,7 @@ from app.storage.business_store import (
     upsert_admin_feature_flag,
     upsert_admin_model_config,
     upsert_admin_user_permission,
+    prune_admin_feature_flags_for_deleted_model,
 )
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -345,16 +346,22 @@ async def remove_admin_model(
     if existing is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "model config not found")
     delete_admin_model_config(model_id)
+    cleaned_flags = prune_admin_feature_flags_for_deleted_model(
+        model_id,
+        updated_by=str(user.get("email") or user.get("sub") or "system-model-delete"),
+    )
     _record_admin_audit(
         user=user,
         action="delete",
         resource_type="model",
         resource_key=model_id,
         before_state=existing,
+        after_state={"cleaned_feature_flags": cleaned_flags} if cleaned_flags else None,
     )
     return {
         "deleted": True,
         "model_id": model_id,
+        "cleaned_feature_flags": cleaned_flags,
         "permissions": sorted(permissions),
     }
 

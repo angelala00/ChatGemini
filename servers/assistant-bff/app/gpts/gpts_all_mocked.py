@@ -1,4 +1,5 @@
 from .config_gpts import register_gpt
+from app.base_config import model_config
 from .model_registry import (
     GLM47_MODEL,
     GLM5_MODEL,
@@ -9,9 +10,22 @@ from app.utils.model_tool import (
 )
 
 DEFAULT_GPTASSISTANT_MODEL = GLM47_MODEL["model_name"]
+GPTS_MANAGER_KEYS = sorted(item for item in model_config.GPTS_WHITE_LIST if str(item).strip())
+GPTASSISTANT_OWNER = GPTS_MANAGER_KEYS[0] if GPTS_MANAGER_KEYS else ""
+GPTASSISTANT_ADMINS = GPTS_MANAGER_KEYS[1:]
+GPTASSISTANT_VISIBLE_MODEL_IDS = [
+    QWEN35_MODEL["model_name"],
+    GLM47_MODEL["model_name"],
+    GLM5_MODEL["model_name"],
+]
 
 register_gpt({
     "gptassistant": {
+        "assistant_kind": "system",
+        "handler_key": "kernel_gptassistant",
+        "owner": GPTASSISTANT_OWNER,
+        "admins": GPTASSISTANT_ADMINS,
+        "viewers": [],
         "name": "AI助手",
         "title": "通用对话助手",
         "sub_title": "通用对话助手111",
@@ -29,6 +43,7 @@ register_gpt({
         "office_max_compression_ratio": 100,
         "default_model": DEFAULT_GPTASSISTANT_MODEL,
         "default_reasoning": True,
+        "visible_model_ids": GPTASSISTANT_VISIBLE_MODEL_IDS,
         "auth": {"type": "all"},
         "sort": 0,
         "models": [

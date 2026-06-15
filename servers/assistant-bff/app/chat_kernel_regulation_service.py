@@ -31,6 +31,8 @@ from app.llm_kernel import (
 from app.logger import gpt_logger
 from app.metrics.events import UsageEventTracker
 from app.tracing import ChatTraceRecorder
+from app.storage.business_store import list_file_mappings
+from app.storage.object_store import ensure_local_path
 
 
 KERNEL_HISTORY_PREFIX = "llm_kernel:regulationassistant:"
@@ -325,17 +327,69 @@ def _normalize_document_name(file_name: str) -> str:
     return normalized
 
 
-def _catalog_file_path() -> str:
-    return os.path.join(model_config.FILE_BASE, "regulationassistant", "document_catalog.json")
+def _regulation_knowledge_files() -> list[dict[str, Any]]:
+    files = [
+        entry
+        for entry in list_file_mappings("regulationassistant").values()
+        if entry.get("purpose") == "assistant_knowledge"
+    ]
+    files.sort(key=lambda item: str(item.get("filename") or "").lower())
+    return files
 
 
-def _document_file_path(file_name: str) -> str:
-    return os.path.join(model_config.FILE_BASE, "regulationassistant", "pdf", file_name)
+def _document_knowledge_entry(file_name: str) -> dict[str, Any] | None:
+    normalized_name = _normalize_document_name(file_name)
+    for entry in _regulation_knowledge_files():
+        if str(entry.get("filename") or "").strip() == normalized_name:
+            return entry
+    return None
+
+
+def _current_document_catalog_files() -> list[dict[str, Any]]:
+    return [
+        {
+            "file_name": entry.get("filename"),
+            "file_extension": entry.get("fileExtension"),
+            "content_type": entry.get("contentType"),
+            "size_bytes": entry.get("sizeBytes"),
+            "upload_time": entry.get("uploadTime"),
+        }
+        for entry in _regulation_knowledge_files()
+        if str(entry.get("filename") or "").strip() != "document_catalog.json"
+    ]
 
 
 def _read_document_catalog() -> str:
-    with open(_catalog_file_path(), "r", encoding="utf-8") as file:
-        payload = json.load(file)
+    current_files = _current_document_catalog_files()
+    catalog_entry = _document_knowledge_entry("document_catalog.json")
+    if catalog_entry:
+        catalog_path = ensure_local_path(catalog_entry)
+        with open(catalog_path, "r", encoding="utf-8") as file:
+            raw_catalog = file.read()
+        try:
+            payload = json.loads(raw_catalog)
+        except json.JSONDecodeError:
+            payload = {}
+        if isinstance(payload, dict):
+            configured_files = payload.get("files")
+            configured_by_name = {
+                str(item.get("file_name") or "").strip(): item
+                for item in configured_files
+                if isinstance(item, dict) and str(item.get("file_name") or "").strip()
+            } if isinstance(configured_files, list) else {}
+            payload["files"] = [
+                {
+                    **configured_by_name.get(str(item.get("file_name") or "").strip(), {}),
+                    **item,
+                }
+                for item in current_files
+            ]
+            return json.dumps(payload, ensure_ascii=False, indent=2)
+
+    payload = {
+        "source": "regulationassistant_knowledge_files",
+        "files": current_files,
+    }
     return json.dumps(payload, ensure_ascii=False, indent=2)
 
 
@@ -355,10 +409,14 @@ async def _execute_regulation_tool(tool_name: str, arguments: dict[str, Any]) ->
         current_size = 0
         for file_name in file_names:
             normalized_name = _normalize_document_name(str(file_name))
-            file_path = _document_file_path(normalized_name)
-            if not os.path.exists(file_path):
+            entry = _document_knowledge_entry(normalized_name)
+            if not entry:
                 raise FileNotFoundError(f"文件不存在: {normalized_name}")
-            extracted = text_extractor.extract_text(file_path, ".pdf")
+            file_path = ensure_local_path(entry)
+            extracted = text_extractor.extract_text(
+                file_path,
+                str(entry.get("fileExtension") or ""),
+            )
             resolved_files.append(normalized_name)
             section = f"文件《{normalized_name}》内容：\n{extracted.strip()}\n"
             remaining = max_chars - current_size

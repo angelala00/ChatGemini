@@ -48,9 +48,26 @@ interface SidebarProps {
     readonly onToggleSidebar: () => void;
 }
 
-const APP_VERSION = "v1.5.0";
+const APP_VERSION = "v1.6.0";
 
 const releaseHistory = [
+    {
+        version: "v1.6.0",
+        date: "2026.06",
+        type: "minor",
+        zhTitle: "主助手迁入我的智能体",
+        zhChanges: [
+            "主助手 AI 助手迁移为可管理的系统智能体，可在“我的智能体”中直接编辑提示词、默认模型、可见模型和知识文件。",
+            "制度助手、主助手和普通自定义智能体统一采用 owner/admin/viewer 权限与同一套编辑界面。",
+            "管理后台不再维护主助手默认模型与可见模型，相关配置入口改为迁移提示。",
+        ],
+        enTitle: "Main Assistant Moved into My Agents",
+        enChanges: [
+            "The main AI Assistant is now a manageable system agent that can be edited in My Agents, including prompt, default model, visible models, and knowledge files.",
+            "The regulation assistant, main assistant, and custom agents now share the same owner/admin/viewer ACL model and editing surface.",
+            "The admin console no longer serves as the source of truth for the main assistant model defaults and visibility settings.",
+        ],
+    },
     {
         version: "v1.5.0",
         date: "2026.06",

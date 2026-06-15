@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { Container } from "../components/Container";
 import { getFullPath } from "../helpers/getDomainAndPath";
+import { sendUserConfirm } from "../helpers/sendUserConfirm";
+import { sendUserAlert } from "../helpers/sendUserAlert";
 import { normalizeAssetPath } from "../helpers/normalizeAssetPath";
 import editIcon from "../assets/icons/pen-to-square-solid.svg";
 import deleteIcon from "../assets/icons/trash-solid.svg";
@@ -10,11 +13,15 @@ interface GptsItem {
     readonly gid: string;
     readonly name: string;
     readonly logo?: string;
+    readonly owner?: string;
+    readonly can_edit?: boolean;
+    readonly can_delete?: boolean;
 }
 
 const MyGpts = () => {
     const [items, setItems] = useState<GptsItem[]>([]);
     const navigate = useNavigate();
+    const { t } = useTranslation();
 
     useEffect(() => {
         fetch(getFullPath('/api/gpts/created'), {})
@@ -28,13 +35,21 @@ const MyGpts = () => {
     };
 
     const handleDelete = (gid: string) => {
-        fetch(getFullPath(`/api/gpts/${gid}`), { method: "DELETE" })
-            .then((res) => {
-                if (res.ok) {
-                    setItems((prev) => prev.filter((it) => it.gid !== gid));
-                }
-            })
-            .catch(() => {});
+        sendUserConfirm(t("views.MyGpts.delete_confirm"), {
+            title: t("views.MyGpts.delete_title"),
+            confirmText: t("views.MyGpts.delete_confirm_button"),
+            cancelText: t("views.MyGpts.delete_cancel_button"),
+            onConfirmed: () => {
+                fetch(getFullPath(`/api/gpts/${gid}`), { method: "DELETE" })
+                    .then((res) => {
+                        if (res.ok) {
+                            setItems((prev) => prev.filter((it) => it.gid !== gid));
+                            sendUserAlert(t("views.MyGpts.delete_success"), { type: "success" });
+                        }
+                    })
+                    .catch(() => {});
+            },
+        });
     };
 
     return (
@@ -58,21 +73,32 @@ const MyGpts = () => {
                                             item.name.slice(0, 1)
                                         )}
                                     </div>
-                                    <h3 className="text-lg font-medium text-gray-900">{item.name}</h3>
+                                    <div>
+                                        <h3 className="text-lg font-medium text-gray-900">{item.name}</h3>
+                                        <p className="mt-1 text-xs text-gray-500">
+                                            {item.owner
+                                                ? t("views.MyGpts.owner_label", { owner: item.owner })
+                                                : t("views.MyGpts.owner_unknown")}
+                                        </p>
+                                    </div>
                                 </div>
                                 <div className="flex gap-2">
-                                    <button
-                                        className="size-8 rounded-lg hover:bg-gray-200 flex items-center justify-center"
-                                        onClick={() => handleEdit(item.gid)}
-                                    >
-                                        <img src={editIcon} className="size-4" alt="编辑" />
-                                    </button>
-                                    <button
-                                        className="size-8 rounded-lg hover:bg-gray-200 flex items-center justify-center"
-                                        onClick={() => handleDelete(item.gid)}
-                                    >
-                                        <img src={deleteIcon} className="size-4" alt="删除" />
-                                    </button>
+                                    {item.can_edit !== false && (
+                                        <button
+                                            className="size-8 rounded-lg hover:bg-gray-200 flex items-center justify-center"
+                                            onClick={() => handleEdit(item.gid)}
+                                        >
+                                            <img src={editIcon} className="size-4" alt="编辑" />
+                                        </button>
+                                    )}
+                                    {item.can_delete !== false && (
+                                        <button
+                                            className="size-8 rounded-lg hover:bg-gray-200 flex items-center justify-center"
+                                            onClick={() => handleDelete(item.gid)}
+                                        >
+                                            <img src={deleteIcon} className="size-4" alt="删除" />
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         ))

@@ -42,10 +42,18 @@ from app.chat_service import (
 )
 from app.chat_kernel_service import chat_with_kernel_gptassistant
 from app.chat_kernel_service import KERNEL_HISTORY_PREFIX
-from app.chat_kernel_regulation_service import KERNEL_HISTORY_PREFIX as REGULATION_KERNEL_HISTORY_PREFIX
+from app.chat_kernel_regulation_service import (
+    KERNEL_HISTORY_PREFIX as REGULATION_KERNEL_HISTORY_PREFIX,
+    chat_with_kernel_regulation,
+)
 from app.utils.model_tool import MODEL_NAME_THINKING
 from app.metrics.events import create_usage_event
 from app.tracing import create_chat_trace
+
+REGULATION_HANDLER_KEY = "kernel_regulation"
+CHAT_HANDLER_REGISTRY = {
+    REGULATION_HANDLER_KEY: chat_with_kernel_regulation,
+}
 
 
 def _invoke_chat_function(func, args, *, usage_tracker, trace_recorder):
@@ -97,6 +105,21 @@ def _merge_tool_file_ids(
             file_ids.append(file_id)
     normalized = list(dict.fromkeys(file_ids))
     return ",".join(normalized) or None
+
+
+def _get_handler_key(assistant_config: dict) -> str:
+    return str(assistant_config.get("handler_key") or "").strip()
+
+
+def _resolve_chat_function(assistant_config: dict):
+    chat_function = assistant_config.get("chat_function")
+    if callable(chat_function):
+        return chat_function
+    return CHAT_HANDLER_REGISTRY.get(_get_handler_key(assistant_config))
+
+
+def _is_regulation_assistant(gid: str, assistant_config: dict) -> bool:
+    return _get_handler_key(assistant_config) == REGULATION_HANDLER_KEY
 
 
 def _bind_request_session_attachments(
@@ -271,7 +294,8 @@ class SessionCoverageReportRequest(BaseModel):
 def _runtime_history_key(conversation_id: str, gid: str) -> str:
     if gid == "gptassistant":
         return f"{KERNEL_HISTORY_PREFIX}{conversation_id}"
-    if gid == "regulationassistant":
+    assistant_config = gpts.get(gid, {})
+    if _is_regulation_assistant(gid, assistant_config):
         return f"{REGULATION_KERNEL_HISTORY_PREFIX}{conversation_id}"
     if gpts.get(gid, {}).get("owner"):
         return f"{KERNEL_HISTORY_PREFIX}{conversation_id}"
@@ -605,7 +629,7 @@ async def _get_gid_model_config(
     assistant_config = apply_runtime_gpt_defaults(gid, gpts.get(gid, {}))
     all_models = assistant_config.get("models", [])
     runtime_models = apply_admin_model_config_overrides(gid, all_models)
-    runtime_visible_models = apply_runtime_model_visibility(gid, runtime_models)
+    runtime_visible_models = apply_runtime_model_visibility(gid, runtime_models, assistant_config)
     visible_models = filter_models_for_user(runtime_visible_models, user_email, user_id)
     visible_model_ids = {
         item.get("id")
@@ -871,7 +895,7 @@ async def chat_with_gpts(request: QueryRequest, gid: str, user: dict = Depends(g
         current_provider=get_current_auth_provider(user),
     ):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "No Authorized")
-    if gid == "regulationassistant":
+    if _is_regulation_assistant(gid, assistant_config):
         selected_model_config = await _get_gid_model_config(
             gid,
             request.base_model or request.model,
@@ -923,7 +947,12 @@ async def chat_with_gpts(request: QueryRequest, gid: str, user: dict = Depends(g
                 },
             )
         try:
-            generator = assistant_config["chat_function"](
+            chat_function = _resolve_chat_function(assistant_config)
+            if chat_function is None:
+                raise RuntimeError(
+                    f"chat handler is not registered: {_get_handler_key(assistant_config) or '<empty>'}"
+                )
+            generator = chat_function(
                 request.query,
                 cid,
                 assistant_config["system_prompt"],

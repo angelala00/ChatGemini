@@ -14,6 +14,7 @@ from typing import Any, Iterator
 
 from app.auth.auth_routes import DEFAULT_AUTH_PROVIDER, GLOBAL_AUTH_PROVIDER
 from app.base_config import model_config
+from app.storage.object_store import build_minio_object_key, store_local_file
 
 try:
     import psycopg
@@ -511,6 +512,527 @@ def _ensure_session_history_meta_auth_provider_column() -> None:
         conn.commit()
 
 
+def _ensure_custom_gpts_metadata_columns() -> None:
+    with _connect() as conn:
+        if _use_postgres():
+            conn.execute(
+                "ALTER TABLE custom_gpts ADD COLUMN IF NOT EXISTS assistant_kind TEXT NOT NULL DEFAULT 'custom'"
+            )
+            conn.execute("ALTER TABLE custom_gpts ADD COLUMN IF NOT EXISTS handler_key TEXT")
+            conn.execute(
+                """
+                UPDATE custom_gpts
+                   SET assistant_kind = COALESCE(NULLIF(assistant_kind, ''), 'custom'),
+                       handler_key = NULLIF(handler_key, '')
+                 WHERE assistant_kind IS NULL OR assistant_kind = ''
+                    OR handler_key = ''
+                """
+            )
+        else:
+            columns = _sqlite_columns(conn, "custom_gpts")
+            if "assistant_kind" not in columns:
+                conn.execute(
+                    "ALTER TABLE custom_gpts ADD COLUMN assistant_kind TEXT NOT NULL DEFAULT 'custom'"
+                )
+            if "handler_key" not in columns:
+                conn.execute("ALTER TABLE custom_gpts ADD COLUMN handler_key TEXT")
+            conn.execute(
+                """
+                UPDATE custom_gpts
+                   SET assistant_kind = COALESCE(NULLIF(assistant_kind, ''), 'custom'),
+                       handler_key = NULLIF(handler_key, '')
+                 WHERE assistant_kind IS NULL OR assistant_kind = ''
+                    OR handler_key = ''
+                """
+            )
+        conn.commit()
+
+
+def _ensure_agents_metadata_columns() -> None:
+    with _connect() as conn:
+        if _use_postgres():
+            conn.execute(
+                "ALTER TABLE agents ADD COLUMN IF NOT EXISTS assistant_kind TEXT NOT NULL DEFAULT 'custom'"
+            )
+            conn.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS handler_key TEXT")
+            conn.execute(
+                """
+                UPDATE agents
+                   SET assistant_kind = COALESCE(NULLIF(assistant_kind, ''), 'custom'),
+                       handler_key = NULLIF(handler_key, '')
+                 WHERE assistant_kind IS NULL OR assistant_kind = ''
+                    OR handler_key = ''
+                """
+            )
+        else:
+            columns = _sqlite_columns(conn, "agents")
+            if "assistant_kind" not in columns:
+                conn.execute(
+                    "ALTER TABLE agents ADD COLUMN assistant_kind TEXT NOT NULL DEFAULT 'custom'"
+                )
+            if "handler_key" not in columns:
+                conn.execute("ALTER TABLE agents ADD COLUMN handler_key TEXT")
+            conn.execute(
+                """
+                UPDATE agents
+                   SET assistant_kind = COALESCE(NULLIF(assistant_kind, ''), 'custom'),
+                       handler_key = NULLIF(handler_key, '')
+                 WHERE assistant_kind IS NULL OR assistant_kind = ''
+                    OR handler_key = ''
+                """
+            )
+        conn.commit()
+
+
+def _custom_gpt_metadata_from_config(config: dict[str, Any]) -> dict[str, Any]:
+    assistant_kind = str(config.get("assistant_kind") or "custom").strip() or "custom"
+    handler_key = str(config.get("handler_key") or "").strip() or None
+    return {
+        "assistant_kind": assistant_kind,
+        "handler_key": handler_key,
+    }
+
+
+def _json_safe_seed_gpt_config(config: dict[str, Any]) -> dict[str, Any]:
+    safe_config: dict[str, Any] = {}
+    for key, value in config.items():
+        if key == "chat_function" or callable(value):
+            continue
+        safe_config[key] = value
+    return safe_config
+
+
+def _normalize_identity_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    items: list[str] = []
+    for item in value:
+        if isinstance(item, str):
+            normalized = item.strip()
+            if normalized and normalized not in items:
+                items.append(normalized)
+    return items
+
+
+def _regulation_acl_defaults() -> dict[str, Any]:
+    white_list = sorted(item for item in model_config.GPTS_WHITE_LIST if str(item).strip())
+    owner = white_list[0] if white_list else ""
+    admins = white_list[1:]
+    return {
+        "owner": owner,
+        "admins": admins,
+        "viewers": [],
+    }
+
+
+def _regulation_source_dir() -> Path:
+    return Path(model_config.FILE_BASE) / "regulationassistant"
+
+
+def _regulation_source_files() -> list[Path]:
+    source_dir = _regulation_source_dir()
+    if not source_dir.exists():
+        return []
+    files: list[Path] = []
+    for path in sorted(source_dir.rglob("*")):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(source_dir).as_posix()
+        if not relative or relative.startswith("."):
+            continue
+        files.append(path)
+    return files
+
+
+def _regulation_seed_upload_time(path: Path) -> str:
+    return datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).isoformat()
+
+
+def _regulation_knowledge_file_id(relative_path: str) -> str:
+    normalized = relative_path.replace("\\", "/").strip("/")
+    normalized = normalized.replace("/", "__")
+    return f"regulationassistant:{normalized}"
+
+
+def _seed_regulation_knowledge_file_payload(path: Path) -> dict[str, Any]:
+    relative_path = path.relative_to(_regulation_source_dir()).as_posix()
+    filename = path.name
+    content_type, _ = mimetypes.guess_type(filename)
+    content_bytes = path.read_bytes()
+    size_bytes = len(content_bytes)
+    content_sha256 = hashlib.sha256(content_bytes).hexdigest()
+    upload_time = _regulation_seed_upload_time(path)
+    return {
+        "file_id": _regulation_knowledge_file_id(relative_path),
+        "filename": filename,
+        "file_extension": path.suffix.lower(),
+        "content_type": content_type or "application/octet-stream",
+        "upload_time": upload_time,
+        "bucket": "gptassistant",
+        "size_bytes": size_bytes,
+        "content_sha256": content_sha256,
+        "gid": "regulationassistant",
+        "owner_user_id": None,
+        "owner_user_email": None,
+        "auth_provider": GLOBAL_AUTH_PROVIDER,
+        "purpose": "assistant_knowledge",
+        "conversation_id": None,
+    }
+
+
+def _regulation_seed_storage_payload(path: Path, payload: dict[str, Any]) -> dict[str, Any]:
+    stored = store_local_file(
+        file_id=str(payload["file_id"]),
+        filename=str(payload["filename"]),
+        source_path=path,
+        content_type=str(payload["content_type"]),
+        upload_time=str(payload["upload_time"]),
+    )
+    return {
+        **payload,
+        "bucket": str(stored.get("bucket") or ""),
+        "object_key": str(stored.get("object_key") or ""),
+        "storage_backend": str(stored.get("storage_backend") or ""),
+        "size_bytes": int(stored.get("size_bytes") or 0),
+    }
+
+
+def _regulation_seed_desired_storage_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    file_id = str(payload["file_id"])
+    filename = str(payload["filename"])
+    upload_time = str(payload["upload_time"])
+    if model_config.OBJECT_STORAGE_BACKEND == "minio":
+        return {
+            **payload,
+            "bucket": model_config.MINIO_BUCKET,
+            "object_key": build_minio_object_key(
+                file_id=file_id,
+                filename=filename,
+                upload_time=upload_time,
+            ),
+            "storage_backend": "minio",
+        }
+    return {
+        **payload,
+        "bucket": "",
+        "object_key": str(Path(model_config.FILE_BASE) / "gptassistant" / "uploads" / file_id),
+        "storage_backend": "filesystem",
+    }
+
+
+def _file_mapping_needs_refresh(existing: dict[str, Any] | None, desired: dict[str, Any]) -> bool:
+    if not existing:
+        return True
+    comparisons = (
+        ("filename", "filename"),
+        ("file_extension", "file_extension"),
+        ("content_type", "content_type"),
+        ("bucket", "bucket"),
+        ("object_key", "object_key"),
+        ("storage_backend", "storage_backend"),
+        ("size_bytes", "size_bytes"),
+        ("content_sha256", "content_sha256"),
+        ("gid", "gid"),
+        ("purpose", "purpose"),
+        ("conversation_id", "conversation_id"),
+        ("owner_user_id", "owner_user_id"),
+        ("owner_user_email", "owner_user_email"),
+        ("auth_provider", "auth_provider"),
+    )
+    for existing_key, desired_key in comparisons:
+        if str(existing.get(existing_key) or "") != str(desired.get(desired_key) or ""):
+            return True
+    return False
+
+
+def _load_seed_system_gpts() -> dict[str, dict[str, Any]]:
+    global _INITIALIZED
+
+    previous_initialized = _INITIALIZED
+    _INITIALIZED = True
+    try:
+        import app.gpts  # noqa: F401  # Ensure built-in GPT modules register on import.
+        from app.gpts.config_gpts import builtin_gpts
+
+        configs = builtin_gpts
+    finally:
+        _INITIALIZED = previous_initialized
+
+    seeded_items: dict[str, dict[str, Any]] = {}
+    for gid, config in configs.items():
+        if not isinstance(config, dict):
+            continue
+        if str(config.get("assistant_kind") or "").strip() != "system":
+            continue
+        if not str(config.get("handler_key") or "").strip():
+            continue
+        seeded_items[gid] = config
+    return seeded_items
+
+
+def _sync_seed_system_gpts_to_storage() -> None:
+    seeded_items = _load_seed_system_gpts()
+    if not seeded_items:
+        return
+    with _connect() as conn:
+        for gid, config in seeded_items.items():
+            safe_config = _json_safe_seed_gpt_config(config)
+            payload = json.dumps(safe_config, ensure_ascii=False)
+            metadata = _custom_gpt_metadata_from_config(safe_config)
+            if _use_postgres():
+                conn.execute(
+                    """
+                    INSERT INTO agents(gid, config, assistant_kind, handler_key)
+                    VALUES(%s, %s::jsonb, %s, %s)
+                    ON CONFLICT (gid) DO UPDATE SET
+                        assistant_kind=EXCLUDED.assistant_kind,
+                        handler_key=EXCLUDED.handler_key
+                    """,
+                    (gid, payload, metadata["assistant_kind"], metadata["handler_key"]),
+                )
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO agents(gid, config, assistant_kind, handler_key)
+                    VALUES(?, ?, ?, ?)
+                    ON CONFLICT(gid) DO UPDATE SET
+                        assistant_kind=excluded.assistant_kind,
+                        handler_key=excluded.handler_key
+                    """,
+                    (gid, payload, metadata["assistant_kind"], metadata["handler_key"]),
+                )
+        conn.commit()
+
+
+def _migrate_legacy_custom_gpts_to_agents() -> None:
+    with _connect() as conn:
+        if _use_postgres():
+            rows = conn.execute(
+                """
+                SELECT c.gid, c.config, c.assistant_kind, c.handler_key
+                  FROM custom_gpts c
+                  LEFT JOIN agents a ON a.gid = c.gid
+                 WHERE a.gid IS NULL
+                """
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT c.gid, c.config, c.assistant_kind, c.handler_key
+                  FROM custom_gpts c
+                  LEFT JOIN agents a ON a.gid = c.gid
+                 WHERE a.gid IS NULL
+                """
+            ).fetchall()
+        for row in rows:
+            item = _normalize_row(row)
+            gid = str(item.get("gid") or "").strip()
+            config_payload = item.get("config")
+            if not gid or config_payload is None:
+                continue
+            assistant_kind = str(item.get("assistant_kind") or "custom").strip() or "custom"
+            handler_key = str(item.get("handler_key") or "").strip() or None
+            if _use_postgres():
+                conn.execute(
+                    """
+                    INSERT INTO agents(gid, config, assistant_kind, handler_key)
+                    VALUES(%s, %s::jsonb, %s, %s)
+                    ON CONFLICT (gid) DO NOTHING
+                    """,
+                    (gid, config_payload, assistant_kind, handler_key),
+                )
+            else:
+                serialized = (
+                    config_payload
+                    if isinstance(config_payload, str)
+                    else json.dumps(config_payload, ensure_ascii=False)
+                )
+                conn.execute(
+                    """
+                    INSERT INTO agents(gid, config, assistant_kind, handler_key)
+                    VALUES(?, ?, ?, ?)
+                    ON CONFLICT(gid) DO NOTHING
+                    """,
+                    (gid, serialized, assistant_kind, handler_key),
+                )
+        conn.commit()
+
+
+def _sync_seed_regulation_knowledge_files_to_storage() -> None:
+    source_files = _regulation_source_files()
+    if not source_files:
+        return
+    with _connect() as conn:
+        for path in source_files:
+            seed_payload = _seed_regulation_knowledge_file_payload(path)
+            desired_payload = _regulation_seed_desired_storage_payload(seed_payload)
+            if _use_postgres():
+                row = conn.execute(
+                    """
+                    SELECT file_id, filename, file_extension, content_type, bucket,
+                           object_key, storage_backend, size_bytes, content_sha256, upload_time, gid,
+                           owner_user_id, owner_user_email, auth_provider, purpose, conversation_id
+                      FROM file_mapping
+                     WHERE file_id=%s AND gid=%s
+                    """,
+                    (seed_payload["file_id"], "regulationassistant"),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    """
+                    SELECT file_id, filename, file_extension, content_type, bucket,
+                           object_key, storage_backend, size_bytes, content_sha256, upload_time, gid,
+                           owner_user_id, owner_user_email, auth_provider, purpose, conversation_id
+                      FROM file_mapping
+                     WHERE file_id=? AND gid=?
+                    """,
+                    (seed_payload["file_id"], "regulationassistant"),
+                ).fetchone()
+            existing = _normalize_row(row) if row else None
+            if not _file_mapping_needs_refresh(existing, desired_payload):
+                continue
+            stored_payload = _regulation_seed_storage_payload(path, seed_payload)
+            if _use_postgres():
+                if existing:
+                    conn.execute(
+                        """
+                        UPDATE file_mapping
+                           SET filename=%s,
+                               file_extension=%s,
+                               content_type=%s,
+                               bucket=%s,
+                               object_key=%s,
+                               storage_backend=%s,
+                               size_bytes=%s,
+                               content_sha256=%s,
+                               upload_time=%s,
+                               gid=%s,
+                               owner_user_id=%s,
+                               owner_user_email=%s,
+                               auth_provider=%s,
+                               purpose=%s,
+                               conversation_id=%s
+                         WHERE file_id=%s
+                        """,
+                        (
+                            stored_payload["filename"],
+                            stored_payload["file_extension"],
+                            stored_payload["content_type"],
+                            stored_payload["bucket"],
+                            stored_payload["object_key"],
+                            stored_payload["storage_backend"],
+                            stored_payload["size_bytes"],
+                            stored_payload["content_sha256"],
+                            stored_payload["upload_time"],
+                            stored_payload["gid"],
+                            stored_payload["owner_user_id"],
+                            stored_payload["owner_user_email"],
+                            stored_payload["auth_provider"],
+                            stored_payload["purpose"],
+                            stored_payload["conversation_id"],
+                            seed_payload["file_id"],
+                        ),
+                    )
+                else:
+                    conn.execute(
+                        """
+                        INSERT INTO file_mapping(
+                            file_id, filename, file_extension, content_type, bucket,
+                            object_key, storage_backend, size_bytes, content_sha256, upload_time, gid,
+                            owner_user_id, owner_user_email, auth_provider, purpose, conversation_id
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """,
+                        (
+                            seed_payload["file_id"],
+                            stored_payload["filename"],
+                            stored_payload["file_extension"],
+                            stored_payload["content_type"],
+                            stored_payload["bucket"],
+                            stored_payload["object_key"],
+                            stored_payload["storage_backend"],
+                            stored_payload["size_bytes"],
+                            stored_payload["content_sha256"],
+                            stored_payload["upload_time"],
+                            stored_payload["gid"],
+                            stored_payload["owner_user_id"],
+                            stored_payload["owner_user_email"],
+                            stored_payload["auth_provider"],
+                            stored_payload["purpose"],
+                            stored_payload["conversation_id"],
+                        ),
+                    )
+            else:
+                if existing:
+                    conn.execute(
+                        """
+                        UPDATE file_mapping
+                           SET filename=?,
+                               file_extension=?,
+                               content_type=?,
+                               bucket=?,
+                               object_key=?,
+                               storage_backend=?,
+                               size_bytes=?,
+                               content_sha256=?,
+                               upload_time=?,
+                               gid=?,
+                               owner_user_id=?,
+                               owner_user_email=?,
+                               auth_provider=?,
+                               purpose=?,
+                               conversation_id=?
+                         WHERE file_id=?
+                        """,
+                        (
+                            stored_payload["filename"],
+                            stored_payload["file_extension"],
+                            stored_payload["content_type"],
+                            stored_payload["bucket"],
+                            stored_payload["object_key"],
+                            stored_payload["storage_backend"],
+                            stored_payload["size_bytes"],
+                            stored_payload["content_sha256"],
+                            stored_payload["upload_time"],
+                            stored_payload["gid"],
+                            stored_payload["owner_user_id"],
+                            stored_payload["owner_user_email"],
+                            stored_payload["auth_provider"],
+                            stored_payload["purpose"],
+                            stored_payload["conversation_id"],
+                            seed_payload["file_id"],
+                        ),
+                    )
+                else:
+                    conn.execute(
+                        """
+                        INSERT INTO file_mapping(
+                            file_id, filename, file_extension, content_type, bucket,
+                            object_key, storage_backend, size_bytes, content_sha256, upload_time, gid,
+                            owner_user_id, owner_user_email, auth_provider, purpose, conversation_id
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            seed_payload["file_id"],
+                            stored_payload["filename"],
+                            stored_payload["file_extension"],
+                            stored_payload["content_type"],
+                            stored_payload["bucket"],
+                            stored_payload["object_key"],
+                            stored_payload["storage_backend"],
+                            stored_payload["size_bytes"],
+                            stored_payload["content_sha256"],
+                            stored_payload["upload_time"],
+                            stored_payload["gid"],
+                            stored_payload["owner_user_id"],
+                            stored_payload["owner_user_email"],
+                            stored_payload["auth_provider"],
+                            stored_payload["purpose"],
+                            stored_payload["conversation_id"],
+                        ),
+                    )
+        conn.commit()
+
+
 def _ensure_file_mapping_owner_columns() -> None:
     with _connect() as conn:
         if _use_postgres():
@@ -584,6 +1106,52 @@ def _ensure_file_mapping_owner_columns() -> None:
             )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_file_mapping_object ON file_mapping(bucket, object_key)"
+            )
+        conn.commit()
+
+
+def _ensure_file_upload_reservations_auth_provider_column() -> None:
+    with _connect() as conn:
+        if _use_postgres():
+            exists_row = conn.execute(
+                "SELECT to_regclass('file_upload_reservations') IS NOT NULL AS exists"
+            ).fetchone()
+            exists = bool(_normalize_row(exists_row).get("exists")) if exists_row else False
+            if not exists:
+                return
+        elif not _sqlite_table_exists(conn, "file_upload_reservations"):
+            return
+        if _use_postgres():
+            conn.execute("ALTER TABLE file_upload_reservations ADD COLUMN IF NOT EXISTS auth_provider TEXT")
+            conn.execute(
+                """
+                UPDATE file_upload_reservations
+                   SET auth_provider=%s
+                 WHERE auth_provider IS NULL OR auth_provider=''
+                """,
+                (DEFAULT_AUTH_PROVIDER,),
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_file_upload_reservations_owner
+                  ON file_upload_reservations(gid, owner_user_id, owner_user_email, auth_provider)
+                """
+            )
+        else:
+            columns = _sqlite_columns(conn, "file_upload_reservations")
+            if "auth_provider" not in columns:
+                conn.execute(
+                    f"ALTER TABLE file_upload_reservations ADD COLUMN auth_provider TEXT NOT NULL DEFAULT '{DEFAULT_AUTH_PROVIDER}'"
+                )
+            conn.execute(
+                f"""
+                UPDATE file_upload_reservations
+                   SET auth_provider='{DEFAULT_AUTH_PROVIDER}'
+                 WHERE auth_provider IS NULL OR auth_provider=''
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_file_upload_reservations_owner ON file_upload_reservations(gid, owner_user_id, owner_user_email, auth_provider)"
             )
         conn.commit()
 
@@ -773,7 +1341,7 @@ def _migrate_sqlite_light_business_tables_source_to_postgres(source_path: Path) 
                             continue
                         conn.execute(
                             """
-                            INSERT INTO custom_gpts(gid, config)
+                            INSERT INTO agents(gid, config)
                             VALUES (%s, %s::jsonb)
                             ON CONFLICT (gid) DO UPDATE SET config=EXCLUDED.config
                             """,
@@ -1122,21 +1690,8 @@ def _load_seed_admin_feature_flags() -> list[dict[str, Any]]:
     _INITIALIZED = True
     try:
         import app.gpts  # noqa: F401
-        from app.gpts.config_gpts import fetch_gpts
-
-        assistant_config = fetch_gpts().get("gptassistant") or {}
     finally:
         _INITIALIZED = previous_initialized
-
-    models = assistant_config.get("models")
-    visible_model_ids: list[str] = []
-    if isinstance(models, list):
-        for item in models:
-            if not isinstance(item, dict):
-                continue
-            model_id = str(item.get("id") or item.get("model_name") or "").strip()
-            if model_id and model_id not in visible_model_ids:
-                visible_model_ids.append(model_id)
 
     return [
         {
@@ -1144,24 +1699,6 @@ def _load_seed_admin_feature_flags() -> list[dict[str, Any]]:
             "config_value": bool(model_config.GPTS_FEATURE_ENABLED),
             "value_type": "boolean",
             "description": "Enable GPTS feature",
-        },
-        {
-            "config_key": "default_model",
-            "config_value": str(assistant_config.get("default_model") or ""),
-            "value_type": "string",
-            "description": "Default model for the main assistant",
-        },
-        {
-            "config_key": "default_visible_models",
-            "config_value": visible_model_ids,
-            "value_type": "json",
-            "description": "Visible models for the main assistant",
-        },
-        {
-            "config_key": "default_reasoning_enabled",
-            "config_value": bool(assistant_config.get("default_reasoning", False)),
-            "value_type": "boolean",
-            "description": "Default reasoning toggle for the main assistant",
         },
     ]
 
@@ -1271,6 +1808,7 @@ def _seed_admin_feature_flags_if_empty() -> None:
 def init_business_storage() -> None:
     global _INITIALIZED
     with _connect() as conn:
+        _ensure_file_upload_reservations_auth_provider_column()
         if _use_postgres():
             conn.execute(
                 """
@@ -1314,7 +1852,19 @@ def init_business_storage() -> None:
                 """
                 CREATE TABLE IF NOT EXISTS custom_gpts (
                   gid TEXT PRIMARY KEY,
-                  config JSONB NOT NULL
+                  config JSONB NOT NULL,
+                  assistant_kind TEXT NOT NULL DEFAULT 'custom',
+                  handler_key TEXT
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS agents (
+                  gid TEXT PRIMARY KEY,
+                  config JSONB NOT NULL,
+                  assistant_kind TEXT NOT NULL DEFAULT 'custom',
+                  handler_key TEXT
                 )
                 """
             )
@@ -1495,7 +2045,15 @@ def init_business_storage() -> None:
                 );
                 CREATE TABLE IF NOT EXISTS custom_gpts (
                   gid TEXT PRIMARY KEY,
-                  config TEXT NOT NULL
+                  config TEXT NOT NULL,
+                  assistant_kind TEXT NOT NULL DEFAULT 'custom',
+                  handler_key TEXT
+                );
+                CREATE TABLE IF NOT EXISTS agents (
+                  gid TEXT PRIMARY KEY,
+                  config TEXT NOT NULL,
+                  assistant_kind TEXT NOT NULL DEFAULT 'custom',
+                  handler_key TEXT
                 );
                 CREATE TABLE IF NOT EXISTS user_gpts_state (
                   user_id TEXT NOT NULL,
@@ -1596,10 +2154,15 @@ def init_business_storage() -> None:
                 """
             )
         conn.commit()
-    _seed_admin_model_configs_if_empty()
-    _seed_admin_user_permissions_if_empty()
-    _seed_admin_feature_flags_if_empty()
-    _ensure_session_history_meta_auth_provider_column()
+        _ensure_session_history_meta_auth_provider_column()
+        _ensure_custom_gpts_metadata_columns()
+        _ensure_agents_metadata_columns()
+        _seed_admin_model_configs_if_empty()
+        _seed_admin_user_permissions_if_empty()
+        _seed_admin_feature_flags_if_empty()
+        _migrate_legacy_custom_gpts_to_agents()
+    _sync_seed_system_gpts_to_storage()
+    _sync_seed_regulation_knowledge_files_to_storage()
     _ensure_file_mapping_owner_columns()
     _migrate_sqlite_file_mapping_to_postgres_if_needed()
     _migrate_sqlite_light_business_tables_to_postgres_if_needed()
@@ -1961,9 +2524,9 @@ def load_custom_gpts() -> dict[str, dict[str, Any]]:
     ensure_initialized()
     with _connect() as conn:
         if _use_postgres():
-            rows = conn.execute("SELECT gid, config FROM custom_gpts").fetchall()
+            rows = conn.execute("SELECT gid, config, assistant_kind, handler_key FROM agents").fetchall()
         else:
-            rows = conn.execute("SELECT gid, config FROM custom_gpts").fetchall()
+            rows = conn.execute("SELECT gid, config, assistant_kind, handler_key FROM agents").fetchall()
     result: dict[str, dict[str, Any]] = {}
     for row in rows:
         item = _normalize_row(row)
@@ -1974,23 +2537,42 @@ def load_custom_gpts() -> dict[str, dict[str, Any]]:
             except json.JSONDecodeError:
                 continue
         if isinstance(payload, dict):
-            result[str(item["gid"])] = _normalize_custom_gpt_payload(payload)
+            normalized = _normalize_custom_gpt_payload(payload)
+            assistant_kind = str(item.get("assistant_kind") or "").strip()
+            handler_key = str(item.get("handler_key") or "").strip()
+            if assistant_kind:
+                normalized["assistant_kind"] = assistant_kind
+            if handler_key:
+                normalized["handler_key"] = handler_key
+            if str(item["gid"]) == "regulationassistant":
+                defaults = _regulation_acl_defaults()
+                normalized["owner"] = str(normalized.get("owner") or defaults["owner"] or "").strip()
+                normalized["admins"] = _normalize_identity_list(normalized.get("admins")) or defaults["admins"]
+                normalized["viewers"] = _normalize_identity_list(normalized.get("viewers")) or defaults["viewers"]
+            result[str(item["gid"])] = normalized
     return result
 
 
 def insert_custom_gpt(gid: str, config: dict[str, Any]) -> None:
     ensure_initialized()
     payload = json.dumps(config, ensure_ascii=False)
+    metadata = _custom_gpt_metadata_from_config(config)
     with _connect() as conn:
         if _use_postgres():
             conn.execute(
-                "INSERT INTO custom_gpts(gid, config) VALUES(%s, %s::jsonb)",
-                (gid, payload),
+                """
+                INSERT INTO agents(gid, config, assistant_kind, handler_key)
+                VALUES(%s, %s::jsonb, %s, %s)
+                """,
+                (gid, payload, metadata["assistant_kind"], metadata["handler_key"]),
             )
         else:
             conn.execute(
-                "INSERT INTO custom_gpts(gid, config) VALUES(?, ?)",
-                (gid, payload),
+                """
+                INSERT INTO agents(gid, config, assistant_kind, handler_key)
+                VALUES(?, ?, ?, ?)
+                """,
+                (gid, payload, metadata["assistant_kind"], metadata["handler_key"]),
             )
         conn.commit()
 
@@ -1998,16 +2580,29 @@ def insert_custom_gpt(gid: str, config: dict[str, Any]) -> None:
 def update_custom_gpt(gid: str, config: dict[str, Any]) -> None:
     ensure_initialized()
     payload = json.dumps(config, ensure_ascii=False)
+    metadata = _custom_gpt_metadata_from_config(config)
     with _connect() as conn:
         if _use_postgres():
             conn.execute(
-                "UPDATE custom_gpts SET config=%s::jsonb WHERE gid=%s",
-                (payload, gid),
+                """
+                UPDATE agents
+                   SET config=%s::jsonb,
+                       assistant_kind=%s,
+                       handler_key=%s
+                 WHERE gid=%s
+                """,
+                (payload, metadata["assistant_kind"], metadata["handler_key"], gid),
             )
         else:
             conn.execute(
-                "UPDATE custom_gpts SET config=? WHERE gid=?",
-                (payload, gid),
+                """
+                UPDATE agents
+                   SET config=?,
+                       assistant_kind=?,
+                       handler_key=?
+                 WHERE gid=?
+                """,
+                (payload, metadata["assistant_kind"], metadata["handler_key"], gid),
             )
         conn.commit()
 
@@ -2016,9 +2611,9 @@ def delete_custom_gpt(gid: str) -> None:
     ensure_initialized()
     with _connect() as conn:
         if _use_postgres():
-            conn.execute("DELETE FROM custom_gpts WHERE gid=%s", (gid,))
+            conn.execute("DELETE FROM agents WHERE gid=%s", (gid,))
         else:
-            conn.execute("DELETE FROM custom_gpts WHERE gid=?", (gid,))
+            conn.execute("DELETE FROM agents WHERE gid=?", (gid,))
         conn.commit()
 
 
@@ -3146,6 +3741,171 @@ def delete_admin_feature_flag(config_key: str) -> None:
         else:
             conn.execute("DELETE FROM admin_feature_flags WHERE config_key=?", (config_key,))
         conn.commit()
+
+
+def prune_admin_feature_flags_for_deleted_model(
+    model_id: str,
+    *,
+    updated_by: str | None = None,
+) -> dict[str, Any]:
+    ensure_initialized()
+    normalized_model_id = str(model_id or "").strip()
+    if not normalized_model_id:
+        return {}
+
+    changed: dict[str, Any] = {}
+    now = _now_iso()
+    updater = str(updated_by or "system-model-delete").strip() or "system-model-delete"
+
+    with _connect() as conn:
+        if _use_postgres():
+            visible_row = conn.execute(
+                """
+                SELECT config_value, value_type, description
+                  FROM admin_feature_flags
+                 WHERE config_key=%s
+                """,
+                ("default_visible_models",),
+            ).fetchone()
+            if visible_row is not None:
+                visible_item = _normalize_row(visible_row)
+                current_visible = _load_json_field(
+                    visible_item.get("config_value"),
+                    fallback=visible_item.get("config_value"),
+                )
+                if isinstance(current_visible, list):
+                    next_visible = [
+                        str(item).strip()
+                        for item in current_visible
+                        if str(item).strip() and str(item).strip() != normalized_model_id
+                    ]
+                    if next_visible != current_visible:
+                        conn.execute(
+                            """
+                            UPDATE admin_feature_flags
+                               SET config_value=%s::jsonb,
+                                   updated_at=%s,
+                                   updated_by=%s
+                             WHERE config_key=%s
+                            """,
+                            (
+                                _dump_json_field(next_visible, fallback=[]),
+                                now,
+                                updater,
+                                "default_visible_models",
+                            ),
+                        )
+                        changed["default_visible_models"] = next_visible
+
+            default_row = conn.execute(
+                """
+                SELECT config_value, value_type, description
+                  FROM admin_feature_flags
+                 WHERE config_key=%s
+                """,
+                ("default_model",),
+            ).fetchone()
+            if default_row is not None:
+                default_item = _normalize_row(default_row)
+                current_default = str(
+                    _load_json_field(
+                        default_item.get("config_value"),
+                        fallback=default_item.get("config_value"),
+                    )
+                    or ""
+                ).strip()
+                if current_default == normalized_model_id:
+                    conn.execute(
+                        """
+                        UPDATE admin_feature_flags
+                           SET config_value=%s::jsonb,
+                               updated_at=%s,
+                               updated_by=%s
+                         WHERE config_key=%s
+                        """,
+                        (
+                            _dump_json_field("", fallback=""),
+                            now,
+                            updater,
+                            "default_model",
+                        ),
+                    )
+                    changed["default_model"] = ""
+        else:
+            visible_row = conn.execute(
+                """
+                SELECT config_value, value_type, description
+                  FROM admin_feature_flags
+                 WHERE config_key=?
+                """,
+                ("default_visible_models",),
+            ).fetchone()
+            if visible_row is not None:
+                visible_item = _normalize_row(visible_row)
+                current_visible = _load_json_field(
+                    visible_item.get("config_value"),
+                    fallback=visible_item.get("config_value"),
+                )
+                if isinstance(current_visible, list):
+                    next_visible = [
+                        str(item).strip()
+                        for item in current_visible
+                        if str(item).strip() and str(item).strip() != normalized_model_id
+                    ]
+                    if next_visible != current_visible:
+                        conn.execute(
+                            """
+                            UPDATE admin_feature_flags
+                               SET config_value=?,
+                                   updated_at=?,
+                                   updated_by=?
+                             WHERE config_key=?
+                            """,
+                            (
+                                _dump_json_field(next_visible, fallback=[]),
+                                now,
+                                updater,
+                                "default_visible_models",
+                            ),
+                        )
+                        changed["default_visible_models"] = next_visible
+
+            default_row = conn.execute(
+                """
+                SELECT config_value, value_type, description
+                  FROM admin_feature_flags
+                 WHERE config_key=?
+                """,
+                ("default_model",),
+            ).fetchone()
+            if default_row is not None:
+                default_item = _normalize_row(default_row)
+                current_default = str(
+                    _load_json_field(
+                        default_item.get("config_value"),
+                        fallback=default_item.get("config_value"),
+                    )
+                    or ""
+                ).strip()
+                if current_default == normalized_model_id:
+                    conn.execute(
+                        """
+                        UPDATE admin_feature_flags
+                           SET config_value=?,
+                               updated_at=?,
+                               updated_by=?
+                         WHERE config_key=?
+                        """,
+                        (
+                            _dump_json_field("", fallback=""),
+                            now,
+                            updater,
+                            "default_model",
+                        ),
+                    )
+                    changed["default_model"] = ""
+        conn.commit()
+    return changed
 
 
 def insert_admin_audit_log(

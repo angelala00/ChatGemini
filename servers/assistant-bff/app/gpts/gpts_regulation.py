@@ -1,12 +1,21 @@
 from app.chat_kernel_regulation_service import chat_with_kernel_regulation
+from app.base_config import model_config
 from .config_gpts import register_gpt
 from .model_registry import GLM47_MODEL, QWEN35_MODEL
 
 
 gpts_id = "regulationassistant"
+gpt_white_list = sorted(item for item in model_config.GPTS_WHITE_LIST if str(item).strip())
+gpt_owner = gpt_white_list[0] if gpt_white_list else ""
+gpt_admins = gpt_white_list[1:]
 
 register_gpt({
     gpts_id: {
+        "assistant_kind": "system",
+        "handler_key": "kernel_regulation",
+        "owner": gpt_owner,
+        "admins": gpt_admins,
+        "viewers": [],
         "name": "制度问答助手",
         "logo": "./gpts/policy.svg",
         "title": "我是制度问答助手，很高兴见到你！",

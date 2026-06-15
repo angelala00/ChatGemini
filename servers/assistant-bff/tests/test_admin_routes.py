@@ -117,12 +117,9 @@ class AdminRoutesTests(unittest.IsolatedAsyncioTestCase):
 
         flags = {item["config_key"]: item for item in business_store.list_admin_feature_flags()}
         self.assertTrue(flags["gpts_feature_enabled"]["config_value"])
-        self.assertEqual(flags["default_model"]["config_value"], GLM47_MODEL["model_name"])
-        self.assertEqual(
-            flags["default_visible_models"]["config_value"],
-            [QWEN35_MODEL["model_name"], GLM47_MODEL["model_name"], GLM5_MODEL["model_name"]],
-        )
-        self.assertTrue(flags["default_reasoning_enabled"]["config_value"])
+        self.assertNotIn("default_model", flags)
+        self.assertNotIn("default_visible_models", flags)
+        self.assertNotIn("default_reasoning_enabled", flags)
 
     def test_init_business_storage_backfills_missing_feature_flags(self):
         conn = self._conn()
@@ -151,69 +148,41 @@ class AdminRoutesTests(unittest.IsolatedAsyncioTestCase):
 
         flags = {item["config_key"]: item for item in business_store.list_admin_feature_flags()}
         self.assertIn("gpts_feature_enabled", flags)
-        self.assertIn("default_model", flags)
-        self.assertIn("default_visible_models", flags)
-        self.assertIn("default_reasoning_enabled", flags)
-        self.assertEqual(flags["default_model"]["config_value"], GLM47_MODEL["model_name"])
+        self.assertNotIn("default_model", flags)
+        self.assertNotIn("default_visible_models", flags)
+        self.assertNotIn("default_reasoning_enabled", flags)
 
-    def test_init_business_storage_backfills_blank_default_model_flag(self):
-        conn = self._conn()
-        try:
-            conn.execute("DELETE FROM admin_feature_flags")
-            conn.execute(
-                """
-                INSERT INTO admin_feature_flags(config_key, config_value, value_type, description, updated_at, updated_by)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    "default_model",
-                    "\"\"",
-                    "string",
-                    "Default model for the main assistant",
-                    "2026-01-01T00:00:00+00:00",
-                    "legacy",
-                ),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-
-        business_store._INITIALIZED = False
-        business_store.init_business_storage()
-
-        flags = {item["config_key"]: item for item in business_store.list_admin_feature_flags()}
-        self.assertEqual(flags["default_model"]["config_value"], GLM47_MODEL["model_name"])
-
-    def test_init_business_storage_backfills_empty_default_visible_models_flag(self):
-        conn = self._conn()
-        try:
-            conn.execute("DELETE FROM admin_feature_flags")
-            conn.execute(
-                """
-                INSERT INTO admin_feature_flags(config_key, config_value, value_type, description, updated_at, updated_by)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    "default_visible_models",
-                    "[]",
-                    "json",
-                    "Visible models for the main assistant",
-                    "2026-01-01T00:00:00+00:00",
-                    "legacy",
-                ),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-
-        business_store._INITIALIZED = False
-        business_store.init_business_storage()
-
-        flags = {item["config_key"]: item for item in business_store.list_admin_feature_flags()}
-        self.assertEqual(
-            flags["default_visible_models"]["config_value"],
-            [QWEN35_MODEL["model_name"], GLM47_MODEL["model_name"], GLM5_MODEL["model_name"]],
+    async def test_delete_admin_model_prunes_feature_flag_references(self):
+        self._seed_permission("admin@example.com", "admin.access")
+        self._seed_permission("admin@example.com", "models.manage")
+        business_store.upsert_admin_model_config(
+            model_id=GLM5_MODEL["model_name"],
+            display_name="GLM 5",
+            provider_model_name=GLM5_MODEL["model_name"],
+            sort_order=300,
+            enabled=True,
         )
+        business_store.upsert_admin_feature_flag(
+            config_key="default_model",
+            config_value=GLM5_MODEL["model_name"],
+            value_type="string",
+            description="Default model for the main assistant",
+            updated_by="admin@example.com",
+        )
+        business_store.upsert_admin_feature_flag(
+            config_key="default_visible_models",
+            config_value=[GLM47_MODEL["model_name"], GLM5_MODEL["model_name"]],
+            value_type="json",
+            description="Visible models for the main assistant",
+            updated_by="admin@example.com",
+        )
+
+        result = await admin_routes.remove_admin_model(GLM5_MODEL["model_name"], self.user)
+        flags = {item["config_key"]: item for item in business_store.list_admin_feature_flags()}
+
+        self.assertTrue(result["deleted"])
+        self.assertEqual(flags["default_model"]["config_value"], "")
+        self.assertEqual(flags["default_visible_models"]["config_value"], [GLM47_MODEL["model_name"]])
 
     async def test_admin_models_rejects_user_without_access(self):
         with self.assertRaises(HTTPException) as ctx:
