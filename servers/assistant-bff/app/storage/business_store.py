@@ -197,6 +197,13 @@ def _dump_json_field(value: Any, *, fallback: Any) -> str:
     return json.dumps(target, ensure_ascii=False)
 
 
+def _coerce_jsonb_param(value: Any, *, fallback: Any = None) -> str:
+    target = fallback if value is None else value
+    if isinstance(target, str):
+        return target
+    return json.dumps(target, ensure_ascii=False)
+
+
 def _history_encryption_enabled() -> bool:
     return bool(model_config.SESSION_HISTORY_ENCRYPTION_KEY.strip())
 
@@ -839,7 +846,12 @@ def _migrate_legacy_custom_gpts_to_agents() -> None:
                     VALUES(%s, %s::jsonb, %s, %s)
                     ON CONFLICT (gid) DO NOTHING
                     """,
-                    (gid, config_payload, assistant_kind, handler_key),
+                    (
+                        gid,
+                        _coerce_jsonb_param(config_payload, fallback={}),
+                        assistant_kind,
+                        handler_key,
+                    ),
                 )
             else:
                 serialized = (

@@ -3694,7 +3694,7 @@
       }
 
       newChatButton.addEventListener("click", () => {
-        showEmptyState(true);
+        window.location.href = "./index.html";
       });
 
       navButtons.forEach((button) => {
@@ -3952,7 +3952,7 @@
       });
 
       applyShell(assistantShells["main-assistant"]);
-      showEmptyState(false);
+      showLibraryWorkspaceState();
       bindComposerUploads();
 
       document.addEventListener("keydown", (event) => {

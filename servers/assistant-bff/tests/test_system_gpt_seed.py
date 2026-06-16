@@ -5,6 +5,7 @@ import os
 import sqlite3
 import tempfile
 import unittest
+from contextlib import contextmanager
 from unittest.mock import patch
 
 from app.storage import business_store
@@ -252,3 +253,54 @@ class SystemGptSeedTests(unittest.TestCase):
         self.assertIsNotNone(row)
         assert row is not None
         self.assertEqual(json.loads(row[0])["name"], "Legacy Agent")
+
+    def test_postgres_legacy_custom_gpts_migration_serializes_jsonb_rows(self) -> None:
+        class FakeCursor:
+            def __init__(self, rows):
+                self._rows = rows
+
+            def fetchall(self):
+                return self._rows
+
+        class FakeConn:
+            def __init__(self):
+                self.insert_payload = None
+
+            def execute(self, sql, params=None):
+                if "SELECT c.gid, c.config" in sql:
+                    return FakeCursor(
+                        [
+                            {
+                                "gid": "legacy-agent",
+                                "config": {"gid": "legacy-agent", "name": "Legacy Agent"},
+                                "assistant_kind": "custom",
+                                "handler_key": None,
+                            }
+                        ]
+                    )
+                if "INSERT INTO agents" in sql:
+                    self.insert_payload = params
+                    return FakeCursor([])
+                raise AssertionError(f"unexpected sql: {sql}")
+
+            def commit(self):
+                return None
+
+        fake_conn = FakeConn()
+
+        @contextmanager
+        def fake_connect():
+            yield fake_conn
+
+        with patch.object(business_store, "_use_postgres", return_value=True), patch.object(
+            business_store,
+            "_connect",
+            fake_connect,
+        ):
+            business_store._migrate_legacy_custom_gpts_to_agents()
+
+        self.assertIsNotNone(fake_conn.insert_payload)
+        assert fake_conn.insert_payload is not None
+        self.assertEqual(fake_conn.insert_payload[0], "legacy-agent")
+        self.assertIsInstance(fake_conn.insert_payload[1], str)
+        self.assertEqual(json.loads(fake_conn.insert_payload[1])["name"], "Legacy Agent")
