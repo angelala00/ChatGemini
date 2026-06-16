@@ -14,6 +14,7 @@ from typing import Any, Iterator
 
 from app.auth.auth_routes import DEFAULT_AUTH_PROVIDER, GLOBAL_AUTH_PROVIDER
 from app.base_config import model_config
+from app.logger import gpt_logger
 from app.storage.object_store import build_minio_object_key, store_local_file
 
 try:
@@ -774,18 +775,31 @@ def _load_seed_system_gpts() -> dict[str, dict[str, Any]]:
         if not str(config.get("handler_key") or "").strip():
             continue
         seeded_items[gid] = config
+    gpt_logger.info(
+        "system_gpt_seed_candidates loaded=%s gids=%s",
+        len(seeded_items),
+        ",".join(sorted(seeded_items.keys())),
+    )
     return seeded_items
 
 
 def _sync_seed_system_gpts_to_storage() -> None:
     seeded_items = _load_seed_system_gpts()
     if not seeded_items:
+        gpt_logger.info("system_gpt_seed_sync skipped reason=no_candidates")
         return
+    gpt_logger.info("system_gpt_seed_sync started total=%s", len(seeded_items))
     with _connect() as conn:
         for gid, config in seeded_items.items():
             safe_config = _json_safe_seed_gpt_config(config)
             payload = json.dumps(safe_config, ensure_ascii=False)
             metadata = _custom_gpt_metadata_from_config(safe_config)
+            gpt_logger.info(
+                "system_gpt_seed_sync upsert gid=%s assistant_kind=%s handler_key=%s",
+                gid,
+                metadata["assistant_kind"],
+                metadata["handler_key"],
+            )
             if _use_postgres():
                 conn.execute(
                     """
@@ -809,6 +823,7 @@ def _sync_seed_system_gpts_to_storage() -> None:
                     (gid, payload, metadata["assistant_kind"], metadata["handler_key"]),
                 )
         conn.commit()
+    gpt_logger.info("system_gpt_seed_sync completed total=%s", len(seeded_items))
 
 
 def _migrate_legacy_custom_gpts_to_agents() -> None:
@@ -831,14 +846,25 @@ def _migrate_legacy_custom_gpts_to_agents() -> None:
                  WHERE a.gid IS NULL
                 """
             ).fetchall()
+        gpt_logger.info("legacy_custom_gpts_migration scanned=%s", len(rows))
         for row in rows:
             item = _normalize_row(row)
             gid = str(item.get("gid") or "").strip()
             config_payload = item.get("config")
             if not gid or config_payload is None:
+                gpt_logger.info(
+                    "legacy_custom_gpts_migration skipped gid=%s reason=missing_gid_or_config",
+                    gid or "<empty>",
+                )
                 continue
             assistant_kind = str(item.get("assistant_kind") or "custom").strip() or "custom"
             handler_key = str(item.get("handler_key") or "").strip() or None
+            gpt_logger.info(
+                "legacy_custom_gpts_migration upsert gid=%s assistant_kind=%s handler_key=%s",
+                gid,
+                assistant_kind,
+                handler_key,
+            )
             if _use_postgres():
                 conn.execute(
                     """
@@ -868,12 +894,19 @@ def _migrate_legacy_custom_gpts_to_agents() -> None:
                     (gid, serialized, assistant_kind, handler_key),
                 )
         conn.commit()
+    gpt_logger.info("legacy_custom_gpts_migration completed scanned=%s", len(rows))
 
 
 def _sync_seed_regulation_knowledge_files_to_storage() -> None:
     source_files = _regulation_source_files()
     if not source_files:
+        gpt_logger.info("regulation_knowledge_seed_sync skipped reason=no_source_files")
         return
+    gpt_logger.info(
+        "regulation_knowledge_seed_sync started total=%s files=%s",
+        len(source_files),
+        ",".join(str(path.name) for path in source_files),
+    )
     with _connect() as conn:
         for path in source_files:
             seed_payload = _seed_regulation_knowledge_file_payload(path)
@@ -902,8 +935,20 @@ def _sync_seed_regulation_knowledge_files_to_storage() -> None:
                 ).fetchone()
             existing = _normalize_row(row) if row else None
             if not _file_mapping_needs_refresh(existing, desired_payload):
+                gpt_logger.info(
+                    "regulation_knowledge_seed_sync skipped file_id=%s reason=already_current",
+                    seed_payload["file_id"],
+                )
                 continue
             stored_payload = _regulation_seed_storage_payload(path, seed_payload)
+            action = "update" if existing else "insert"
+            gpt_logger.info(
+                "regulation_knowledge_seed_sync %s file_id=%s filename=%s sha256=%s",
+                action,
+                seed_payload["file_id"],
+                stored_payload["filename"],
+                stored_payload["content_sha256"],
+            )
             if _use_postgres():
                 if existing:
                     conn.execute(
@@ -1043,6 +1088,7 @@ def _sync_seed_regulation_knowledge_files_to_storage() -> None:
                         ),
                     )
         conn.commit()
+    gpt_logger.info("regulation_knowledge_seed_sync completed total=%s", len(source_files))
 
 
 def _ensure_file_mapping_owner_columns() -> None:
@@ -1819,6 +1865,7 @@ def _seed_admin_feature_flags_if_empty() -> None:
 
 def init_business_storage() -> None:
     global _INITIALIZED
+    gpt_logger.info("business_storage_init started backend=%s", business_storage_backend())
     with _connect() as conn:
         _ensure_file_upload_reservations_auth_provider_column()
         if _use_postgres():
@@ -2181,6 +2228,7 @@ def init_business_storage() -> None:
     if not _skip_startup_sqlite_migration():
         _backfill_session_history_meta_from_existing_history()
     _INITIALIZED = True
+    gpt_logger.info("business_storage_init completed backend=%s", business_storage_backend())
 
 
 def business_storage_health() -> dict[str, Any]:
