@@ -15,7 +15,6 @@ from app.base_config import model_config
 from app.admin.access_control import resolve_user_permissions
 from app.logger import gpt_logger
 from app.gpts.config_gpts import gpts, refresh_gpts
-from app.routes.gpts_routes import can_manage_regulation_gpt, is_gpt_visible_to_provider, is_regulation_gpt
 from app.utils.model_tool import (
     MODEL_NAME_INSTRUCT,
     MODEL_NAME_THINKING,
@@ -42,7 +41,6 @@ from app.storage.file_lifecycle import (
     delete_unreferenced_object,
     file_object_lock_name,
 )
-from app.routes.gpts_routes import ensure_owned_custom_gpt
 
 router = APIRouter(prefix="/api", tags=["auth"])
 
@@ -627,6 +625,8 @@ async def upload_file(
     if not owner_user_id and not owner_user_email:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Authenticated user identity is required")
     if purpose == FILE_PURPOSE_ASSISTANT_KNOWLEDGE:
+        from app.routes.gpts_routes import ensure_owned_custom_gpt, is_gpt_visible_to_provider
+
         refresh_gpts()
         assistant_config = ensure_owned_custom_gpt(gid, user)
         provider_scope = str(assistant_config.get("provider_scope") or "global").strip().lower()
