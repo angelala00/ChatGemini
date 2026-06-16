@@ -171,11 +171,16 @@ def _is_source_already_migrated(conn, source_path: Path) -> bool:
     ).fetchone()
     if not row:
         return False
-    if row[2]:
-        return str(row[2]) == source_sha256
+    normalized = _normalize_pg_row(
+        row,
+        columns=("source_size", "source_mtime_ns", "source_sha256"),
+    )
+    existing_sha256 = str(normalized.get("source_sha256") or "").strip()
+    if existing_sha256:
+        return existing_sha256 == source_sha256
     return (
-        int(row[0]) == source_size
-        and int(row[1]) == source_mtime_ns
+        int(normalized.get("source_size") or 0) == source_size
+        and int(normalized.get("source_mtime_ns") or 0) == source_mtime_ns
     )
 
 
@@ -217,11 +222,16 @@ def _file_sha256(source_path: Path) -> str:
     return digest.hexdigest()
 
 
-def _normalize_pg_row(row: Any) -> dict[str, Any]:
+def _normalize_pg_row(row: Any, columns: tuple[str, ...] | None = None) -> dict[str, Any]:
     if row is None:
         return {}
     if isinstance(row, dict):
         return row
+    mapping = getattr(row, "_mapping", None)
+    if mapping is not None:
+        return dict(mapping)
+    if columns is not None and isinstance(row, (tuple, list)) and len(row) == len(columns):
+        return dict(zip(columns, row))
     return dict(row)
 
 
@@ -235,7 +245,19 @@ def _load_object_migration_state(conn, *, file_id: str) -> dict[str, Any] | None
         """,
         (_migration_node_id(), file_id),
     ).fetchone()
-    normalized = _normalize_pg_row(row)
+    normalized = _normalize_pg_row(
+        row,
+        columns=(
+            "file_id",
+            "source_path",
+            "source_size",
+            "source_mtime_ns",
+            "source_sha256",
+            "status",
+            "target_bucket",
+            "target_object_key",
+        ),
+    )
     return normalized or None
 
 
@@ -967,6 +989,7 @@ def main() -> int:
 
     try:
         import psycopg
+        from psycopg.rows import dict_row
     except Exception as exc:  # pragma: no cover
         raise RuntimeError("psycopg is required to run this migration script") from exc
 
@@ -996,7 +1019,7 @@ def main() -> int:
     }
 
     try:
-        with psycopg.connect(model_config.POSTGRES_DSN) as target_conn:
+        with psycopg.connect(model_config.POSTGRES_DSN, row_factory=dict_row) as target_conn:
             _ensure_migration_state_table(target_conn)
             if not args.dry_run:
                 target_conn.commit()
