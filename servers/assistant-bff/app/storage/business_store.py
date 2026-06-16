@@ -2173,9 +2173,9 @@ def init_business_storage() -> None:
         _seed_admin_user_permissions_if_empty()
         _seed_admin_feature_flags_if_empty()
         _migrate_legacy_custom_gpts_to_agents()
+    _ensure_file_mapping_owner_columns()
     _sync_seed_system_gpts_to_storage()
     _sync_seed_regulation_knowledge_files_to_storage()
-    _ensure_file_mapping_owner_columns()
     _migrate_sqlite_file_mapping_to_postgres_if_needed()
     _migrate_sqlite_light_business_tables_to_postgres_if_needed()
     if not _skip_startup_sqlite_migration():
