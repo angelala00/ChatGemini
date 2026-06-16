@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ChatGemini 静态版 - 智能体聊天</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <button class="sidebar-toggle" type="button" data-sidebar-toggle>☰</button>
+    <div class="site-shell">
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="brand-info">
+                    <div class="brand-logo">
+                        <img src="../../apps/assistant-web/src/assets/logo.svg" alt="Logo" onerror="this.src='https://raw.githubusercontent.com/angelala00/ChatGemini/main/apps/assistant-web/src/assets/logo.svg'">
+                    </div>
+                    <div class="brand-copy">
+                        <strong>ChatGemini</strong>
+                    </div>
+                </div>
+                <button class="sidebar-collapse-btn" type="button">
+                    <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <rect x="4" y="5" width="16" height="14" rx="2" />
+                        <path d="M10 5v14" />
+                    </svg>
+                </button>
+            </div>
+            
+            <button class="new-chat-btn" type="button">
+                <div class="btn-icon">
+                    <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M12 8v8M8 12h8" />
+                    </svg>
+                </div>
+                <span>新建会话</span>
+            </button>
+
+            <div class="sidebar-link">
+                <div class="btn-icon">
+                    <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <rect x="3" y="3" width="7" height="7" />
+                        <rect x="14" y="3" width="7" height="7" />
+                        <rect x="14" y="14" width="7" height="7" />
+                        <rect x="3" y="14" width="7" height="7" />
+                    </svg>
+                </div>
+                <span>探索智能体</span>
+            </div>
+
+            <div class="sidebar-link">
+                <div class="btn-icon">
+                    <img src="../../apps/assistant-web/src/assets/icons/zhidu_logo.svg" class="size-5" alt="制度助手">
+                </div>
+                <span>制度问答助手</span>
+            </div>
+
+            <div class="sidebar-section">
+                <button class="sidebar-section-header">
+                    <div class="brand-info">
+                        <div class="btn-icon">
+                            <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                                <circle cx="12" cy="12" r="10" />
+                                <polyline points="12 6 12 12 16 14" />
+                            </svg>
+                        </div>
+                        <span>历史会话</span>
+                    </div>
+                    <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                </button>
+                <div class="history-list">
+                    <div class="history-item-container">
+                        <a class="history-item" href="chat.html">发布前检查清单</a>
+                        <button class="history-more-btn" type="button">
+                            <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="1" />
+                                <circle cx="19" cy="12" r="1" />
+                                <circle cx="5" cy="12" r="1" />
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="history-item-container">
+                        <a class="history-item active" href="agent-chat.html">制度问答会话</a>
+                        <button class="history-more-btn" type="button">
+                            <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="1" />
+                                <circle cx="19" cy="12" r="1" />
+                                <circle cx="5" cy="12" r="1" />
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="history-item-container">
+                        <a class="history-item" href="chat.html">模型回退说明</a>
+                        <button class="history-more-btn" type="button">
+                            <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="1" />
+                                <circle cx="19" cy="12" r="1" />
+                                <circle cx="5" cy="12" r="1" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sidebar-footer">
+                <div class="profile-menu">
+                    <button class="profile-menu-item">
+                        <span class="profile-menu-label">当前版本</span>
+                        <span class="profile-menu-value">v1.6.0</span>
+                    </button>
+                    <button class="profile-menu-item">
+                        <span class="profile-menu-label">管理后台</span>
+                        <span class="profile-menu-value">管理员</span>
+                    </button>
+                    <button class="profile-menu-item">
+                        <span class="profile-menu-label">系统设置</span>
+                    </button>
+                    <button class="profile-menu-item">
+                        <span class="profile-menu-label">技术支持</span>
+                        <span class="profile-menu-value">@ChatGemini</span>
+                    </button>
+                </div>
+                <button class="user-profile">
+                    <div class="brand-info">
+                        <div class="user-avatar">U</div>
+                        <span class="user-name">User</span>
+                    </div>
+                    <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="1" />
+                        <circle cx="19" cy="12" r="1" />
+                        <circle cx="5" cy="12" r="1" />
+                    </svg>
+                </button>
+            </div>
+        </aside>
+
+        <div class="main-shell">
+            <header class="topbar">
+                <div class="brand-info">
+                    <h1>制度问答助手</h1>
+                </div>
+                <div class="topbar-actions">
+                    <div class="select-chip">DeepSeek V3</div>
+                    <div class="chip">导出 PDF</div>
+                </div>
+            </header>
+            
+            <main class="page">
+                <div class="chat-stack">
+                    <div class="message">
+                        <div class="avatar user">U</div>
+                        <div class="bubble">
+                            <h3>你</h3>
+                            <div class="bubble-content">
+                                <p>请根据采购制度，说明紧急采购的例外流程。</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="message">
+                        <div class="avatar assistant">AI</div>
+                        <div class="bubble">
+                            <h3>制度问答助手</h3>
+                            <div class="bubble-content">
+                                <p>根据《采购管理制度》第四章“紧急采购程序”，例外流程如下：</p>
+                                <ul style="margin-top: 8px;">
+                                    <li><strong>适用条件</strong>：发生不可抗力、突发安全事故或严重影响生产进度的紧急情况。</li>
+                                    <li><strong>审批权限</strong>：可先由分管副总裁口头批准，事后 48 小时内补办书面流程。</li>
+                                    <li><strong>执行方式</strong>：允许非库内供应商参与，但需同步开启资质后置审核。</li>
+                                </ul>
+                                <p style="margin-top: 12px; font-size: 13px; color: var(--assist-text-faint);">来源：采购管理制度 v2.1 第 14 页</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="composer-wrapper">
+                    <div class="composer">
+                        <div class="composer-textarea-area">
+                            <textarea placeholder="继续提问..." rows="2"></textarea>
+                        </div>
+                        <div class="composer-footer">
+                            <div class="composer-tools">
+                                <button class="composer-tool-btn">
+                                    <span class="tool-icon-circle">
+                                        <svg class="size-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M12 5v14M5 12h14" />
+                                        </svg>
+                                    </span>
+                                </button>
+                            </div>
+                            <div class="composer-actions">
+                                <button class="send-btn">
+                                    <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M12 19V5M6 11l6-6 6 6" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>

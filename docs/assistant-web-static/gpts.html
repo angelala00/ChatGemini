@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ChatGemini 静态版 - 智能体广场</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <button class="sidebar-toggle" type="button" data-sidebar-toggle>☰</button>
+    <div class="site-shell">
+        <aside class="sidebar">
+            <div class="brand"><div class="brand-logo">AI</div><div class="brand-copy"><strong>智能体广场</strong><span>Explore Agents</span></div></div>
+            <div class="sidebar-section-title">导航</div>
+            <nav class="nav-group">
+                <a class="nav-link" href="gpts.html" data-page="gpts.html"><span class="nav-dot"></span>智能体广场</a>
+                <a class="nav-link" href="my-gpts.html" data-page="my-gpts.html"><span class="nav-dot"></span>我的智能体</a>
+                <a class="nav-link" href="create-gpt.html" data-page="create-gpt.html"><span class="nav-dot"></span>创建智能体</a>
+            </nav>
+            <div class="sidebar-footer"><strong>静态说明</strong><p>保留了固定 / 未固定智能体的两段式展示、卡片信息层级和管理入口位置。</p></div>
+        </aside>
+        <div class="main-shell">
+            <header class="topbar">
+                <div><h1>更多智能体</h1><p>探索团队共享智能体，支持固定到侧边栏、进入会话和跳转编辑。</p></div>
+                <div class="topbar-actions">
+                    <a class="secondary-btn" href="my-gpts.html">我的智能体</a>
+                    <a class="primary-btn" href="create-gpt.html">创建智能体</a>
+                </div>
+            </header>
+            <main class="page">
+                <section class="hero">
+                    <div class="hero-kicker">Workspace</div>
+                    <h2>按场景选择智能体</h2>
+                    <p>这里对应原页面 `Gpts` 的卡片网格：包含 pinned 区、全部列表区、owner 与使用次数、固定按钮和管理跳转。</p>
+                </section>
+                <section style="margin-top: 28px;">
+                    <div class="hero-kicker">Pinned</div>
+                    <div class="card-grid cols-3">
+                        <article class="card">
+                            <h3>制度问答助手</h3>
+                            <p>法规、制度与流程说明，支持知识文件引用和专项答复。</p>
+                            <div class="stat-row">
+                                <span class="badge accent">已固定</span>
+                                <span class="badge">owner: official</span>
+                                <span class="badge">1,268 次使用</span>
+                            </div>
+                        </article>
+                        <article class="card">
+                            <h3>主 AI 助手</h3>
+                            <p>系统智能体，兼容代码、文档、创意写作和多模型切换。</p>
+                            <div class="stat-row">
+                                <span class="badge accent">系统智能体</span>
+                                <span class="badge">owner: platform</span>
+                                <span class="badge">3,912 次使用</span>
+                            </div>
+                        </article>
+                    </div>
+                </section>
+                <section style="margin-top: 34px;">
+                    <div class="hero-kicker">All Agents</div>
+                    <div class="card-grid cols-3">
+                        <article class="card"><h3>PR Review Assistant</h3><p>输入 diff 和变更背景，输出风险点、回归建议与审查摘要。</p><div class="stat-row"><span class="badge">owner: eng</span><span class="badge">256 次使用</span></div></article>
+                        <article class="card"><h3>日报整理助手</h3><p>从聊天记录或会议纪要中抽取待办、风险和对外同步口径。</p><div class="stat-row"><span class="badge">owner: ops</span><span class="badge">184 次使用</span></div></article>
+                        <article class="card"><h3>数据分析助手</h3><p>适合 CSV、报表、周报和可视化摘要场景。</p><div class="stat-row"><span class="badge">owner: data</span><span class="badge">344 次使用</span></div></article>
+                        <article class="card"><h3>招聘 JD 优化助手</h3><p>整理岗位描述、提炼要求、统一语气风格并补充面试要点。</p><div class="stat-row"><span class="badge">owner: hr</span><span class="badge">73 次使用</span></div></article>
+                        <article class="card"><h3>客服质检助手</h3><p>批量检查会话话术是否符合要求，标出违规回复和高风险承诺。</p><div class="stat-row"><span class="badge">owner: qa</span><span class="badge">98 次使用</span></div></article>
+                        <article class="card"><h3>合同摘要助手</h3><p>提炼付款节点、违约责任和交付边界，生成审阅提示。</p><div class="stat-row"><span class="badge">owner: legal</span><span class="badge">112 次使用</span></div></article>
+                    </div>
+                </section>
+            </main>
+        </div>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>

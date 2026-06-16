@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ChatGemini 静态版 - 我的智能体</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <button class="sidebar-toggle" type="button" data-sidebar-toggle>☰</button>
+    <div class="site-shell">
+        <aside class="sidebar">
+            <div class="brand"><div class="brand-logo">ME</div><div class="brand-copy"><strong>我的智能体</strong><span>Created Agents</span></div></div>
+            <div class="sidebar-section-title">导航</div>
+            <nav class="nav-group">
+                <a class="nav-link" href="gpts.html" data-page="gpts.html"><span class="nav-dot"></span>智能体广场</a>
+                <a class="nav-link" href="my-gpts.html" data-page="my-gpts.html"><span class="nav-dot"></span>我的智能体</a>
+                <a class="nav-link" href="create-gpt.html" data-page="create-gpt.html"><span class="nav-dot"></span>创建 / 编辑</a>
+            </nav>
+        </aside>
+        <div class="main-shell">
+            <header class="topbar">
+                <div><h1>我的智能体</h1><p>保留原页面的列表形态、编辑 / 删除操作位和 owner 信息。</p></div>
+                <div class="topbar-actions"><a class="primary-btn" href="create-gpt.html">新建智能体</a></div>
+            </header>
+            <main class="page">
+                <div class="tile-list">
+                    <article class="agent-tile">
+                        <div class="agent-meta">
+                            <div class="agent-logo">AI</div>
+                            <div>
+                                <h3>主 AI 助手</h3>
+                                <p>owner: platform-admin</p>
+                            </div>
+                        </div>
+                        <div class="agent-tile-actions">
+                            <a class="icon-btn" href="create-gpt.html" aria-label="编辑">✎</a>
+                            <button class="icon-btn" type="button" aria-label="删除">🗑</button>
+                        </div>
+                    </article>
+                    <article class="agent-tile">
+                        <div class="agent-meta">
+                            <div class="agent-logo">规</div>
+                            <div>
+                                <h3>制度问答助手</h3>
+                                <p>owner: operations-team</p>
+                            </div>
+                        </div>
+                        <div class="agent-tile-actions">
+                            <a class="icon-btn" href="create-gpt.html" aria-label="编辑">✎</a>
+                            <button class="icon-btn" type="button" aria-label="删除">🗑</button>
+                        </div>
+                    </article>
+                    <article class="agent-tile">
+                        <div class="agent-meta">
+                            <div class="agent-logo">PR</div>
+                            <div>
+                                <h3>PR Review Assistant</h3>
+                                <p>owner: jc</p>
+                            </div>
+                        </div>
+                        <div class="agent-tile-actions">
+                            <a class="icon-btn" href="create-gpt.html" aria-label="编辑">✎</a>
+                            <button class="icon-btn" type="button" aria-label="删除">🗑</button>
+                        </div>
+                    </article>
+                </div>
+            </main>
+        </div>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>

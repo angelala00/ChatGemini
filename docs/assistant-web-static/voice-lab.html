@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ChatGemini 静态版 - Voice Lab</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <button class="sidebar-toggle" type="button" data-sidebar-toggle>☰</button>
+    <div class="site-shell">
+        <aside class="sidebar">
+            <div class="brand"><div class="brand-logo">VO</div><div class="brand-copy"><strong>Voice Lab</strong><span>语音实验室</span></div></div>
+            <div class="sidebar-section-title">导航</div>
+            <nav class="nav-group">
+                <a class="nav-link" href="voice-lab.html" data-page="voice-lab.html"><span class="nav-dot"></span>Voice Lab</a>
+                <a class="nav-link" href="chat.html" data-page="chat.html"><span class="nav-dot"></span>返回主聊天</a>
+            </nav>
+        </aside>
+        <div class="main-shell">
+            <header class="topbar">
+                <div><h1>语音能力测试</h1><p>验证麦克风录音、回放和浏览器语音输出功能位。</p></div>
+                <div class="topbar-actions"><div class="chip">当前账号已开启</div></div>
+            </header>
+            <main class="page">
+                <section class="permission-state">
+                    <span>●</span>
+                    <strong>当前账号已开启语音实验室。</strong>
+                </section>
+                <div class="voice-grid" style="margin-top: 18px;">
+                    <section class="panel">
+                        <h2>环境能力</h2>
+                        <div class="stack" style="margin-top: 18px;">
+                            <div class="support-item"><span>安全上下文</span><strong>支持</strong></div>
+                            <div class="support-item"><span>mediaDevices</span><strong>支持</strong></div>
+                            <div class="support-item"><span>getUserMedia</span><strong>支持</strong></div>
+                            <div class="support-item"><span>MediaRecorder</span><strong>支持</strong></div>
+                            <div class="support-item"><span>speechSynthesis</span><strong>支持</strong></div>
+                        </div>
+                    </section>
+                    <section class="panel">
+                        <h2>录音与播放</h2>
+                        <div class="stack" style="margin-top: 18px;">
+                            <div class="support-item"><span>当前状态</span><strong>ready</strong></div>
+                            <div class="support-item"><span>录音时长</span><strong>00:18</strong></div>
+                            <div class="topbar-actions" style="justify-content: flex-start;">
+                                <button class="secondary-btn" type="button">开始录音</button>
+                                <button class="secondary-btn" type="button">停止录音</button>
+                                <button class="primary-btn" type="button">播放录音</button>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+                <section class="panel" style="margin-top: 18px;">
+                    <h2>语音输出测试</h2>
+                    <textarea class="field" rows="4" style="margin-top: 18px;">这是一段语音输出测试。当前页面用于验证企业微信内嵌环境和普通浏览器的兼容性。</textarea>
+                    <div class="topbar-actions" style="justify-content: flex-start; margin-top: 14px;">
+                        <button class="primary-btn" type="button">开始播报</button>
+                        <button class="secondary-btn" type="button">停止播报</button>
+                    </div>
+                </section>
+            </main>
+        </div>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>

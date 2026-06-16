@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ChatGemini 静态版 - 主聊天页</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <button class="sidebar-toggle" type="button" data-sidebar-toggle>☰</button>
+    <div class="site-shell">
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="brand-info">
+                    <div class="brand-logo">
+                        <img src="../../apps/assistant-web/src/assets/logo.svg" alt="Logo" onerror="this.src='https://raw.githubusercontent.com/angelala00/ChatGemini/main/apps/assistant-web/src/assets/logo.svg'">
+                    </div>
+                    <div class="brand-copy">
+                        <strong>ChatGemini</strong>
+                    </div>
+                </div>
+                <button class="sidebar-collapse-btn" type="button">
+                    <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <rect x="4" y="5" width="16" height="14" rx="2" />
+                        <path d="M10 5v14" />
+                    </svg>
+                </button>
+            </div>
+            
+            <button class="new-chat-btn" type="button">
+                <div class="btn-icon">
+                    <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M12 8v8M8 12h8" />
+                    </svg>
+                </div>
+                <span>新建会话</span>
+            </button>
+
+            <div class="sidebar-link">
+                <div class="btn-icon">
+                    <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <rect x="3" y="3" width="7" height="7" />
+                        <rect x="14" y="3" width="7" height="7" />
+                        <rect x="14" y="14" width="7" height="7" />
+                        <rect x="3" y="14" width="7" height="7" />
+                    </svg>
+                </div>
+                <span>探索智能体</span>
+            </div>
+
+            <div class="sidebar-section">
+                <button class="sidebar-section-header">
+                    <div class="brand-info">
+                        <div class="btn-icon">
+                            <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                                <circle cx="12" cy="12" r="10" />
+                                <polyline points="12 6 12 12 16 14" />
+                            </svg>
+                        </div>
+                        <span>历史会话</span>
+                    </div>
+                    <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                </button>
+                <div class="history-list">
+                    <div class="history-item-container">
+                        <a class="history-item active" href="chat.html">发布前检查清单</a>
+                        <button class="history-more-btn" type="button">
+                            <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="1" />
+                                <circle cx="19" cy="12" r="1" />
+                                <circle cx="5" cy="12" r="1" />
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="history-item-container">
+                        <a class="history-item" href="chat.html">制度文档总结</a>
+                        <button class="history-more-btn" type="button">
+                            <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="1" />
+                                <circle cx="19" cy="12" r="1" />
+                                <circle cx="5" cy="12" r="1" />
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="history-item-container">
+                        <a class="history-item" href="chat.html">模型回退说明</a>
+                        <button class="history-more-btn" type="button">
+                            <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="1" />
+                                <circle cx="19" cy="12" r="1" />
+                                <circle cx="5" cy="12" r="1" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sidebar-footer">
+                <div class="profile-menu">
+                    <button class="profile-menu-item">
+                        <span class="profile-menu-label">当前版本</span>
+                        <span class="profile-menu-value">v1.6.0</span>
+                    </button>
+                    <button class="profile-menu-item">
+                        <span class="profile-menu-label">管理后台</span>
+                        <span class="profile-menu-value">管理员</span>
+                    </button>
+                    <button class="profile-menu-item">
+                        <span class="profile-menu-label">系统设置</span>
+                    </button>
+                    <button class="profile-menu-item">
+                        <span class="profile-menu-label">技术支持</span>
+                        <span class="profile-menu-value">@ChatGemini</span>
+                    </button>
+                </div>
+                <button class="user-profile">
+                    <div class="brand-info">
+                        <div class="user-avatar">U</div>
+                        <span class="user-name">User</span>
+                    </div>
+                    <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="1" />
+                        <circle cx="19" cy="12" r="1" />
+                        <circle cx="5" cy="12" r="1" />
+                    </svg>
+                </button>
+            </div>
+        </aside>
+
+        <div class="main-shell">
+            <header class="topbar">
+                <div class="brand-info">
+                    <h1>AI 助手</h1>
+                </div>
+                <div class="topbar-actions">
+                    <div class="select-chip">Gemini 2.5 Pro</div>
+                    <div class="chip">Reasoning On</div>
+                    <div class="chip">导出 HTML</div>
+                </div>
+            </header>
+            
+            <main class="page">
+                <div class="chat-stack">
+                    <div class="message">
+                        <div class="avatar user">U</div>
+                        <div class="bubble">
+                            <h3>你</h3>
+                            <div class="bubble-content">
+                                <p>请根据上传的版本说明、回归清单和截图，整理一份可直接发给业务方的发布摘要。</p>
+                            </div>
+                            <div class="attachment-strip">
+                                <div class="attachment-chip">release-notes.md</div>
+                                <div class="attachment-chip">regression-checklist.xlsx</div>
+                                <div class="attachment-chip">ui-preview.png</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="message">
+                        <div class="avatar assistant">AI</div>
+                        <div class="bubble">
+                            <h3>AI 助手</h3>
+                            <div class="bubble-content">
+                                <ul>
+                                    <li>本次版本聚焦智能体管理统一化，主助手已迁入“我的智能体”体系。</li>
+                                    <li>后台不再维护主助手默认模型与可见模型，改由智能体编辑页统一配置。</li>
+                                    <li>建议回归检查：会话历史读取、知识文件上传、智能体权限边界、模型回退逻辑。</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="message">
+                        <div class="avatar user">U</div>
+                        <div class="bubble">
+                            <h3>你</h3>
+                            <div class="bubble-content">
+                                <p>把风险项单独列出来，再补一段给测试同学的建议。</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="message">
+                        <div class="avatar assistant">AI</div>
+                        <div class="bubble">
+                            <h3>AI 助手</h3>
+                            <div class="bubble-content">
+                                <p><strong>风险项</strong></p>
+                                <ul>
+                                    <li>系统智能体迁移后，旧入口和新入口的权限映射可能出现遗漏。</li>
+                                    <li>模型配置改道后，后台文案和用户认知可能暂时不一致。</li>
+                                    <li>附件跨端隔离启用后，需要重点检查不同登录来源下的可见性。</li>
+                                </ul>
+                                <p style="margin-top: 12px;"><strong>测试建议</strong>：覆盖主助手、制度助手、普通自定义智能体三类对象，重点检查 owner/admin/viewer 权限、默认模型回退和知识文件增删。</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="composer-wrapper">
+                    <div class="composer">
+                        <div class="composer-textarea-area">
+                            <textarea placeholder="输入你的问题..." rows="2"></textarea>
+                        </div>
+                        <div class="composer-footer">
+                            <div class="composer-tools">
+                                <button class="composer-tool-btn">
+                                    <span class="tool-icon-circle">
+                                        <svg class="size-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M12 5v14M5 12h14" />
+                                        </svg>
+                                    </span>
+                                </button>
+                            </div>
+                            <div class="composer-actions">
+                                <button class="reasoning-btn">
+                                    <span class="reasoning-dot"></span>
+                                    <span>推理开启</span>
+                                </button>
+                                <button class="send-btn">
+                                    <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M12 19V5M6 11l6-6 6 6" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>

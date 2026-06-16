@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ChatGemini 静态版 - Trace Inspector</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <button class="sidebar-toggle" type="button" data-sidebar-toggle>☰</button>
+    <div class="site-shell">
+        <aside class="sidebar">
+            <div class="brand"><div class="brand-logo">TR</div><div class="brand-copy"><strong>Trace Inspector</strong><span>链路排查页</span></div></div>
+            <div class="sidebar-section-title">导航</div>
+            <nav class="nav-group">
+                <a class="nav-link" href="trace.html" data-page="trace.html"><span class="nav-dot"></span>Trace Inspector</a>
+                <a class="nav-link" href="chat.html" data-page="chat.html"><span class="nav-dot"></span>主聊天页</a>
+            </nav>
+        </aside>
+        <div class="main-shell">
+            <header class="topbar">
+                <div><h1>Trace Inspector</h1><p>列表页 + 详情页双栏结构，保留搜索、事件分组和 payload 展示区。</p></div>
+                <div class="topbar-actions">
+                    <div class="chip">reasoning=true</div>
+                    <div class="chip">selected_model=gemini-2.5-pro</div>
+                </div>
+            </header>
+            <main class="page">
+                <div class="trace-layout">
+                    <section class="trace-list-card">
+                        <input class="search-input" value="发布摘要" aria-label="搜索 trace">
+                        <div class="trace-item" style="margin-top: 14px;">
+                            <strong>trace_20260616_001</strong>
+                            <p>route: /chat/conv-001 · status: completed · 4280ms</p>
+                            <div class="meta-row"><span class="badge accent">命中 12 条事件</span><span class="badge">附件 3 个</span></div>
+                        </div>
+                        <div class="trace-item">
+                            <strong>trace_20260616_002</strong>
+                            <p>route: /g/regulation/chat/conv-002 · status: completed · 2110ms</p>
+                            <div class="meta-row"><span class="badge">制度助手</span><span class="badge">工具调用 1 次</span></div>
+                        </div>
+                    </section>
+                    <section class="trace-detail">
+                        <h3>trace_20260616_001</h3>
+                        <div class="meta-row">
+                            <span class="badge">request.received</span>
+                            <span class="badge">turn.start</span>
+                            <span class="badge">text_delta</span>
+                            <span class="badge">response_complete</span>
+                        </div>
+                        <div class="trace-group">
+                            <strong>第 1 轮</strong>
+                            <p>3 条 messages · 1 个 tools</p>
+                            <pre>{
+  "query": "请整理发布摘要并标出风险点",
+  "file_ids": ["f_1", "f_2", "f_3"],
+  "selected_model": "gemini-2.5-pro"
+}</pre>
+                        </div>
+                        <div class="trace-group">
+                            <strong>文本输出</strong>
+                            <p>模型输出已按增量合并，原应用中这里会继续支持 thinking / toolcall 分块展示。</p>
+                            <pre>1. 主助手迁入“我的智能体”体系。
+2. 后台不再维护主助手默认模型。
+3. 风险点集中在权限迁移、模型回退和附件隔离。</pre>
+                        </div>
+                    </section>
+                </div>
+            </main>
+        </div>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
