@@ -657,7 +657,7 @@ async def gpts_created(user: dict = Depends(get_current_user)):
             "owner": _effective_gpt_owner(gid, data),
             "can_edit": True,
             "can_delete": (
-                (_gpt_owner(data) == user["sub"] or is_gpts_manage_allowed(user))
+                (_gpt_owner(data) in _user_key_set(user) or is_gpts_manage_allowed(user))
                 and gid not in BUILTIN_GIDS
             ),
         }
@@ -689,12 +689,15 @@ async def get_gpts_detail(gid: str, user: dict = Depends(get_current_user)):
 
     gpts_detail = {k: v for k, v in gpt_item.items() if k not in exclude_fields}
     gpts_detail["can_edit"] = can_manage
+    effective_owner = _effective_gpt_owner(gid, gpt_item)
+    user_keys = _user_key_set(user)
+    is_owner = bool(effective_owner and effective_owner in user_keys)
+    
     gpts_detail["can_transfer_owner"] = bool(
-        _effective_gpt_owner(gid, gpt_item) == user["sub"]
-        or (not _effective_gpt_owner(gid, gpt_item) and can_manage)
+        is_owner or (not effective_owner and can_manage)
     )
     gpts_detail["can_delete"] = (
-        (_effective_gpt_owner(gid, gpt_item) == user["sub"] or is_gpts_manage_allowed(user))
+        (is_owner or is_gpts_manage_allowed(user))
         and gid not in BUILTIN_GIDS
     )
     if isinstance(gpts_detail.get("models"), list):
