@@ -168,6 +168,13 @@ def _gpt_can_manage(user: dict, gpt_dict: dict) -> bool:
     return bool(keys & set(_gpt_admins(gpt_dict)))
 
 
+def _is_owner_identity(user: dict, owner: object) -> bool:
+    normalized_owner = str(owner or "").strip()
+    if not normalized_owner:
+        return False
+    return normalized_owner in _user_key_set(user)
+
+
 def _normalize_acl_state(
     owner: object,
     admins: object,
@@ -862,7 +869,7 @@ async def update_gpt(gid: str, request: Request, user: dict = Depends(get_curren
     body["auth"] = auth
     requested_owner = str(body.get("owner") or gpts[gid].get("owner") or "").strip()
     current_owner = _effective_gpt_owner(gid, gpts[gid])
-    if current_owner and requested_owner != current_owner and current_owner != user["sub"]:
+    if current_owner and requested_owner != current_owner and not _is_owner_identity(user, current_owner):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the owner can transfer ownership")
     owner, admins, viewers = _normalize_acl_state(requested_owner or current_owner, body.get("admins"), body.get("viewers"))
     body["owner"] = owner or current_owner or user["sub"]
@@ -891,7 +898,7 @@ async def delete_gpt(gid: str, user: dict = Depends(get_current_user)):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "builtin gpts cannot be deleted")
     if gid not in gpts:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "gid not found")
-    if _effective_gpt_owner(gid, gpts[gid]) != user["sub"] and not is_gpts_manage_allowed(user):
+    if not _is_owner_identity(user, _effective_gpt_owner(gid, gpts[gid])) and not is_gpts_manage_allowed(user):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "No Authorized")
     delete_assistant_knowledge_files(gid)
     delete_custom_gpt(gid)

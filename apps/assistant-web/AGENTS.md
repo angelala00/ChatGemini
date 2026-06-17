@@ -25,3 +25,14 @@
 - **用途**：提供 `assistant-web` 当前主要页面的静态 HTML 镜像，用于文档展示、视觉对照和离线评审。
 - **覆盖范围**：包含首页、主聊天页、智能体首页/聊天页、智能体广场、我的智能体、创建/编辑智能体、Voice Lab、Trace Inspector，以及管理后台各主要标签页。
 - **实现约束**：该镜像不依赖运行中的接口或前端构建产物，使用共享的 `styles.css` 和 `app.js` 在 `docs` 目录下独立浏览。
+
+## AssistAI 原型模板 (assistai-ui)
+
+- **目录位置**：`apps/assistant-web/template/assistai-ui/`
+- **当前结构**：
+  - `assistai-ui.css`：四个原型页面共享的样式定义。
+  - `assistai-ui.js`：共享的页面骨架、演示数据和交互逻辑。
+  - `index.html`、`library.html`、`gpts.html`、`policy.html`：仅保留页面入口配置，通过 `body data-*` 声明初始视图和初始助手。
+- **维护约束**：
+  - 公共布局、交互、文案数据优先修改共享文件，不要再把整套内联 `style` 或 `script` 复制回单页。
+  - 新增原型页面时，优先复用 `assistai-ui.js` 的初始化模式，只增加轻量入口页或扩展共享配置。
