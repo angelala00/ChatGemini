@@ -34,6 +34,25 @@ assistAiPrototypeRoot.innerHTML = "    <div class=\"app-shell\">\n      <div cla
       const profileButton = document.querySelector(".profile");
       const profileMenu = document.getElementById("profileMenu");
       const profileMenuItems = Array.from(document.querySelectorAll(".profile-menu-item"));
+      const primarySidebarGroup = document.querySelector(".sidebar-group");
+      if (primarySidebarGroup) {
+        const automationNavButton = document.createElement("button");
+        automationNavButton.className = "nav-item";
+        automationNavButton.type = "button";
+        automationNavButton.dataset.navTarget = "automation-workspace";
+        automationNavButton.innerHTML = `
+          <svg class="icon nav-item-icon" viewBox="0 0 24 24">
+            <rect x="4.5" y="5" width="15" height="15" rx="3"></rect>
+            <path d="M8 3.5v3"></path>
+            <path d="M16 3.5v3"></path>
+            <path d="M7.5 11h9"></path>
+            <path d="M12 11v5"></path>
+            <path d="m12 16 2 2"></path>
+          </svg>
+          <span>定时任务</span>
+        `;
+        primarySidebarGroup.appendChild(automationNavButton);
+      }
       const navButtons = Array.from(document.querySelectorAll("[data-nav-target]"));
       const historyItems = Array.from(document.querySelectorAll(".history-item"));
       const composerInputs = Array.from(document.querySelectorAll(".composer-input"));
@@ -556,6 +575,60 @@ assistAiPrototypeRoot.innerHTML = "    <div class=\"app-shell\">\n      <div cla
           status: "待补充"
         }
       ];
+      const automationTaskGroups = [
+        {
+          title: "今日待执行",
+          desc: "先展示今天即将触发的任务，帮助员工快速判断有哪些自动化会在当天生效。",
+          tasks: [
+            {
+              name: "销售周报自动汇总",
+              schedule: "每周五 17:30",
+              status: "15 分钟后触发",
+              owner: "销售运营",
+              channel: "发送到 销售周报群 + 邮件抄送",
+              summary: "汇总本周新增线索、重点推进机会、风险客户和下周动作，生成一版管理层摘要。"
+            },
+            {
+              name: "项目例会纪要提醒",
+              schedule: "工作日 18:00",
+              status: "今日已排队",
+              owner: "PMO",
+              channel: "发送到 项目管理台",
+              summary: "会在下班前提醒项目经理补齐当日例会纪要，并附上统一纪要模板。"
+            }
+          ]
+        },
+        {
+          title: "已上线模板",
+          desc: "这里 mock 一组已经跑起来的定时任务模板，后续可继续扩展筛选、启停和执行历史。",
+          tasks: [
+            {
+              name: "财务共享日报",
+              schedule: "工作日 09:10",
+              status: "运行中",
+              owner: "财务共享中心",
+              channel: "企业微信机器人",
+              summary: "自动推送昨日付款、报销退回和待处理单据概览，方便财务和值班同事快速查看。"
+            },
+            {
+              name: "招聘进度周提醒",
+              schedule: "每周一 10:00",
+              status: "运行中",
+              owner: "HRBP",
+              channel: "发送到 招聘协同群",
+              summary: "按岗位汇总候选人推进状态、待安排面试和 offer 风险，供 HR 与业务负责人同步。"
+            },
+            {
+              name: "制度更新播报",
+              schedule: "每周三 16:00",
+              status: "草稿待确认",
+              owner: "综合管理部",
+              channel: "知识库首页横幅 + 邮件",
+              summary: "当周若有制度修订，会自动抽取变更点并生成一版员工可读的更新播报。"
+            }
+          ]
+        }
+      ];
       let currentModelIndex = 0;
       let feedbackTimer = null;
       let activeHistoryEntry = null;
@@ -896,6 +969,97 @@ assistAiPrototypeRoot.innerHTML = "    <div class=\"app-shell\">\n      <div cla
         `;
       }
 
+      function renderAutomationWorkspace() {
+        if (!workspaceView) return;
+        updateTopbarRight(`
+          <button class="topbar-nav-btn" data-workspace-action="create-automation">
+            <svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 5v14"></path>
+              <path d="M5 12h14"></path>
+            </svg>
+            新建任务
+          </button>
+          <button class="topbar-nav-btn primary" data-workspace-action="automation-log">
+            查看执行日志
+          </button>
+        `);
+        workspaceView.innerHTML = `
+          <div class="workspace-shell">
+            <section class="workspace-hero automation-hero">
+              <div class="workspace-hero-top automation-hero-top">
+                <div>
+                  <div class="workspace-kicker">
+                    <svg class="icon" viewBox="0 0 24 24">
+                      <rect x="4.5" y="5" width="15" height="15" rx="3"></rect>
+                      <path d="M8 3.5v3"></path>
+                      <path d="M16 3.5v3"></path>
+                      <path d="M7.5 11h9"></path>
+                    </svg>
+                    定时任务
+                  </div>
+                  <h1 class="workspace-title">自动化日程工作台</h1>
+                  <p class="workspace-subtitle">这里先用一个静态首页 mock 定时任务能力，重点展示任务列表、执行时间、归属人和触达渠道。后续如果继续细化，可以再补 cron 配置、启停、日志和失败告警。</p>
+                </div>
+                <div class="automation-metrics">
+                  <div class="automation-metric-card">
+                    <span class="automation-metric-label">运行中</span>
+                    <strong class="automation-metric-value">6</strong>
+                    <span class="automation-metric-note">含 2 个今日待触发</span>
+                  </div>
+                  <div class="automation-metric-card">
+                    <span class="automation-metric-label">平均节省</span>
+                    <strong class="automation-metric-value">4.5h</strong>
+                    <span class="automation-metric-note">按周估算人工整理时间</span>
+                  </div>
+                </div>
+              </div>
+            </section>
+            ${automationTaskGroups.map((group) => `
+              <section class="workspace-section">
+                <div class="workspace-section-head">
+                  <div>
+                    <h2 class="workspace-section-title">${escapeHtml(group.title)}</h2>
+                    <p class="workspace-section-desc">${escapeHtml(group.desc)}</p>
+                  </div>
+                  <span class="workspace-section-count">${group.tasks.length}</span>
+                </div>
+                <div class="automation-grid">
+                  ${group.tasks.map((task) => `
+                    <article class="automation-card">
+                      <div class="automation-card-top">
+                        <div>
+                          <h3 class="automation-card-title">${escapeHtml(task.name)}</h3>
+                          <p class="automation-card-summary">${escapeHtml(task.summary)}</p>
+                        </div>
+                        <span class="automation-status-badge">${escapeHtml(task.status)}</span>
+                      </div>
+                      <dl class="automation-meta">
+                        <div class="automation-meta-item">
+                          <dt>执行时间</dt>
+                          <dd>${escapeHtml(task.schedule)}</dd>
+                        </div>
+                        <div class="automation-meta-item">
+                          <dt>负责人</dt>
+                          <dd>${escapeHtml(task.owner)}</dd>
+                        </div>
+                        <div class="automation-meta-item is-wide">
+                          <dt>触达渠道</dt>
+                          <dd>${escapeHtml(task.channel)}</dd>
+                        </div>
+                      </dl>
+                      <div class="automation-actions">
+                        <button class="workspace-action" data-workspace-action="edit-automation">编辑规则</button>
+                        <button class="workspace-action primary" data-workspace-action="run-automation">立即执行</button>
+                      </div>
+                    </article>
+                  `).join("")}
+                </div>
+              </section>
+            `).join("")}
+          </div>
+        `;
+      }
+
       function showAssistantHome(target, shouldFocus = false, crumbLabel) {
         const shell = getShellConfig(target);
         if (!shell) return;
@@ -956,6 +1120,24 @@ assistAiPrototypeRoot.innerHTML = "    <div class=\"app-shell\">\n      <div cla
         });
         closeMobileNav();
         renderLibraryWorkspace();
+      }
+
+      function showAutomationWorkspaceState() {
+        mainLayout.classList.add("is-workspace");
+        mainLayout.classList.remove("is-empty");
+        mainLayout.classList.remove("is-focus-mode");
+        focusModeButton?.classList.remove("is-active");
+        activateNav("automation-workspace");
+        newChatButton.classList.remove("is-active");
+        crumbTitle.textContent = "定时任务";
+        crumb?.classList.remove("is-hidden");
+        closeHistoryMenu();
+        resetComposerUploads();
+        composerInputs.forEach((field) => {
+          field.value = "";
+        });
+        closeMobileNav();
+        renderAutomationWorkspace();
       }
 
       function showFeedback(message) {
@@ -1310,6 +1492,10 @@ assistAiPrototypeRoot.innerHTML = "    <div class=\"app-shell\">\n      <div cla
             showLibraryWorkspaceState();
             return;
           }
+          if (target === "automation-workspace") {
+            showAutomationWorkspaceState();
+            return;
+          }
           if (target === "gpts-workspace") {
             showWorkspaceState();
             return;
@@ -1561,6 +1747,14 @@ assistAiPrototypeRoot.innerHTML = "    <div class=\"app-shell\">\n      <div cla
             renderMyGptsWorkspace();
           } else if (action === "upload-knowledge") {
             showFeedback("已打开文件选择（演示）");
+          } else if (action === "create-automation") {
+            showFeedback("已打开新建定时任务表单（演示）");
+          } else if (action === "automation-log") {
+            showFeedback("已打开执行日志（演示）");
+          } else if (action === "edit-automation") {
+            showFeedback("已进入任务规则编辑页（演示）");
+          } else if (action === "run-automation") {
+            showFeedback("已触发一次立即执行（演示）");
           }
           return;
         }
@@ -1586,6 +1780,10 @@ assistAiPrototypeRoot.innerHTML = "    <div class=\"app-shell\">\n      <div cla
         } else if (action === "save-gpt") {
           showFeedback("已保存配置（演示）");
           renderMyGptsWorkspace();
+        } else if (action === "create-automation") {
+          showFeedback("已打开新建定时任务表单（演示）");
+        } else if (action === "automation-log") {
+          showFeedback("已打开执行日志（演示）");
         }
       });
 
@@ -1600,6 +1798,8 @@ assistAiPrototypeRoot.innerHTML = "    <div class=\"app-shell\">\n      <div cla
           showWorkspaceState();
         } else if (initialView === "library") {
           showLibraryWorkspaceState();
+        } else if (initialView === "automation") {
+          showAutomationWorkspaceState();
         } else if (initialView === "assistant-home") {
           showAssistantHome(initialShell.key, false);
         } else if (initialView === "article") {
