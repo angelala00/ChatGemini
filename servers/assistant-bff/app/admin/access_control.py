@@ -70,9 +70,24 @@ def get_feature_flag_string_list(config_key: str) -> list[str]:
     return items
 
 
+def get_gpts_visibility_scope() -> str | None:
+    value = get_feature_flag_value("gpts_visible_scope", None)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"all", "restricted"}:
+            return normalized
+    return None
+
+
+def get_gpts_visibility_users() -> list[str]:
+    return get_feature_flag_string_list("gpts_visible_users")
+
+
 __all__ = [
     "fallback_permissions_for_user",
     "get_feature_flag_value",
+    "get_gpts_visibility_scope",
+    "get_gpts_visibility_users",
     "get_feature_flag_string_list",
     "is_feature_flag_enabled",
     "resolve_user_permissions",

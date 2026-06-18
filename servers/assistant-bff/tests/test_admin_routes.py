@@ -117,6 +117,11 @@ class AdminRoutesTests(unittest.IsolatedAsyncioTestCase):
 
         flags = {item["config_key"]: item for item in business_store.list_admin_feature_flags()}
         self.assertTrue(flags["gpts_feature_enabled"]["config_value"])
+        self.assertEqual(flags["gpts_visible_scope"]["config_value"], "restricted")
+        self.assertEqual(
+            flags["gpts_visible_users"]["config_value"],
+            ["admin@example.com"],
+        )
         self.assertNotIn("default_model", flags)
         self.assertNotIn("default_visible_models", flags)
         self.assertNotIn("default_reasoning_enabled", flags)
@@ -148,6 +153,8 @@ class AdminRoutesTests(unittest.IsolatedAsyncioTestCase):
 
         flags = {item["config_key"]: item for item in business_store.list_admin_feature_flags()}
         self.assertIn("gpts_feature_enabled", flags)
+        self.assertIn("gpts_visible_scope", flags)
+        self.assertIn("gpts_visible_users", flags)
         self.assertNotIn("default_model", flags)
         self.assertNotIn("default_visible_models", flags)
         self.assertNotIn("default_reasoning_enabled", flags)
@@ -235,6 +242,7 @@ class AdminRoutesTests(unittest.IsolatedAsyncioTestCase):
         conn = self._conn()
         try:
             conn.execute("DELETE FROM admin_user_permissions")
+            conn.execute("DELETE FROM admin_feature_flags WHERE config_key IN (?, ?)", ("gpts_visible_scope", "gpts_visible_users"))
             conn.commit()
         finally:
             conn.close()
@@ -245,7 +253,7 @@ class AdminRoutesTests(unittest.IsolatedAsyncioTestCase):
             result = await admin_routes.admin_gpts_overview(self.user)
 
         self.assertTrue(result["feature_enabled"])
-        self.assertEqual(result["visible_scope"], "whitelist")
+        self.assertEqual(result["visible_scope"], "restricted")
         self.assertEqual(result["whitelist_users"], ["admin@example.com", "user@example.com"])
         self.assertIn("manager@example.com", result["explicit_manage_users"])
         self.assertEqual(
@@ -254,6 +262,63 @@ class AdminRoutesTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertTrue(result["current_user_allowed"])
         self.assertTrue(result["current_user_manage_allowed"])
+        self.assertTrue(result["using_visibility_fallback"])
+
+    async def test_gpts_visibility_route_persists_structured_visibility_flags(self):
+        self._seed_permission("admin@example.com", "admin.access")
+        self._seed_permission("admin@example.com", "feature_flags.manage")
+
+        result = await admin_routes.update_admin_gpts_visibility(
+            admin_routes.AdminGptsVisibilityPayload(
+                visible_scope="restricted",
+                visible_users=["a@a.com", "a@a.com", "user-sub"],
+            ),
+            self.user,
+        )
+
+        self.assertEqual(result["item"]["visible_scope"], "restricted")
+        self.assertEqual(result["item"]["visible_users"], ["a@a.com", "user-sub"])
+
+        scope_flag = business_store.get_admin_feature_flag("gpts_visible_scope")
+        users_flag = business_store.get_admin_feature_flag("gpts_visible_users")
+        self.assertIsNotNone(scope_flag)
+        self.assertIsNotNone(users_flag)
+        assert scope_flag is not None
+        assert users_flag is not None
+        self.assertEqual(scope_flag["config_value"], "restricted")
+        self.assertEqual(users_flag["config_value"], ["a@a.com", "user-sub"])
+
+    async def test_runtime_routes_read_db_gpts_visibility_before_env_whitelist(self):
+        self._seed_permission("admin@example.com", "admin.access")
+        business_store.upsert_admin_feature_flag(
+            config_key="gpts_feature_enabled",
+            config_value=True,
+            value_type="boolean",
+            description="Enable GPTS",
+            updated_by="admin@example.com",
+        )
+        business_store.upsert_admin_feature_flag(
+            config_key="gpts_visible_scope",
+            config_value="restricted",
+            value_type="string",
+            description="Restrict GPTS visibility",
+            updated_by="admin@example.com",
+        )
+        business_store.upsert_admin_feature_flag(
+            config_key="gpts_visible_users",
+            config_value=["allowed@example.com"],
+            value_type="json",
+            description="Allowed GPTS users",
+            updated_by="admin@example.com",
+        )
+
+        with patch.object(gpts_routes, "GPTS_WHITE_LIST", {"admin@example.com"}):
+            self.assertFalse(gpts_routes.is_gpts_feature_allowed(self.user))
+            self.assertTrue(
+                gpts_routes.is_gpts_feature_allowed(
+                    {"email": "allowed@example.com", "sub": "allowed-sub"}
+                )
+            )
 
     async def test_admin_write_endpoints_upsert_and_delete(self):
         self._seed_permission("admin@example.com", "admin.access")

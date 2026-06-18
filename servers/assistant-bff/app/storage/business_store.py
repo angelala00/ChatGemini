@@ -1758,6 +1758,20 @@ def _load_seed_admin_feature_flags() -> list[dict[str, Any]]:
             "value_type": "boolean",
             "description": "Enable GPTS feature",
         },
+        {
+            "config_key": "gpts_visible_scope",
+            "config_value": "restricted" if model_config.GPTS_WHITE_LIST else "all",
+            "value_type": "string",
+            "description": "Controls whether GPTS is visible to all users or restricted to listed users.",
+        },
+        {
+            "config_key": "gpts_visible_users",
+            "config_value": sorted(
+                str(item).strip() for item in model_config.GPTS_WHITE_LIST if str(item).strip()
+            ),
+            "value_type": "json",
+            "description": "List of user identifiers that can see GPTS when visibility is restricted.",
+        },
     ]
 
 
@@ -1781,6 +1795,10 @@ def _should_backfill_feature_flag(
         return not isinstance(current_value, bool)
     if config_key == "gpts_feature_enabled":
         return not isinstance(current_value, bool)
+    if config_key == "gpts_visible_scope":
+        return not (isinstance(current_value, str) and current_value.strip().lower() in {"all", "restricted"})
+    if config_key == "gpts_visible_users":
+        return not isinstance(current_value, list)
 
     return False
 

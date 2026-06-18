@@ -3,6 +3,8 @@ import uuid
 from typing import Tuple, Optional
 from fastapi import APIRouter, Request, Depends, HTTPException, status
 from app.admin.access_control import (
+    get_gpts_visibility_scope,
+    get_gpts_visibility_users,
     is_feature_flag_enabled,
     resolve_user_permissions,
     user_keys,
@@ -46,9 +48,17 @@ GPTS_WHITE_LIST = model_config.GPTS_WHITE_LIST
 def is_gpts_feature_allowed(user: dict) -> bool:
     if not is_feature_flag_enabled("gpts_feature_enabled", model_config.GPTS_FEATURE_ENABLED):
         return False
+    configured_scope = get_gpts_visibility_scope()
+    if configured_scope == "all":
+        return True
+    if configured_scope == "restricted":
+        configured_users = set(get_gpts_visibility_users())
+        if not configured_users:
+            return False
+        return bool(configured_users & set(user_keys(user)))
     if not GPTS_WHITE_LIST:
         return True
-    return user.get("email") in GPTS_WHITE_LIST or user.get("sub") in GPTS_WHITE_LIST
+    return bool(set(user_keys(user)) & set(GPTS_WHITE_LIST))
 
 
 def ensure_gpts_feature_allowed(user: dict) -> None:

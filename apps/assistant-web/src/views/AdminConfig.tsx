@@ -81,6 +81,7 @@ interface AdminGptsOverview {
     readonly effective_manage_users: string[];
     readonly current_user_allowed: boolean;
     readonly current_user_manage_allowed: boolean;
+    readonly using_visibility_fallback?: boolean;
     readonly compat_note: string;
 }
 
@@ -126,6 +127,11 @@ interface ProductFlagsDraft {
     readonly gpts_feature_enabled: boolean;
 }
 
+interface GptsVisibilityDraft {
+    readonly visible_scope: string;
+    readonly visible_users_input: string;
+}
+
 type LoadState = "loading" | "ready" | "error";
 type AdminSectionId = "models" | "gpts" | "permissions" | "flags" | "audit";
 
@@ -137,6 +143,8 @@ const STRUCTURED_FLAG_KEYS = new Set([
     "default_visible_models",
     "default_reasoning_enabled",
     "gpts_feature_enabled",
+    "gpts_visible_scope",
+    "gpts_visible_users",
 ]);
 const ADMIN_SECTION_ROUTES: Record<AdminSectionId, string> = {
     models: "/admin/models",
@@ -250,9 +258,14 @@ const createEmptyProductFlagsDraft = (): ProductFlagsDraft => ({
     gpts_feature_enabled: false,
 });
 
+const createEmptyGptsVisibilityDraft = (): GptsVisibilityDraft => ({
+    visible_scope: "all",
+    visible_users_input: "",
+});
+
 const splitCsvValue = (value: string) =>
     value
-        .split(",")
+        .split(/[\n,]+/)
         .map((item) => item.trim())
         .filter(Boolean);
 
@@ -330,6 +343,12 @@ const AdminConfig = () => {
     );
     const [savedProductFlagsDraft, setSavedProductFlagsDraft] = useState<ProductFlagsDraft>(
         createEmptyProductFlagsDraft(),
+    );
+    const [gptsVisibilityDraft, setGptsVisibilityDraft] = useState<GptsVisibilityDraft>(
+        createEmptyGptsVisibilityDraft(),
+    );
+    const [savedGptsVisibilityDraft, setSavedGptsVisibilityDraft] = useState<GptsVisibilityDraft>(
+        createEmptyGptsVisibilityDraft(),
     );
     const [flagSearchQuery, setFlagSearchQuery] = useState("");
 
@@ -529,6 +548,10 @@ const AdminConfig = () => {
                 flagMap.get("gpts_feature_enabled")?.config_value,
             ),
         };
+        const nextGptsVisibilityDraft = {
+            visible_scope: gptsOverview?.visible_scope === "restricted" ? "restricted" : "all",
+            visible_users_input: (gptsOverview?.whitelist_users ?? []).join(", "),
+        };
         const nextAssistantDefaultsDraft = {
             default_model: nextDefaultModel,
             default_visible_models_input: nextVisibleModels.join(", "),
@@ -540,7 +563,9 @@ const AdminConfig = () => {
         setSavedAssistantDefaultsDraft(nextAssistantDefaultsDraft);
         setProductFlagsDraft(nextProductFlagsDraft);
         setSavedProductFlagsDraft(nextProductFlagsDraft);
-    }, [featureFlags]);
+        setGptsVisibilityDraft(nextGptsVisibilityDraft);
+        setSavedGptsVisibilityDraft(nextGptsVisibilityDraft);
+    }, [featureFlags, gptsOverview]);
 
     const assistantDefaultsDirty = useMemo(
         () =>
@@ -552,7 +577,12 @@ const AdminConfig = () => {
         () => JSON.stringify(productFlagsDraft) !== JSON.stringify(savedProductFlagsDraft),
         [productFlagsDraft, savedProductFlagsDraft],
     );
-    const structuredConfigDirty = assistantDefaultsDirty || productFlagsDirty;
+    const gptsVisibilityDirty = useMemo(
+        () => JSON.stringify(gptsVisibilityDraft) !== JSON.stringify(savedGptsVisibilityDraft),
+        [gptsVisibilityDraft, savedGptsVisibilityDraft],
+    );
+    const structuredConfigDirty =
+        assistantDefaultsDirty || productFlagsDirty || gptsVisibilityDirty;
     const modelEditorDirty = useMemo(
         () =>
             editingModelKey !== null &&
@@ -1160,6 +1190,43 @@ const AdminConfig = () => {
                     ]),
                 );
             }
+            await refreshAuditLogs();
+            sendUserAlert(t("views.Admin.save_success"));
+        } catch (error) {
+            sendUserAlert(
+                error instanceof Error ? error.message : t("views.Admin.save_error"),
+                true,
+                2200,
+            );
+        } finally {
+            setBusyKey("");
+        }
+    };
+
+    const saveGptsVisibility = async () => {
+        if (!canManageFlags) {
+            sendUserAlert(t("views.Admin.permission_denied"), true, 1800);
+            return;
+        }
+        const visibleScope =
+            gptsVisibilityDraft.visible_scope === "restricted" ? "restricted" : "all";
+        const visibleUsers = splitCsvValue(gptsVisibilityDraft.visible_users_input);
+        if (visibleScope === "restricted" && visibleUsers.length === 0) {
+            sendUserAlert(t("views.Admin.gpts_visibility_validation"), true, 2200);
+            return;
+        }
+        setBusyKey("gpts-visibility-save");
+        try {
+            const response = await requestJson(
+                "PUT",
+                getFullPath("/api/admin/gpts-visibility"),
+                {
+                    visible_scope: visibleScope,
+                    visible_users: visibleUsers,
+                },
+            );
+            syncPermissionsFromResponse(response);
+            await loadAdminData();
             await refreshAuditLogs();
             sendUserAlert(t("views.Admin.save_success"));
         } catch (error) {
@@ -1813,6 +1880,119 @@ const AdminConfig = () => {
                                             </article>
                                         </div>
 
+                                        <div className="mt-4 rounded-[20px] border border-[rgba(213,223,229,0.98)] bg-[rgba(249,250,245,0.96)] p-4 shadow-sm">
+                                            <div className="flex items-center justify-between gap-3 border-b border-[rgba(231,237,242,0.95)] pb-3">
+                                                <h3 className="text-base font-semibold text-[#25313c]">
+                                                    {t("views.Admin.gpts_visibility_title")}
+                                                </h3>
+                                                {gptsVisibilityDirty && (
+                                                    <span className="rounded-full border border-[rgba(251,214,163,0.98)] bg-[rgba(255,248,236,0.98)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8a5a17]">
+                                                        {t("views.Admin.unsaved_changes_short")}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className="mt-2 text-sm leading-6 text-[#55626e]">
+                                                {t("views.Admin.gpts_visibility_subtitle")}
+                                            </p>
+                                            {!canManageFlags && (
+                                                <p className="mt-3 text-sm text-[#8a95a0]">
+                                                    {t("views.Admin.flags_read_only_hint")}
+                                                </p>
+                                            )}
+                                            <div className="mt-4 grid gap-3 md:grid-cols-2">
+                                                <label className="flex items-start gap-3 rounded-2xl border border-[rgba(213,223,229,0.98)] bg-white/85 px-4 py-3">
+                                                    <input
+                                                        type="radio"
+                                                        name="gpts-visible-scope"
+                                                        className="mt-1"
+                                                        checked={gptsVisibilityDraft.visible_scope === "all"}
+                                                        disabled={!canManageFlags}
+                                                        onChange={() =>
+                                                            setGptsVisibilityDraft((state) => ({
+                                                                ...state,
+                                                                visible_scope: "all",
+                                                            }))
+                                                        }
+                                                    />
+                                                    <span>
+                                                        <span className="block text-sm font-semibold text-[#25313c]">
+                                                            {t("views.Admin.gpts_scope_all")}
+                                                        </span>
+                                                        <span className="mt-1 block text-xs leading-5 text-[#7b8792]">
+                                                            {t("views.Admin.gpts_scope_all_hint")}
+                                                        </span>
+                                                    </span>
+                                                </label>
+                                                <label className="flex items-start gap-3 rounded-2xl border border-[rgba(213,223,229,0.98)] bg-white/85 px-4 py-3">
+                                                    <input
+                                                        type="radio"
+                                                        name="gpts-visible-scope"
+                                                        className="mt-1"
+                                                        checked={gptsVisibilityDraft.visible_scope === "restricted"}
+                                                        disabled={!canManageFlags}
+                                                        onChange={() =>
+                                                            setGptsVisibilityDraft((state) => ({
+                                                                ...state,
+                                                                visible_scope: "restricted",
+                                                            }))
+                                                        }
+                                                    />
+                                                    <span>
+                                                        <span className="block text-sm font-semibold text-[#25313c]">
+                                                            {t("views.Admin.gpts_scope_restricted")}
+                                                        </span>
+                                                        <span className="mt-1 block text-xs leading-5 text-[#7b8792]">
+                                                            {t("views.Admin.gpts_scope_restricted_hint")}
+                                                        </span>
+                                                    </span>
+                                                </label>
+                                            </div>
+                                            <label className="mt-4 grid gap-2">
+                                                <span className={formLabelClass}>
+                                                    {t("views.Admin.gpts_visible_users_label")}
+                                                </span>
+                                                <textarea
+                                                    className={`${inputClass} min-h-[120px] resize-y`}
+                                                    placeholder={t("views.Admin.gpts_visible_users_placeholder")}
+                                                    value={gptsVisibilityDraft.visible_users_input}
+                                                    disabled={!canManageFlags}
+                                                    onChange={(event) =>
+                                                        setGptsVisibilityDraft((state) => ({
+                                                            ...state,
+                                                            visible_users_input: event.target.value,
+                                                        }))
+                                                    }
+                                                />
+                                                <span className="text-xs leading-5 text-[#8a95a0]">
+                                                    {t("views.Admin.gpts_visible_users_hint")}
+                                                </span>
+                                            </label>
+                                            <div className="mt-4 flex flex-wrap gap-2.5">
+                                                <button
+                                                    type="button"
+                                                    className={`${buttonClass} bg-[#279ab3] text-white hover:bg-[#1e7f95] disabled:bg-[#a3ccd4] disabled:cursor-not-allowed`}
+                                                    onClick={saveGptsVisibility}
+                                                    disabled={
+                                                        !canManageFlags ||
+                                                        busyKey === "gpts-visibility-save" ||
+                                                        !gptsVisibilityDirty
+                                                    }
+                                                >
+                                                    {busyKey === "gpts-visibility-save"
+                                                        ? t("views.Admin.saving")
+                                                        : t("views.Admin.save")}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className={`${buttonClass} border border-[rgba(214,223,229,0.98)] bg-white text-[#2f3a46] hover:bg-[rgba(245,248,250,0.96)] disabled:opacity-30 disabled:cursor-not-allowed`}
+                                                    onClick={() => setGptsVisibilityDraft(savedGptsVisibilityDraft)}
+                                                    disabled={!canManageFlags || !gptsVisibilityDirty}
+                                                >
+                                                    {t("views.Admin.reset")}
+                                                </button>
+                                            </div>
+                                        </div>
+
                                         <div className="mt-4 grid gap-4 xl:grid-cols-3">
                                             {[
                                                 {
@@ -1858,6 +2038,11 @@ const AdminConfig = () => {
                                             ))}
                                         </div>
 
+                                        {gptsOverview.using_visibility_fallback && (
+                                            <div className="mt-4 rounded-[18px] border border-[rgba(251,214,163,0.98)] bg-[rgba(255,248,236,0.98)] px-4 py-3 text-sm leading-6 text-[#8a5a17]">
+                                                {t("views.Admin.gpts_visibility_fallback_note")}
+                                            </div>
+                                        )}
                                         <div className="mt-4 rounded-[18px] border border-[rgba(251,214,163,0.98)] bg-[rgba(255,248,236,0.98)] px-4 py-3 text-sm leading-6 text-[#8a5a17]">
                                             {t("views.Admin.gpts_compat_note")}
                                         </div>

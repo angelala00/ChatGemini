@@ -36,3 +36,11 @@
 - **维护约束**：
   - 公共布局、交互、文案数据优先修改共享文件，不要再把整套内联 `style` 或 `script` 复制回单页。
   - 新增原型页面时，优先复用 `assistai-ui.js` 的初始化模式，只增加轻量入口页或扩展共享配置。
+
+## 管理员页 GPTs 可见性
+
+- **入口位置**：`apps/assistant-web/src/views/AdminConfig.tsx` 的 GPTs 区块。
+- **配置语义**：
+  - `gpts_feature_enabled` 只表示智能体功能总开关。
+  - “更多智能体”菜单对谁可见，由结构化的 GPTs 可见性表单维护，而不是依赖 `gpts.manage`。
+- **交互约束**：管理员页应优先提供结构化表单来维护 GPTs 可见范围与人员列表，避免要求管理员直接编辑通用 feature flag JSON。
