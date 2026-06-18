@@ -1,4 +1,11 @@
 {
+    "common": {
+        "save": "Save",
+        "create": "Create",
+        "edit": "Edit",
+        "delete": "Delete",
+        "back": "Back"
+    },
     "App": {
         "handleExportSession": {
             "user_timezone": "User time zone",
@@ -86,6 +93,7 @@
             "pin": "Pin"
         },
         "MyGpts": {
+            "back": "Back to agents",
             "owner_label": "Owner: {{owner}}",
             "owner_unknown": "Owner: unknown",
             "delete_title": "Confirm agent deletion",
@@ -99,7 +107,8 @@
             "create_title": "Create Agent",
             "page_subtitle": "Configure the agent's role, model, behavior, and knowledge for consistent task execution.",
             "workspace_label": "Agent configuration",
-            "back": "Back to agents",
+            "back_create": "Back to agents",
+            "back_edit": "Back to my agents",
             "identity_title": "Agent information",
             "identity_description": "Use a clear name and description to explain what this agent does best.",
             "behavior_title": "Behavior and conversation",

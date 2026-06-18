@@ -4,11 +4,13 @@ import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
     ArrowRightIcon,
+    Bars3Icon,
     PlusIcon,
     Squares2X2Icon,
     UserCircleIcon,
 } from "@heroicons/react/24/outline";
 import { Container } from "../components/Container";
+import { Topbar } from "../components/Topbar";
 import pinnedIcon from "../assets/icons/thumbtack-solid.svg";
 import unpinnedIcon from "../assets/icons/map-pin-solid.svg";
 import { getFullPath } from "../helpers/getDomainAndPath";
@@ -145,7 +147,11 @@ const Section = ({ title, description, items, onToggle }: SectionProps) => {
     );
 };
 
-const Gpts = () => {
+interface GptsProps {
+    readonly onToggleSidebar?: () => void;
+}
+
+const Gpts = ({ onToggleSidebar }: GptsProps) => {
     const [items, setItems] = useState<GptsItem[]>([]);
     const [canManage, setCanManage] = useState(false);
     const dispatch = useDispatch();
@@ -193,46 +199,50 @@ const Gpts = () => {
     const pinned = items.filter((item) => item.is_pinned);
     const others = items.filter((item) => !item.is_pinned);
 
+    const topbarActions = canManage && (
+        <>
+            <Link
+                to="/my-gpts"
+                className="inline-flex h-9 items-center gap-2 rounded-[10px] border border-[var(--assist-line)] bg-white/85 px-3.5 text-[13px] font-semibold text-[var(--assist-text-soft)] transition duration-160 ease-out hover:-translate-y-0.5 hover:bg-white hover:text-[var(--assist-text)]"
+            >
+                <UserCircleIcon className="size-[18px]" />
+                <span className="hidden sm:inline">{t("views.Gpts.link_my_gpts")}</span>
+            </Link>
+            <Link
+                to="/gpts/create"
+                className="inline-flex h-9 items-center gap-2 rounded-[10px] border border-transparent bg-[var(--assist-accent-strong)] px-3.5 text-[13px] font-semibold text-white shadow-[0_6px_16px_rgba(39,154,179,0.16)] transition duration-160 ease-out hover:-translate-y-0.5 hover:bg-[var(--assist-accent)] hover:shadow-[0_8px_20px_rgba(39,154,179,0.22)]"
+            >
+                <PlusIcon className="size-[18px]" />
+                <span>{t("views.Gpts.link_create")}</span>
+            </Link>
+        </>
+    );
+
     return (
         <Container className="min-h-full w-full flex-1 overflow-y-auto bg-[var(--assist-bg)] text-[var(--assist-text)]">
-            <main className="mx-auto w-full max-w-[1180px] px-5 pb-20 pt-10 sm:px-8 lg:px-10">
-                <header className="rounded-[22px] border border-[var(--assist-line)] bg-[rgba(252,253,254,0.78)] px-5 py-5 shadow-[var(--assist-shadow-sm)] sm:px-6">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                        <div className="max-w-2xl">
-                            <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.13em] text-[var(--assist-accent-strong)]">
-                                <Squares2X2Icon className="size-4" />
-                                {t("views.Gpts.workspace_label")}
-                            </div>
-                            <h1 className="text-[26px] font-semibold leading-tight tracking-[-0.03em] text-[var(--assist-text)] sm:text-[30px]">
-                                {t("views.Gpts.page_title")}
-                            </h1>
-                            <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--assist-text-soft)]">
-                                {t("views.Gpts.page_subtitle")}
-                            </p>
-                        </div>
+            <Topbar
+                title={t("views.Gpts.page_title")}
+                actions={topbarActions}
+                onToggleSidebar={onToggleSidebar}
+            />
 
-                        {canManage && (
-                            <div className="flex flex-wrap gap-2">
-                                <Link
-                                    to="/my-gpts"
-                                    className="inline-flex h-10 items-center gap-2 rounded-[13px] border border-[var(--assist-line)] bg-white/80 px-4 text-sm font-medium text-[var(--assist-text-soft)] transition hover:border-[var(--assist-line-strong)] hover:bg-white hover:text-[var(--assist-text)]"
-                                >
-                                    <UserCircleIcon className="size-[18px]" />
-                                    {t("views.Gpts.link_my_gpts")}
-                                </Link>
-                                <Link
-                                    to="/gpts/create"
-                                    className="inline-flex h-10 items-center gap-2 rounded-[13px] bg-[var(--assist-accent-strong)] px-4 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(39,154,179,0.18)] transition hover:-translate-y-0.5 hover:bg-[var(--assist-accent)]"
-                                >
-                                    <PlusIcon className="size-[18px]" />
-                                    {t("views.Gpts.link_create")}
-                                </Link>
-                            </div>
-                        )}
+            <main className="mx-auto w-full max-w-[1180px] px-5 pb-20 sm:px-8 lg:px-10">
+                <section className="pb-8 pt-10">
+                    <div className="flex items-center gap-2.5 text-[var(--assist-accent-strong)]">
+                        <Squares2X2Icon className="size-5" />
+                        <span className="text-[11px] font-bold uppercase tracking-[0.13em]">
+                            {t("views.Gpts.workspace_label")}
+                        </span>
                     </div>
-                </header>
+                    <h1 className="mt-2 text-[28px] font-semibold tracking-[-0.03em] text-[var(--assist-text)] sm:text-[32px]">
+                        {t("views.Gpts.page_title")}
+                    </h1>
+                    <p className="mt-2 max-w-[640px] text-[15px] leading-relaxed text-[var(--assist-text-soft)]">
+                        {t("views.Gpts.page_subtitle")}
+                    </p>
+                </section>
 
-                <div className="mt-10 space-y-12">
+                <div className="mt-4 space-y-12">
                     {!items.length && (
                         <div className="grid min-h-64 place-items-center rounded-[24px] border border-dashed border-[var(--assist-line-strong)] bg-[rgba(252,253,254,0.65)] px-6 text-center">
                             <div className="max-w-sm">

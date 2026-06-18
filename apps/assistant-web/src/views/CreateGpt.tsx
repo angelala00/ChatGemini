@@ -1,8 +1,7 @@
 import { KeyboardEvent, useEffect, useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
-    ArrowLeftIcon,
     CheckIcon,
     CpuChipIcon,
     DocumentTextIcon,
@@ -13,6 +12,7 @@ import {
     UsersIcon,
 } from "@heroicons/react/24/outline";
 import { Container } from "../components/Container";
+import { Topbar } from "../components/Topbar";
 import { getFullPath } from "../helpers/getDomainAndPath";
 import { handleRequest } from "../helpers/handleRequest";
 
@@ -120,7 +120,11 @@ const formatFileSize = (size?: number) => {
     return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 };
 
-const CreateGpt = () => {
+interface CreateGptProps {
+    readonly onToggleSidebar?: () => void;
+}
+
+const CreateGpt = ({ onToggleSidebar }: CreateGptProps) => {
     const [name, setName] = useState("");
     const [desc, setDesc] = useState("");
     const [systemPrompt, setSystemPrompt] = useState("");
@@ -327,6 +331,31 @@ const CreateGpt = () => {
             .finally(() => setIsSubmitting(false));
     };
 
+    const topbarTitle = (
+        <div className="flex items-center gap-2">
+            <Link to="/gpts" className="hover:text-[var(--assist-accent-strong)] transition-colors">
+                {t("views.Gpts.page_title")}
+            </Link>
+            <span className="text-[var(--assist-text-faint)]">/</span>
+            <Link to="/my-gpts" className="hover:text-[var(--assist-accent-strong)] transition-colors">
+                {t("views.Gpts.link_my_gpts")}
+            </Link>
+            <span className="text-[var(--assist-text-faint)]">/</span>
+            <span className="font-medium">{gid ? t("views.CreateGpt.edit_title") : t("views.CreateGpt.create_title")}</span>
+        </div>
+    );
+
+    const topbarActions = (
+        <button
+            type="submit"
+            form="create-gpt-form"
+            disabled={isSubmitting || !preferredModel}
+            className="inline-flex h-9 items-center gap-2 rounded-[10px] border border-transparent bg-[var(--assist-accent-strong)] px-4 text-[13px] font-semibold text-white shadow-[0_6px_16px_rgba(39,154,179,0.16)] transition duration-160 ease-out hover:-translate-y-0.5 hover:bg-[var(--assist-accent)] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+            {isSubmitting ? t("views.CreateGpt.submitting") : (gid ? t("common.save") : t("common.create"))}
+        </button>
+    );
+
     const authOptions = [
         { value: "self" as const, label: t("views.CreateGpt.permission_self"), icon: LockClosedIcon },
         { value: "white" as const, label: t("views.CreateGpt.permission_white"), icon: UsersIcon },
@@ -369,31 +398,30 @@ const CreateGpt = () => {
 
     return (
         <Container className="min-h-full w-full flex-1 overflow-y-auto bg-[var(--assist-bg)] text-[var(--assist-text)]">
-            <main className="mx-auto w-full max-w-[1120px] px-5 pb-24 pt-8 sm:px-8 lg:px-10">
-                <button
-                    type="button"
-                    onClick={() => navigate("/gpts")}
-                    className="mb-6 inline-flex items-center gap-2 rounded-[12px] px-2 py-1.5 text-sm text-[var(--assist-text-faint)] transition hover:bg-white/70 hover:text-[var(--assist-text)]"
-                >
-                    <ArrowLeftIcon className="size-4" />
-                    {t("views.CreateGpt.back")}
-                </button>
+            <Topbar
+                title={topbarTitle}
+                actions={topbarActions}
+                onToggleSidebar={onToggleSidebar}
+            />
 
-                <header className="mb-9 max-w-2xl">
-                    <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--assist-accent-strong)]">
-                        <SparklesIcon className="size-4" />
-                        {t("views.CreateGpt.workspace_label")}
+            <main className="mx-auto w-full max-w-[1120px] px-5 pb-24 pt-10 sm:px-8 lg:px-10">
+                <header className="mb-10 max-w-2xl">
+                    <div className="mb-2 flex items-center gap-2 text-[var(--assist-accent-strong)]">
+                        <SparklesIcon className="size-5" />
+                        <span className="text-[11px] font-bold uppercase tracking-[0.13em]">
+                            {t("views.CreateGpt.workspace_label")}
+                        </span>
                     </div>
-                    <h1 className="text-3xl font-semibold tracking-[-0.035em] sm:text-[38px] sm:leading-[1.15]">
+                    <h1 className="text-[28px] font-semibold tracking-[-0.035em] sm:text-[34px] sm:leading-[1.15]">
                         {gid ? t("views.CreateGpt.edit_title") : t("views.CreateGpt.create_title")}
                     </h1>
-                    <p className="mt-3 text-sm leading-7 text-[var(--assist-text-soft)] sm:text-[15px]">
+                    <p className="mt-2 text-[15px] leading-relaxed text-[var(--assist-text-soft)]">
                         {t("views.CreateGpt.page_subtitle")}
                     </p>
                 </header>
 
-                <form onSubmit={handleSubmit} className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_330px] lg:items-start">
-                    <div className="space-y-6">
+                <form id="create-gpt-form" onSubmit={handleSubmit} className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_330px] lg:items-start">
+                    <div className="mx-auto w-full max-w-[780px] space-y-6 lg:col-span-2">
                         <section className="rounded-[24px] border border-[var(--assist-line)] bg-[rgba(252,253,254,0.92)] p-5 shadow-[var(--assist-shadow-sm)] sm:p-6">
                             <div className="mb-6">
                                 <h2 className="text-[17px] font-semibold tracking-[-0.01em]">
@@ -484,9 +512,7 @@ const CreateGpt = () => {
                                 </div>
                             </div>
                         </section>
-                    </div>
 
-                    <aside className="space-y-6 lg:sticky lg:top-8">
                         <section className="rounded-[24px] border border-[var(--assist-line)] bg-[rgba(252,253,254,0.92)] p-5 shadow-[var(--assist-shadow-sm)]">
                             <div className="flex items-center gap-3">
                                 <div className="grid size-10 place-items-center rounded-[13px] bg-[var(--assist-accent-soft)] text-[var(--assist-accent-strong)]">
@@ -632,7 +658,7 @@ const CreateGpt = () => {
                                 </p>
                             )}
                             {knowledgeFiles.length > 0 && (
-                                <div className="mt-4 space-y-2">
+                                <div className="mt-4 max-h-72 space-y-2 overflow-y-auto pr-1">
                                     {knowledgeFiles.map((item) => (
                                         <div
                                             key={item.file_id}
@@ -744,7 +770,7 @@ const CreateGpt = () => {
                                 {message}
                             </p>
                         )}
-                    </aside>
+                    </div>
                 </form>
             </main>
         </Container>

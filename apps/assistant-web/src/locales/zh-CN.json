@@ -1,4 +1,11 @@
 {
+    "common": {
+        "save": "保存",
+        "create": "创建",
+        "edit": "编辑",
+        "delete": "删除",
+        "back": "返回"
+    },
     "App": {
         "handleExportSession": {
             "user_timezone": "用户时区",
@@ -86,6 +93,7 @@
             "pin": "置顶"
         },
         "MyGpts": {
+            "back": "返回更多智能体",
             "owner_label": "所有者：{{owner}}",
             "owner_unknown": "所有者：未知",
             "delete_title": "确认删除智能体",
@@ -99,7 +107,8 @@
             "create_title": "创建智能体",
             "page_subtitle": "配置智能体的职责、模型、行为与知识，让它以一致的方式完成特定任务。",
             "workspace_label": "智能体配置",
-            "back": "返回更多智能体",
+            "back_create": "返回更多智能体",
+            "back_edit": "返回我的智能体",
             "identity_title": "智能体信息",
             "identity_description": "用清晰的名称和描述说明这个智能体擅长什么。",
             "behavior_title": "行为与对话",

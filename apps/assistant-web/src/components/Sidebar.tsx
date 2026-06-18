@@ -48,9 +48,24 @@ interface SidebarProps {
     readonly onToggleSidebar: () => void;
 }
 
-const APP_VERSION = "v1.6.0";
+const APP_VERSION = "v1.6.2";
 
 const releaseHistory = [
+    {
+        version: "v1.6.2",
+        date: "2026.06",
+        type: "patch",
+        zhTitle: "智能体广场页顶部样式对齐",
+        zhChanges: [
+            "将更多智能体页面顶部区从独立圆角卡片调整为与原型 topbar 一致的轻薄半透明顶栏风格。",
+            "同步统一该区域的字体节奏、边线层级和青灰配色，使其更贴近 AssistAI 原型。",
+        ],
+        enTitle: "Explore Agents Header Alignment",
+        enChanges: [
+            "Adjusted the Explore Agents header from a standalone rounded card to the slimmer translucent topbar style used in the prototype.",
+            "Aligned typography, border hierarchy, and the teal-gray color treatment of the header area with the AssistAI reference.",
+        ],
+    },
     {
         version: "v1.6.0",
         date: "2026.06",
