@@ -16,15 +16,15 @@
 
 下表详列了原型中每个业务功能所包含的具体文件，帮助你一眼看清逻辑对应关系：
 
-| 模块名称 | HTML 页面 (视图入口) | 专职 CSS 样式 | 专职 JS 逻辑 (DOM 渲染) | 模块职责与核心逻辑 |
+| 模块名称 | HTML 页面 (视图入口) | 样式配置 (已内联原 CSS 及 Tailwind Play CDN) | 专职 JS 逻辑 (DOM 渲染) | 模块职责与核心逻辑 |
 | :--- | :--- | :--- | :--- | :--- |
-| **公共基础 & 外壳** | — | `css/assistai-base.css`<br>`css/assistai-sidebar.css`<br>`css/assistai-chat.css` | `js/assistai-data.js`<br>`js/assistai-ui.js` | **数据与控制中枢**：定义配色、布局网格；统一侧边栏；承载全局 Mock 数据仓库；控制视图切换和输入框自适应。 |
-| **AI 对话主航道** | `index.html` | *(仅加载公共样式)* | *(仅加载公共 JS)* | **主聊天界面**：空状态下的提问引导、追问消息流、回复文本排版（含步骤条、提示卡）。 |
-| **制度助手** | `policy.html` | *(仅加载公共样式)* | *(仅加载公共 JS)* | **专职 GPT 演示**：初始化为 `regulation-assistant` 助手，加载针对差旅、采购审批等高频制度的问答口径。 |
-| **智能体广场** | `gpts.html` | `css/gpts-workspace.css` | `js/gpts-workspace.js` | **智能体中心**：常用智能体展示、全部智能体卡片流；提供类 GPTs 的创建/配置向导与实时预览面板。 |
-| **个人资料库** | `library.html` | `css/library-workspace.css` | `js/library-workspace.js` | **文档与索引管理**：最近文件资料分类列表、已索引的知识库网格（模拟用于 RAG 检索的分块数据）。 |
-| **定时任务** | `automation.html` | `css/automation-workspace.css` | `js/automation-workspace.js` | **日程自动化**：运行中定时汇总任务卡片列表（包含 Cron 执行时间、负责人、通知群聊渠道及日志入口）。 |
-| **探索技能** | `explore.html` | `css/explore-workspace.css` | `js/explore-workspace.js` | **高频 prompt 广场**：展示适用特定协同办公场景（如纪要提炼、FAQ生成、周报自动成稿）的推荐技能列表。 |
+| **公共基础 & 外壳** | — | 内联 `assistai-base.css`、`assistai-sidebar.css`、`assistai-chat.css` 并整合 Tailwind CDN | `js/assistai-data.js`<br>`js/assistai-ui.js` | **数据与控制中枢**：定义配色、布局网格；统一侧边栏；承载全局 Mock 数据仓库；控制视图切换和输入框自适应。 |
+| **AI 对话主航道** | `index.html` | 同上 | *(仅加载公共 JS)* | **主聊天界面**：空状态下的提问引导、追问消息流、回复文本排版（含步骤条、提示卡）。 |
+| **制度助手** | `policy.html` | 同上 | *(仅加载公共 JS)* | **专职 GPT 演示**：初始化为 `regulation-assistant` 助手，加载针对差旅、采购审批等高频制度的问答口径。 |
+| **智能体广场** | `gpts.html` | 内联核心 CSS + `gpts-workspace.css` | `js/gpts-workspace.js` | **智能体中心**：常用智能体展示、全部智能体卡片流；提供类 GPTs 的创建/配置向导与实时预览面板。 |
+| **个人资料库** | `library.html` | 内联核心 CSS + `library-workspace.css` | `js/library-workspace.js` | **文档与索引管理**：最近文件资料分类列表、已索引的知识库网格（模拟用于 RAG 检索的分块数据）。 |
+| **定时任务** | `automation.html` | 内联核心 CSS + `automation-workspace.css` | `js/automation-workspace.js` | **日程自动化**：运行中定时汇总任务卡片列表（包含 Cron 执行时间、负责人、通知群聊渠道及日志入口）。 |
+| **探索技能** | `explore.html` | 内联核心 CSS + `explore-workspace.css` | `js/explore-workspace.js` | **高频 prompt 广场**：展示适用特定协同办公场景（如纪要提炼、FAQ生成、周报自动成稿）的推荐技能列表。 |
 
 ---
 
@@ -50,19 +50,11 @@ apps/assistant-web/template/assistai-ui/
 ├── assets/                    # 静态素材
 │   ├── logo.svg
 │   └── assistant-avatar.svg
-├── css/                       # 拆分后的模块化样式
-│   ├── assistai-base.css      # CSS 变量、Reset、公共工作空间排版
-│   ├── assistai-sidebar.css   # 侧栏、账户面板、历史会话
-│   ├── assistai-chat.css      # 消息流气泡、富文本渲染、底部输入区
-│   ├── gpts-workspace.css     # 广场网格、创建配置表单
-│   ├── library-workspace.css  # 资料列表、知识库卡片、使用度看板
-│   ├── automation-workspace.css # 任务日程卡片
-│   └── explore-workspace.css  # 推荐技能卡片
-└── js/                        # 拆分后的核心脚本逻辑
+└── js/                        # 核心渲染与交互脚本逻辑 (已全面使用 Tailwind CSS，去除了 css/ 子目录)
     ├── assistai-data.js       # 全局 Mock 数据库
-    ├── assistai-ui.js         # 主交互控制器、视图调度总线
-    ├── gpts-workspace.js      # 智能体渲染器
-    ├── library-workspace.js   # 资料库渲染器
-    ├── automation-workspace.js # 定时任务渲染器
-    └── explore-workspace.js   # 技能探索渲染器
+    ├── assistai-ui.js         # 主交互控制器、视图调度总线 (已重构 HTML 模板的 Tailwind 样式类)
+    ├── gpts-workspace.js      # 智能体渲染器 (已重构 HTML 模板的 Tailwind 样式类)
+    ├── library-workspace.js   # 资料库渲染器 (已重构 HTML 模板的 Tailwind 样式类)
+    ├── automation-workspace.js # 定时任务渲染器 (已重构 HTML 模板 of Tailwind 样式类)
+    └── explore-workspace.js   # 技能探索渲染器 (已重构 HTML 模板 of Tailwind 样式类)
 ```

@@ -4,7 +4,339 @@ if (!assistAiPrototypeRoot) {
   throw new Error("Missing #assistai-root container for AssistAI prototype.");
 }
 
-assistAiPrototypeRoot.innerHTML = "    <div class=\"app-shell\">\n      <div class=\"app\">\n        <aside class=\"sidebar\">\n          <div class=\"sidebar-top\">\n            <div class=\"sidebar-brand\">\n              <div class=\"brand\" aria-label=\"AssistAI\">\n                <img src=\"./assets/logo.svg\" alt=\"AssistAI \u6807\u5fd7\" />\n              </div>\n              <span class=\"brand-title\">\u4f01\u4e1a AI \u52a9\u624b</span>\n            </div>\n            <button class=\"collapse-btn\" aria-label=\"\u6536\u8d77\u4fa7\u680f\">\n              <svg class=\"icon\" viewBox=\"0 0 24 24\">\n                <rect x=\"4\" y=\"5\" width=\"16\" height=\"14\" rx=\"2\"></rect>\n                <path d=\"M10 5v14\"></path>\n              </svg>\n            </button>\n          </div>\n\n          <button class=\"new-chat\">\n            <span class=\"new-chat-main\">\n              <svg class=\"icon\" viewBox=\"0 0 24 24\">\n                <circle cx=\"12\" cy=\"12\" r=\"9\"></circle>\n                <path d=\"M12 8v8\"></path>\n                <path d=\"M8 12h8\"></path>\n              </svg>\n              <span>\u65b0\u5efa\u4f1a\u8bdd</span>\n            </span>\n          </button>\n\n          <div class=\"sidebar-scroll\">\n            <div class=\"sidebar-group\">\n              <a class=\"nav-item\" data-nav-target=\"library-workspace\" href=\"./library.html\">\n                <svg class=\"icon nav-item-icon\" viewBox=\"0 0 24 24\">\n                  <path d=\"M5 6.5A2.5 2.5 0 0 1 7.5 4H19v16H7.5A2.5 2.5 0 0 0 5 22z\"></path>\n                  <path d=\"M8 8h7\"></path>\n                  <path d=\"M8 12h7\"></path>\n                  <path d=\"M8 16h5\"></path>\n                </svg>\n                <span>\u8d44\u6599\u5e93</span>\n              </a>\n              <a class=\"nav-item\" data-nav-target=\"gpts-workspace\" href=\"./gpts.html\">\n                <img class=\"nav-item-logo\" src=\"../../src/assets/icons/apps.svg\" alt=\"\" />\n                <span>\u667a\u80fd\u4f53\u5e7f\u573a</span>\n              </a>\n              <a class=\"nav-item\" data-nav-target=\"regulation-assistant\" href=\"./policy.html\">\n                <img class=\"nav-item-logo\" src=\"../../public/gpts/policy.svg\" alt=\"\" />\n                <span>\u5236\u5ea6\u52a9\u624b</span>\n              </a>\n            </div>\n            <div class=\"sidebar-group history-group\">\n              <button class=\"section-title history-toggle\" aria-expanded=\"true\" aria-controls=\"historyList\">\n                <span class=\"section-title-main\">\n                  <svg class=\"icon\" viewBox=\"0 0 24 24\">\n                    <circle cx=\"12\" cy=\"12\" r=\"8\"></circle>\n                    <path d=\"M12 8v5\"></path>\n                    <path d=\"m12 13 3 2\"></path>\n                  </svg>\n                  <span>\u5386\u53f2\u4f1a\u8bdd</span>\n                </span>\n                <svg class=\"icon icon-sm section-toggle-icon\" viewBox=\"0 0 24 24\">\n                  <path d=\"m9 6 6 6-6 6\"></path>\n                </svg>\n              </button>\n              <div class=\"history-list\" id=\"historyList\">\n                <div class=\"history-entry\">\n                  <button class=\"history-item active\">\u5165\u804c IT \u5de5\u5177\u4f7f\u7528\u6307\u5357</button>\n                  <button class=\"history-more\" aria-label=\"\u66f4\u591a\u64cd\u4f5c\">\n                    <svg class=\"icon icon-sm\" viewBox=\"0 0 24 24\">\n                      <circle cx=\"7\" cy=\"12\" r=\"1.25\"></circle>\n                      <circle cx=\"12\" cy=\"12\" r=\"1.25\"></circle>\n                      <circle cx=\"17\" cy=\"12\" r=\"1.25\"></circle>\n                    </svg>\n                  </button>\n                </div>\n                <div class=\"history-entry\">\n                  <button class=\"history-item\">\u7ec4\u7ec7\u77e5\u8bc6\u5e93\u5efa\u8bbe\u8282\u594f</button>\n                  <button class=\"history-more\" aria-label=\"\u66f4\u591a\u64cd\u4f5c\">\n                    <svg class=\"icon icon-sm\" viewBox=\"0 0 24 24\">\n                      <circle cx=\"7\" cy=\"12\" r=\"1.25\"></circle>\n                      <circle cx=\"12\" cy=\"12\" r=\"1.25\"></circle>\n                      <circle cx=\"17\" cy=\"12\" r=\"1.25\"></circle>\n                    </svg>\n                  </button>\n                </div>\n                <div class=\"history-entry\">\n                  <button class=\"history-item\">\u9500\u552e\u5468\u62a5\u81ea\u52a8\u6c47\u603b\u5efa\u8bae</button>\n                  <button class=\"history-more\" aria-label=\"\u66f4\u591a\u64cd\u4f5c\">\n                    <svg class=\"icon icon-sm\" viewBox=\"0 0 24 24\">\n                      <circle cx=\"7\" cy=\"12\" r=\"1.25\"></circle>\n                      <circle cx=\"12\" cy=\"12\" r=\"1.25\"></circle>\n                      <circle cx=\"17\" cy=\"12\" r=\"1.25\"></circle>\n                    </svg>\n                  </button>\n                </div>\n                <div class=\"history-entry\">\n                  <button class=\"history-item\">\u8d22\u52a1\u5171\u4eab\u6d41\u7a0b\u8bf4\u660e\u6574\u7406</button>\n                  <button class=\"history-more\" aria-label=\"\u66f4\u591a\u64cd\u4f5c\">\n                    <svg class=\"icon icon-sm\" viewBox=\"0 0 24 24\">\n                      <circle cx=\"7\" cy=\"12\" r=\"1.25\"></circle>\n                      <circle cx=\"12\" cy=\"12\" r=\"1.25\"></circle>\n                      <circle cx=\"17\" cy=\"12\" r=\"1.25\"></circle>\n                    </svg>\n                  </button>\n                </div>\n                <div class=\"history-entry\">\n                  <button class=\"history-item\">\u5408\u540c\u95ee\u7b54\u9875\u9762\u4fe1\u606f\u7ed3\u6784</button>\n                  <button class=\"history-more\" aria-label=\"\u66f4\u591a\u64cd\u4f5c\">\n                    <svg class=\"icon icon-sm\" viewBox=\"0 0 24 24\">\n                      <circle cx=\"7\" cy=\"12\" r=\"1.25\"></circle>\n                      <circle cx=\"12\" cy=\"12\" r=\"1.25\"></circle>\n                      <circle cx=\"17\" cy=\"12\" r=\"1.25\"></circle>\n                    </svg>\n                  </button>\n                </div>\n                <div class=\"history-entry\">\n                  <button class=\"history-item\">\u5ba2\u670d SOP \u4f18\u5316\u5efa\u8bae</button>\n                  <button class=\"history-more\" aria-label=\"\u66f4\u591a\u64cd\u4f5c\">\n                    <svg class=\"icon icon-sm\" viewBox=\"0 0 24 24\">\n                      <circle cx=\"7\" cy=\"12\" r=\"1.25\"></circle>\n                      <circle cx=\"12\" cy=\"12\" r=\"1.25\"></circle>\n                      <circle cx=\"17\" cy=\"12\" r=\"1.25\"></circle>\n                    </svg>\n                  </button>\n                </div>\n                <div class=\"history-entry\">\n                  <button class=\"history-item\">\u9879\u76ee\u5468\u4f8b\u4f1a\u7eaa\u8981\u6458\u8981</button>\n                  <button class=\"history-more\" aria-label=\"\u66f4\u591a\u64cd\u4f5c\">\n                    <svg class=\"icon icon-sm\" viewBox=\"0 0 24 24\">\n                      <circle cx=\"7\" cy=\"12\" r=\"1.25\"></circle>\n                      <circle cx=\"12\" cy=\"12\" r=\"1.25\"></circle>\n                      <circle cx=\"17\" cy=\"12\" r=\"1.25\"></circle>\n                    </svg>\n                  </button>\n                </div>\n                <button class=\"history-item more\">\u67e5\u770b\u5168\u90e8</button>\n              </div>\n              <div class=\"history-menu\" id=\"historyMenu\" aria-hidden=\"true\">\n                <button class=\"history-menu-item\" data-action=\"rename\">\n                  <svg class=\"icon icon-sm\" viewBox=\"0 0 24 24\">\n                    <path d=\"m4 20 4.5-1 9.7-9.7a2.1 2.1 0 0 0-3-3L5.5 16l-1.5 4z\"></path>\n                  </svg>\n                  <span>\u7f16\u8f91\u6807\u9898</span>\n                </button>\n                <button class=\"history-menu-item\" data-action=\"pin\">\n                  <svg class=\"icon icon-sm\" viewBox=\"0 0 24 24\">\n                    <path d=\"M12 4v10\"></path>\n                    <path d=\"m8 8 4-4 4 4\"></path>\n                    <path d=\"M8 14h8\"></path>\n                  </svg>\n                  <span>\u7f6e\u9876</span>\n                </button>\n                <button class=\"history-menu-item is-danger\" data-action=\"delete\">\n                  <svg class=\"icon icon-sm\" viewBox=\"0 0 24 24\">\n                    <path d=\"M4 7h16\"></path>\n                    <path d=\"M10 11v6\"></path>\n                    <path d=\"M14 11v6\"></path>\n                    <path d=\"M6 7l1 11a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-11\"></path>\n                    <path d=\"M9 7V4h6v3\"></path>\n                  </svg>\n                  <span>\u5220\u9664</span>\n                </button>\n              </div>\n            </div>\n          </div>\n\n        <div class=\"sidebar-footer\">\n            <div class=\"profile-menu\" id=\"profileMenu\" aria-hidden=\"true\">\n              <button class=\"profile-menu-item\" data-action=\"settings\">\n                <svg class=\"icon icon-sm\" viewBox=\"0 0 24 24\">\n                  <circle cx=\"12\" cy=\"12\" r=\"3\"></circle>\n                  <path d=\"M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.2a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.2a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3h0a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.2a1.6 1.6 0 0 0 1 1.5h0a1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8v0a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.2a1.6 1.6 0 0 0-1.4 1z\"></path>\n                </svg>\n                <span>\u8bbe\u7f6e</span>\n              </button>\n              <button class=\"profile-menu-item is-danger\" data-action=\"logout\">\n                <svg class=\"icon icon-sm\" viewBox=\"0 0 24 24\">\n                  <path d=\"M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4\"></path>\n                  <path d=\"m16 17 5-5-5-5\"></path>\n                  <path d=\"M21 12H9\"></path>\n                </svg>\n                <span>\u9000\u51fa</span>\n              </button>\n            </div>\n            <button class=\"profile\" aria-label=\"\u6253\u5f00\u8d26\u53f7\u83dc\u5355\">\n              <span class=\"profile-main\">\n                <span class=\"avatar\">Z</span>\n                <span class=\"profile-name\">zhangsan</span>\n              </span>\n              <svg class=\"icon icon-sm\" viewBox=\"0 0 24 24\">\n                <path d=\"m6 9 6 6 6-6\"></path>\n              </svg>\n            </button>\n          </div>\n        </aside>\n\n        <main class=\"main\">\n          <div class=\"main-layout\">\n            <header class=\"topbar\">\n              <div class=\"topbar-left\">\n                <button class=\"top-action sidebar-trigger\" aria-label=\"\u6253\u5f00\u5386\u53f2\u4f1a\u8bdd\">\n                  <svg class=\"icon\" viewBox=\"0 0 24 24\">\n                    <path d=\"M4 7h16\"></path>\n                    <path d=\"M4 12h16\"></path>\n                    <path d=\"M4 17h16\"></path>\n                  </svg>\n                </button>\n                <div class=\"crumb\">\n                  <span class=\"crumb-title\" id=\"crumbTitle\">\u5165\u804c IT \u5de5\u5177\u4f7f\u7528\u6307\u5357</span>\n                </div>\n              </div>\n              <div class=\"topbar-right\">\n                <div class=\"action-feedback\" id=\"actionFeedback\" aria-live=\"polite\"></div>\n              </div>\n            </header>\n\n            <div class=\"main-scroll\">\n              <div class=\"content\">\n                <article class=\"article\" id=\"articleThread\"></article>\n              </div>\n\n              <div class=\"workspace-view\" id=\"workspaceView\"></div>\n\n              <div class=\"empty-view\">\n                <div class=\"empty-shell\">\n                  <div class=\"empty-hero\">\n                    <div class=\"empty-logo\" aria-hidden=\"true\">\n                      <img id=\"emptyLogo\" src=\"./assets/logo.svg\" alt=\"\" />\n                    </div>\n                    <h1 class=\"empty-title\" id=\"emptyTitle\">\u4eca\u5929\u60f3\u8ba9\u6211\u5e2e\u4f60\u5904\u7406\u4ec0\u4e48\uff1f</h1>\n                  </div>\n                  <p class=\"empty-support\" id=\"emptySupport\">\n                    \u4ece\u5236\u5ea6\u67e5\u8be2\u3001\u7eaa\u8981\u6574\u7406\u5230\u65b9\u6848\u8d77\u8349\uff0c\u8fd9\u91cc\u66f4\u9002\u5408\u5904\u7406\u5177\u4f53\u5de5\u4f5c\u4efb\u52a1\uff0c\u800c\u4e0d\u662f\u6cdb\u6cdb\u804a\u5929\u3002\n                  </p>\n                  <div class=\"suggestion-label\" id=\"emptySuggestionLabel\">\u5efa\u8bae\u4ece\u8fd9\u4e9b\u5e38\u89c1\u4efb\u52a1\u5f00\u59cb</div>\n                  <div class=\"suggestion-strip\" id=\"promptChipList\">\n                    <button class=\"prompt-chip\" data-prompt=\"\u5e2e\u6211\u6574\u7406\u4e00\u7248\u65b0\u5458\u5de5\u5165\u804c\u5de5\u5177\u6e05\u5355\">\u6574\u7406\u5165\u804c\u6e05\u5355</button>\n                    <button class=\"prompt-chip\" data-prompt=\"\u628a\u8fd9\u4efd\u6d41\u7a0b\u8bf4\u660e\u6539\u5199\u6210\u9762\u5411\u5458\u5de5\u7684 FAQ\">\u6539\u5199\u6d41\u7a0b FAQ</button>\n                    <button class=\"prompt-chip\" data-prompt=\"\u6839\u636e\u4f1a\u8bae\u7eaa\u8981\u8f93\u51fa\u4e00\u7248\u53ef\u6267\u884c\u884c\u52a8\u9879\">\u63d0\u70bc\u884c\u52a8\u9879</button>\n                  </div>\n\n                  <div class=\"empty-composer-area\">\n                    <div class=\"composer\">\n                      <div class=\"composer-upload\" aria-live=\"polite\">\n                        <div class=\"upload-file-grid\"></div>\n                      </div>\n                      <textarea class=\"composer-input\" id=\"emptyComposerInput\" rows=\"2\" placeholder=\"\u8f93\u5165\u4f60\u7684\u95ee\u9898\uff0c\u6211\u53ef\u4ee5\u5e2e\u4f60\u67e5\u8d44\u6599\u3001\u5199\u65b9\u6848\u3001\u6574\u7406\u5185\u5bb9\"></textarea>\n                      <input class=\"upload-input\" type=\"file\" multiple accept=\".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.md,.ppt,.pptx,image/*\" hidden />\n                      <div class=\"composer-bottom\">\n                        <div class=\"composer-left\">\n                          <button class=\"round-btn\" aria-label=\"\u6dfb\u52a0\" data-action=\"upload\">\n                            <svg class=\"icon\" viewBox=\"0 0 24 24\">\n                              <path d=\"M12 5v14\"></path>\n                              <path d=\"M5 12h14\"></path>\n                            </svg>\n                          </button>\n                        </div>\n                        <div class=\"composer-right\">\n                          <div class=\"model-select\">\n                            <button class=\"model-chip\" aria-label=\"\u5207\u6362\u6a21\u578b\" aria-expanded=\"false\">\n                              <span>GLM-5.0</span>\n                              <svg class=\"icon icon-sm\" viewBox=\"0 0 24 24\">\n                                <path d=\"m6 9 6 6 6-6\"></path>\n                              </svg>\n                            </button>\n                            <div class=\"model-menu\" aria-hidden=\"true\">\n                              <button class=\"model-option is-active\" data-model=\"GLM-5.0\">GLM-5.0</button>\n                              <button class=\"model-option\" data-model=\"GLM-4.7\">GLM-4.7</button>\n                            </div>\n                          </div>\n                          <button class=\"send-btn\" aria-label=\"\u53d1\u9001\">\n                            <svg class=\"icon\" viewBox=\"0 0 24 24\">\n                              <path d=\"M12 19V5\"></path>\n                              <path d=\"m6 11 6-6 6 6\"></path>\n                            </svg>\n                          </button>\n                        </div>\n                      </div>\n                    </div>\n                    <div class=\"footnote\">v1.0.1 XXX\u516c\u53f8</div>\n                  </div>\n                </div>\n              </div>\n            </div>\n\n            <div class=\"composer-wrap\">\n              <div class=\"composer-area\">\n                <div class=\"composer\">\n                  <div class=\"composer-upload\" aria-live=\"polite\">\n                    <div class=\"upload-file-grid\"></div>\n                  </div>\n                  <textarea class=\"composer-input\" id=\"articleComposerInput\" rows=\"2\" placeholder=\"\u7ee7\u7eed\u63d0\u95ee\uff0c\u4f8b\u5982\uff1a\u5e2e\u6211\u628a\u8fd9\u4efd\u8bf4\u660e\u6574\u7406\u6210\u9762\u5411\u65b0\u5458\u5de5\u7684 FAQ \u7248\u672c\"></textarea>\n                  <input class=\"upload-input\" type=\"file\" multiple accept=\".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.md,.ppt,.pptx,image/*\" hidden />\n                  <div class=\"composer-bottom\">\n                    <div class=\"composer-left\">\n                      <button class=\"round-btn\" aria-label=\"\u6dfb\u52a0\" data-action=\"upload\">\n                        <svg class=\"icon\" viewBox=\"0 0 24 24\">\n                          <path d=\"M12 5v14\"></path>\n                          <path d=\"M5 12h14\"></path>\n                        </svg>\n                      </button>\n                    </div>\n                    <div class=\"composer-right\">\n                      <div class=\"model-select\">\n                        <button class=\"model-chip\" aria-label=\"\u5207\u6362\u6a21\u578b\" aria-expanded=\"false\">\n                          <span>GLM-5.0</span>\n                          <svg class=\"icon icon-sm\" viewBox=\"0 0 24 24\">\n                            <path d=\"m6 9 6 6 6-6\"></path>\n                          </svg>\n                        </button>\n                        <div class=\"model-menu\" aria-hidden=\"true\">\n                          <button class=\"model-option is-active\" data-model=\"GLM-5.0\">GLM-5.0</button>\n                          <button class=\"model-option\" data-model=\"GLM-4.7\">GLM-4.7</button>\n                        </div>\n                      </div>\n                      <button class=\"send-btn\" aria-label=\"\u53d1\u9001\">\n                        <svg class=\"icon\" viewBox=\"0 0 24 24\">\n                          <path d=\"M12 19V5\"></path>\n                          <path d=\"m6 11 6-6 6 6\"></path>\n                        </svg>\n                      </button>\n                    </div>\n                  </div>\n                </div>\n                <div class=\"footnote\">v1.0.1 XXX\u516c\u53f8</div>\n              </div>\n            </div>\n          </div>\n        </main>\n      </div>\n      <div class=\"mobile-backdrop\" aria-hidden=\"true\"></div>\n    </div>\n\n    ";
+assistAiPrototypeRoot.innerHTML = `
+    <div class="app-shell h-screen w-screen p-0 m-0 overflow-hidden bg-[var(--bg)] font-sans">
+      <div class="app group peer h-full grid grid-cols-[272px_minmax(0,1fr)] max-[1120px]:grid-cols-[248px_minmax(0,1fr)] max-[900px]:grid-cols-1 [&.is-sidebar-hidden]:grid-cols-[0_minmax(0,1fr)] border-0 rounded-none overflow-hidden bg-[rgba(249,251,252,0.92)] shadow-none transition-all duration-180 ease-out">
+        <aside class="sidebar h-full grid grid-rows-[auto_auto_1fr_auto] gap-3.5 p-[14px_14px_12px] bg-gradient-to-b from-[rgba(246,248,250,0.98)] to-[rgba(241,244,247,0.98)] border-r border-[rgba(216,224,230,0.92)] overflow-hidden transition-all duration-180 ease-out max-[900px]:fixed max-[900px]:top-0 max-[900px]:left-0 max-[900px]:bottom-0 max-[900px]:w-[min(82vw,320px)] max-[900px]:z-30 max-[900px]:shadow-[0_18px_48px_rgba(23,28,38,0.16)] max-[900px]:translate-x-[-100%] max-[900px]:opacity-0 max-[900px]:pointer-events-none group-[.is-sidebar-hidden]:!translate-x-[-24px] group-[.is-sidebar-hidden]:!opacity-0 group-[.is-sidebar-hidden]:!pointer-events-none group-[.is-mobile-nav-open]:!translate-x-0 group-[.is-mobile-nav-open]:!opacity-100 group-[.is-mobile-nav-open]:!pointer-events-auto">
+          <div class="sidebar-top flex items-center justify-between px-1">
+            <div class="sidebar-brand min-w-0 inline-flex items-center gap-2.5">
+              <div class="brand w-[34px] h-[34px] flex-none grid place-items-center rounded-none bg-transparent text-white shadow-none" aria-label="AssistAI">
+                <img class="w-7 h-7 block object-contain" src="./assets/logo.svg" alt="AssistAI 标志" />
+              </div>
+              <span class="brand-title min-w-0 text-[rgba(47,58,70,0.98)] text-[15px] font-normal tracking-[-0.01em] whitespace-nowrap translate-y-[1px]">企业 AI 助手</span>
+            </div>
+            <button class="collapse-btn w-[30px] h-[30px] grid place-items-center rounded-[9px] text-[var(--text-faint)] transition-all duration-160 hover:bg-white/92 hover:text-[var(--text-soft)]" aria-label="收起侧栏">
+              <svg class="icon w-[18px] h-[18px] stroke-currentColor stroke-[1.8] fill-none stroke-linecap-round stroke-linejoin-round" viewBox="0 0 24 24">
+                <rect x="4" y="5" width="16" height="14" rx="2"></rect>
+                <path d="M10 5v14"></path>
+              </svg>
+            </button>
+          </div>
+
+          <button class="new-chat flex items-center justify-between gap-3 mt-2 min-h-[48px] px-3.25 rounded-[14px] border border-[rgba(220,227,233,0.94)] bg-[rgba(251,252,253,0.92)] shadow-[0_5px_14px_rgba(23,28,38,0.025),0_0_0_1px_rgba(133,210,226,0.02)] transition-all duration-160 ease-out hover:-translate-y-0.5 hover:border-[rgba(194,208,216,0.98)] hover:bg-[rgba(252,253,254,0.98)] hover:shadow-[0_7px_16px_rgba(23,28,38,0.032),0_0_0_1px_rgba(133,210,226,0.028)] active:translate-y-0 active:border-[rgba(184,204,213,0.98)] active:bg-[rgba(252,253,254,0.98)] active:shadow-[inset_0_0_0_1px_rgba(225,232,237,0.92),0_6px_14px_rgba(23,28,38,0.028)]">
+            <span class="new-chat-main inline-flex items-center gap-2.5 text-sm font-normal text-[rgba(47,58,70,0.98)]">
+              <svg class="icon text-[rgba(89,180,199,0.92)] w-[18px] h-[18px] stroke-currentColor stroke-[1.8] fill-none stroke-linecap-round stroke-linejoin-round" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="9"></circle>
+                <path d="M12 8v8"></path>
+                <path d="M8 12h8"></path>
+              </svg>
+              <span>新建会话</span>
+            </span>
+          </button>
+
+          <div class="sidebar-scroll min-h-0 overflow-y-auto overflow-x-hidden grid align-content-start gap-3.5 pr-0.5">
+            <div class="sidebar-group grid gap-1.5">
+              <a class="nav-item w-full min-h-[42px] px-2.5 flex items-center gap-[11px] text-left rounded-[10px] text-[rgba(47,58,70,0.98)] text-[15px] font-normal transition-all duration-160 ease-out hover:bg-white/72 active:bg-white/72 [&.is-active]:bg-white/98 [&.is-active]:text-[rgba(38,49,61,0.98)] [&.is-active]:shadow-[inset_0_0_0_1px_rgba(228,233,238,0.98),0_6px_14px_rgba(24,31,41,0.03)]" data-nav-target="library-workspace" href="./library.html">
+                <svg class="icon nav-item-icon w-[22px] h-[22px] text-[#54bed5] flex-none" viewBox="0 0 24 24">
+                  <path d="M5 6.5A2.5 2.5 0 0 1 7.5 4H19v16H7.5A2.5 2.5 0 0 0 5 22z"></path>
+                  <path d="M8 8h7"></path>
+                  <path d="M8 12h7"></path>
+                  <path d="M8 16h5"></path>
+                </svg>
+                <span>资料库</span>
+              </a>
+              <a class="nav-item w-full min-h-[42px] px-2.5 flex items-center gap-[11px] text-left rounded-[10px] text-[rgba(47,58,70,0.98)] text-[15px] font-normal transition-all duration-160 ease-out hover:bg-white/72 active:bg-white/72 [&.is-active]:bg-white/98 [&.is-active]:text-[rgba(38,49,61,0.98)] [&.is-active]:shadow-[inset_0_0_0_1px_rgba(228,233,238,0.98),0_6px_14px_rgba(24,31,41,0.03)]" data-nav-target="gpts-workspace" href="./gpts.html">
+                <img class="nav-item-logo w-[22px] h-[22px] block object-contain flex-none" src="../../src/assets/icons/apps.svg" alt="" />
+                <span>智能体广场</span>
+              </a>
+              <a class="nav-item w-full min-h-[42px] px-2.5 flex items-center gap-[11px] text-left rounded-[10px] text-[rgba(47,58,70,0.98)] text-[15px] font-normal transition-all duration-160 ease-out hover:bg-white/72 active:bg-white/72 [&.is-active]:bg-white/98 [&.is-active]:text-[rgba(38,49,61,0.98)] [&.is-active]:shadow-[inset_0_0_0_1px_rgba(228,233,238,0.98),0_6px_14px_rgba(24,31,41,0.03)]" data-nav-target="regulation-assistant" href="./policy.html">
+                <img class="nav-item-logo w-[22px] h-[22px] block object-contain flex-none" src="../../public/gpts/policy.svg" alt="" />
+                <span>制度助手</span>
+              </a>
+            </div>
+            <div class="sidebar-group history-group group/history relative grid gap-1.5">
+              <button class="section-title history-toggle w-full inline-flex items-center justify-between gap-2.5 min-h-[40px] px-3.5 text-left text-[rgba(47,58,70,0.98)] text-sm font-normal tracking-[-0.01em] rounded-[10px] transition-all duration-160 hover:bg-white/62" aria-expanded="true" aria-controls="historyList">
+                <span class="section-title-main inline-flex items-center gap-2.5 min-w-0">
+                  <svg class="icon w-[18px] h-[18px] stroke-currentColor stroke-[1.8] fill-none stroke-linecap-round stroke-linejoin-round" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="8"></circle>
+                    <path d="M12 8v5"></path>
+                    <path d="m12 13 3 2"></path>
+                  </svg>
+                  <span>历史会话</span>
+                </span>
+                <svg class="icon icon-sm section-toggle-icon ml-auto text-[rgba(128,138,148,0.9)] transition-transform duration-160 w-[16px] h-[16px] group-[.is-collapsed]/history:-rotate-90" viewBox="0 0 24 24">
+                  <path d="m9 6 6 6-6 6"></path>
+                </svg>
+              </button>
+              <div class="history-list grid gap-1 pl-6.5 pr-1.5 group-[.is-collapsed]/history:hidden" id="historyList">
+                <div class="history-entry group/entry relative block">
+                  <button class="history-item active w-full min-h-[32px] p-[0_38px_0_12px] flex items-center gap-[11px] text-left rounded-[10px] text-[rgba(72,84,96,0.98)] text-[13px] font-normal transition-all duration-160 bg-white/98 shadow-[inset_0_0_0_1px_rgba(228,233,238,0.98),0_6px_14px_rgba(24,31,41,0.03)]">入职 IT 工具使用指南</button>
+                  <button class="history-more absolute top-1/2 right-1.5 -translate-y-1/2 w-6 h-6 grid place-items-center rounded-md text-[rgba(118,129,141,0.88)] opacity-0 pointer-events-none transition-all duration-160 hover:bg-white/90 hover:text-[rgba(72,84,96,0.94)] group-hover/entry:!opacity-100 group-hover/entry:!pointer-events-auto group-focus-within/entry:!opacity-100 group-focus-within/entry:!pointer-events-auto group-[.is-menu-open]/entry:!opacity-100 group-[.is-menu-open]/entry:!pointer-events-auto" aria-label="更多操作">
+                    <svg class="icon icon-sm w-[16px] h-[16px]" viewBox="0 0 24 24">
+                      <circle cx="7" cy="12" r="1.25"></circle>
+                      <circle cx="12" cy="12" r="1.25"></circle>
+                      <circle cx="17" cy="12" r="1.25"></circle>
+                    </svg>
+                  </button>
+                </div>
+                <div class="history-entry group/entry relative block">
+                  <button class="history-item w-full min-h-[32px] p-[0_38px_0_12px] flex items-center gap-[11px] text-left rounded-[10px] text-[rgba(84,95,107,0.96)] text-[13px] font-normal transition-all duration-160 hover:translate-x-0.5 hover:bg-white/88 hover:text-[rgba(72,84,96,0.98)]">组织知识库建设节奏</button>
+                  <button class="history-more absolute top-1/2 right-1.5 -translate-y-1/2 w-6 h-6 grid place-items-center rounded-md text-[rgba(118,129,141,0.88)] opacity-0 pointer-events-none transition-all duration-160 hover:bg-white/90 hover:text-[rgba(72,84,96,0.94)] group-hover/entry:!opacity-100 group-hover/entry:!pointer-events-auto group-focus-within/entry:!opacity-100 group-focus-within/entry:!pointer-events-auto group-[.is-menu-open]/entry:!opacity-100 group-[.is-menu-open]/entry:!pointer-events-auto" aria-label="更多操作">
+                    <svg class="icon icon-sm w-[16px] h-[16px]" viewBox="0 0 24 24">
+                      <circle cx="7" cy="12" r="1.25"></circle>
+                      <circle cx="12" cy="12" r="1.25"></circle>
+                      <circle cx="17" cy="12" r="1.25"></circle>
+                    </svg>
+                  </button>
+                </div>
+                <div class="history-entry group/entry relative block">
+                  <button class="history-item w-full min-h-[32px] p-[0_38px_0_12px] flex items-center gap-[11px] text-left rounded-[10px] text-[rgba(84,95,107,0.96)] text-[13px] font-normal transition-all duration-160 hover:translate-x-0.5 hover:bg-white/88 hover:text-[rgba(72,84,96,0.98)]">销售周报自动汇总建议</button>
+                  <button class="history-more absolute top-1/2 right-1.5 -translate-y-1/2 w-6 h-6 grid place-items-center rounded-md text-[rgba(118,129,141,0.88)] opacity-0 pointer-events-none transition-all duration-160 hover:bg-white/90 hover:text-[rgba(72,84,96,0.94)] group-hover/entry:!opacity-100 group-hover/entry:!pointer-events-auto group-focus-within/entry:!opacity-100 group-focus-within/entry:!pointer-events-auto group-[.is-menu-open]/entry:!opacity-100 group-[.is-menu-open]/entry:!pointer-events-auto" aria-label="更多操作">
+                    <svg class="icon icon-sm w-[16px] h-[16px]" viewBox="0 0 24 24">
+                      <circle cx="7" cy="12" r="1.25"></circle>
+                      <circle cx="12" cy="12" r="1.25"></circle>
+                      <circle cx="17" cy="12" r="1.25"></circle>
+                    </svg>
+                  </button>
+                </div>
+                <div class="history-entry group/entry relative block">
+                  <button class="history-item w-full min-h-[32px] p-[0_38px_0_12px] flex items-center gap-[11px] text-left rounded-[10px] text-[rgba(84,95,107,0.96)] text-[13px] font-normal transition-all duration-160 hover:translate-x-0.5 hover:bg-white/88 hover:text-[rgba(72,84,96,0.98)]">财务共享流程说明整理</button>
+                  <button class="history-more absolute top-1/2 right-1.5 -translate-y-1/2 w-6 h-6 grid place-items-center rounded-md text-[rgba(118,129,141,0.88)] opacity-0 pointer-events-none transition-all duration-160 hover:bg-white/90 hover:text-[rgba(72,84,96,0.94)] group-hover/entry:!opacity-100 group-hover/entry:!pointer-events-auto group-focus-within/entry:!opacity-100 group-focus-within/entry:!pointer-events-auto group-[.is-menu-open]/entry:!opacity-100 group-[.is-menu-open]/entry:!pointer-events-auto" aria-label="更多操作">
+                    <svg class="icon icon-sm w-[16px] h-[16px]" viewBox="0 0 24 24">
+                      <circle cx="7" cy="12" r="1.25"></circle>
+                      <circle cx="12" cy="12" r="1.25"></circle>
+                      <circle cx="17" cy="12" r="1.25"></circle>
+                    </svg>
+                  </button>
+                </div>
+                <div class="history-entry group/entry relative block">
+                  <button class="history-item w-full min-h-[32px] p-[0_38px_0_12px] flex items-center gap-[11px] text-left rounded-[10px] text-[rgba(84,95,107,0.96)] text-[13px] font-normal transition-all duration-160 hover:translate-x-0.5 hover:bg-white/88 hover:text-[rgba(72,84,96,0.98)]">合同问答页面信息结构</button>
+                  <button class="history-more absolute top-1/2 right-1.5 -translate-y-1/2 w-6 h-6 grid place-items-center rounded-md text-[rgba(118,129,141,0.88)] opacity-0 pointer-events-none transition-all duration-160 hover:bg-white/90 hover:text-[rgba(72,84,96,0.94)] group-hover/entry:!opacity-100 group-hover/entry:!pointer-events-auto group-focus-within/entry:!opacity-100 group-focus-within/entry:!pointer-events-auto group-[.is-menu-open]/entry:!opacity-100 group-[.is-menu-open]/entry:!pointer-events-auto" aria-label="更多操作">
+                    <svg class="icon icon-sm w-[16px] h-[16px]" viewBox="0 0 24 24">
+                      <circle cx="7" cy="12" r="1.25"></circle>
+                      <circle cx="12" cy="12" r="1.25"></circle>
+                      <circle cx="17" cy="12" r="1.25"></circle>
+                    </svg>
+                  </button>
+                </div>
+                <div class="history-entry group/entry relative block">
+                  <button class="history-item w-full min-h-[32px] p-[0_38px_0_12px] flex items-center gap-[11px] text-left rounded-[10px] text-[rgba(84,95,107,0.96)] text-[13px] font-normal transition-all duration-160 hover:translate-x-0.5 hover:bg-white/88 hover:text-[rgba(72,84,96,0.98)]">客服 SOP 优化建议</button>
+                  <button class="history-more absolute top-1/2 right-1.5 -translate-y-1/2 w-6 h-6 grid place-items-center rounded-md text-[rgba(118,129,141,0.88)] opacity-0 pointer-events-none transition-all duration-160 hover:bg-white/90 hover:text-[rgba(72,84,96,0.94)] group-hover/entry:!opacity-100 group-hover/entry:!pointer-events-auto group-focus-within/entry:!opacity-100 group-focus-within/entry:!pointer-events-auto group-[.is-menu-open]/entry:!opacity-100 group-[.is-menu-open]/entry:!pointer-events-auto" aria-label="更多操作">
+                    <svg class="icon icon-sm w-[16px] h-[16px]" viewBox="0 0 24 24">
+                      <circle cx="7" cy="12" r="1.25"></circle>
+                      <circle cx="12" cy="12" r="1.25"></circle>
+                      <circle cx="17" cy="12" r="1.25"></circle>
+                    </svg>
+                  </button>
+                </div>
+                <div class="history-entry group/entry relative block">
+                  <button class="history-item w-full min-h-[32px] p-[0_38px_0_12px] flex items-center gap-[11px] text-left rounded-[10px] text-[rgba(84,95,107,0.96)] text-[13px] font-normal transition-all duration-160 hover:translate-x-0.5 hover:bg-white/88 hover:text-[rgba(72,84,96,0.98)]">项目周例会纪要摘要</button>
+                  <button class="history-more absolute top-1/2 right-1.5 -translate-y-1/2 w-6 h-6 grid place-items-center rounded-md text-[rgba(118,129,141,0.88)] opacity-0 pointer-events-none transition-all duration-160 hover:bg-white/90 hover:text-[rgba(72,84,96,0.94)] group-hover/entry:!opacity-100 group-hover/entry:!pointer-events-auto group-focus-within/entry:!opacity-100 group-focus-within/entry:!pointer-events-auto group-[.is-menu-open]/entry:!opacity-100 group-[.is-menu-open]/entry:!pointer-events-auto" aria-label="更多操作">
+                    <svg class="icon icon-sm w-[16px] h-[16px]" viewBox="0 0 24 24">
+                      <circle cx="7" cy="12" r="1.25"></circle>
+                      <circle cx="12" cy="12" r="1.25"></circle>
+                      <circle cx="17" cy="12" r="1.25"></circle>
+                    </svg>
+                  </button>
+                </div>
+                <button class="history-item more w-full min-h-[32px] p-[0_38px_0_12px] flex items-center gap-[11px] text-left rounded-[10px] text-[var(--text-soft)] text-[13px] font-normal transition-all duration-160 hover:bg-white/72">查看全部</button>
+              </div>
+              <div class="history-menu fixed z-30 w-[156px] p-1.5 hidden [&.is-open]:!grid grid-flow-row gap-0.25 border border-[rgba(232,236,240,0.98)] rounded-2xl bg-[rgba(253,253,254,0.99)] shadow-[0_18px_36px_rgba(23,28,38,0.08),0_2px_8px_rgba(23,28,38,0.035)]" id="historyMenu" aria-hidden="true">
+                <button class="history-menu-item min-h-[36px] px-2.25 inline-flex items-center gap-2 rounded-[10px] text-[rgba(56,67,79,0.96)] text-sm font-normal whitespace-nowrap transition-all duration-160 hover:bg-[rgba(244,247,250,0.96)]" data-action="rename">
+                  <svg class="icon icon-sm w-[16px] h-[16px]" viewBox="0 0 24 24">
+                    <path d="m4 20 4.5-1 9.7-9.7a2.1 2.1 0 0 0-3-3L5.5 16l-1.5 4z"></path>
+                  </svg>
+                  <span>编辑标题</span>
+                </button>
+                <button class="history-menu-item min-h-[36px] px-2.25 inline-flex items-center gap-2 rounded-[10px] text-[rgba(56,67,79,0.96)] text-sm font-normal whitespace-nowrap transition-all duration-160 hover:bg-[rgba(244,247,250,0.96)]" data-action="pin">
+                  <svg class="icon icon-sm w-[16px] h-[16px]" viewBox="0 0 24 24">
+                    <path d="M12 4v10"></path>
+                    <path d="m8 8 4-4 4 4"></path>
+                    <path d="M8 14h8"></path>
+                  </svg>
+                  <span>置顶</span>
+                </button>
+                <button class="history-menu-item is-danger min-h-[36px] px-2.25 inline-flex items-center gap-2 rounded-[10px] text-[rgba(184,72,72,0.96)] text-sm font-normal whitespace-nowrap transition-all duration-160 hover:bg-[rgba(244,247,250,0.96)]" data-action="delete">
+                  <svg class="icon icon-sm w-[16px] h-[16px]" viewBox="0 0 24 24">
+                    <path d="M4 7h16"></path>
+                    <path d="M10 11v6"></path>
+                    <path d="M14 11v6"></path>
+                    <path d="M6 7l1 11a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-11"></path>
+                    <path d="M9 7V4h6v3"></path>
+                  </svg>
+                  <span>删除</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="sidebar-footer relative grid gap-0.75 pt-2.5 border-t border-[rgba(220,227,232,0.92)]">
+            <div class="profile-menu absolute left-[-14px] right-[-14px] bottom-[calc(100%+6px)] p-[10px_14px_8px] hidden [&.is-open]:!grid grid-flow-row gap-0.5 border-0 rounded-none bg-gradient-to-b from-[rgba(246,248,250,0.98)] to-[rgba(241,244,247,0.98)] shadow-none" id="profileMenu" aria-hidden="true">
+              <button class="profile-menu-item min-h-[36px] px-2.5 inline-flex items-center gap-2 rounded-[10px] text-[rgba(56,67,79,0.96)] text-[13px] font-normal transition-all duration-160 hover:bg-[rgba(244,247,250,0.96)]" data-action="settings">
+                <svg class="icon icon-sm w-[16px] h-[16px]" viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="3"></circle>
+                  <path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.2a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.2a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3h0a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.2a1.6 1.6 0 0 0 1 1.5h0a1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8v0a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.2a1.6 1.6 0 0 0-1.4 1z"></path>
+                </svg>
+                <span>设置</span>
+              </button>
+              <button class="profile-menu-item is-danger min-h-[36px] px-2.5 inline-flex items-center gap-2 rounded-[10px] text-[rgba(184,72,72,0.96)] text-[13px] font-normal transition-all duration-160 hover:bg-[rgba(244,247,250,0.96)]" data-action="logout">
+                <svg class="icon icon-sm w-[16px] h-[16px]" viewBox="0 0 24 24">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                  <path d="m16 17 5-5-5-5"></path>
+                  <path d="M21 12H9"></path>
+                </svg>
+                <span>退出</span>
+              </button>
+            </div>
+            <button class="profile w-full min-h-[44px] p-[0_8px_0_10px] flex items-center justify-between gap-[11px] text-left rounded-xl bg-transparent border-0 shadow-none hover:bg-white/72" aria-label="打开账号菜单">
+              <span class="profile-main flex items-center gap-2.25 min-w-0">
+                <span class="avatar w-[30px] h-[30px] grid place-items-center rounded-full bg-gradient-to-b from-[rgba(212,146,114,0.96)] to-[rgba(190,124,95,0.96)] text-white text-[12px] font-semibold shadow-none">Z</span>
+                <span class="profile-name flex items-center gap-2 min-w-0 text-sm text-[rgba(47,58,70,0.98)] font-normal">zhangsan</span>
+              </span>
+              <svg class="icon icon-sm w-[16px] h-[16px]" viewBox="0 0 24 24">
+                <path d="m6 9 6 6 6-6"></path>
+              </svg>
+            </button>
+          </div>
+        </aside>
+
+        <main class="main min-w-0 min-h-0 bg-[rgba(255,255,255,0.98)]">
+          <div class="main-layout group/main h-full grid grid-rows-[62px_minmax(0,1fr)_auto] max-[680px]:grid-rows-[54px_minmax(0,1fr)_auto] min-h-0 transition-all duration-180 [&.is-empty]:grid-rows-[62px_minmax(0,1fr)] max-[680px]:[&.is-empty]:grid-rows-[54px_minmax(0,1fr)] [&.is-workspace]:grid-rows-[62px_minmax(0,1fr)] max-[680px]:[&.is-workspace]:grid-rows-[54px_minmax(0,1fr)]">
+            <header class="topbar flex items-center justify-between gap-4 px-6.5 max-[900px]:px-4 border-b border-[rgba(232,236,240,0.92)] bg-white/78 backdrop-blur-md">
+              <div class="topbar-left inline-flex items-center gap-2.5 min-w-0">
+                <button class="top-action sidebar-trigger hidden max-[900px]:inline-grid group-[.is-sidebar-hidden]:!inline-grid w-8 h-8 place-items-center rounded-[9px] text-[var(--text-soft)] bg-white/70 border border-[rgba(233,237,241,0.92)] transition-all duration-160 hover:bg-white/98 hover:text-[var(--text)]" aria-label="打开历史会话">
+                  <svg class="icon w-[18px] h-[18px] stroke-currentColor stroke-[1.8] fill-none stroke-linecap-round stroke-linejoin-round" viewBox="0 0 24 24">
+                    <path d="M4 7h16"></path>
+                    <path d="M4 12h16"></path>
+                    <path d="M4 17h16"></path>
+                  </svg>
+                </button>
+                <div class="crumb inline-flex items-center gap-2 min-w-0 max-w-[280px] text-sm font-normal text-[var(--text)] [&.is-hidden]:hidden">
+                  <span class="crumb-title truncate" id="crumbTitle">入职 IT 工具使用指南</span>
+                </div>
+              </div>
+              <div class="topbar-right inline-flex items-center gap-2.5 min-w-0">
+                <div class="action-feedback max-w-[240px] min-h-[28px] px-2.5 inline-flex items-center rounded-full bg-[rgba(246,249,251,0.96)] border border-[rgba(232,235,239,0.98)] text-[var(--text-soft)] text-[12px] whitespace-nowrap opacity-0 -translate-y-0.5 pointer-events-none transition-all duration-160 [&.is-visible]:opacity-1 [&.is-visible]:translate-y-0" id="actionFeedback" aria-live="polite"></div>
+              </div>
+            </header>
+
+            <div class="main-scroll min-h-0 overflow-y-auto overflow-x-hidden">
+              <div class="content group-[.is-empty]/main:!hidden group-[.is-workspace]/main:!hidden w-[min(100%,calc(830px+52px))] max-[1120px]:w-[min(100%,calc(830px+36px))] max-[1120px]:p-[28px_18px_38px] max-[900px]:w-[min(100%,calc(830px+20px))] max-[900px]:p-[22px_14px_30px] mx-auto p-[14px_26px_56px] transition-all duration-180">
+                <article class="article grid gap-4.5 p-[2px_0_18px] max-[900px]:p-[2px_2px_6px]" id="articleThread"></article>
+              </div>
+
+              <div class="workspace-view hidden group-[.is-workspace]/main:!block" id="workspaceView"></div>
+
+              <div class="empty-view hidden group-[.is-empty]/main:!flex w-full max-w-[1040px] min-h-full items-center justify-center">
+                <div class="empty-shell w-full max-w-[920px] flex flex-col items-center justify-center gap-4.5 max-[680px]:gap-5.5">
+                  <div class="empty-hero flex items-center gap-3.5 text-[var(--text)]">
+                    <div class="empty-logo w-10 h-10 flex-none grid place-items-center rounded-none bg-transparent text-white shadow-none" aria-hidden="true">
+                      <img id="emptyLogo" src="./assets/logo.svg" alt="" />
+                    </div>
+                    <h1 class="empty-title m-0 text-[28px] font-bold tracking-[-0.03em] max-[680px]:text-[28px]" id="emptyTitle">今天想让我帮你处理什么？</h1>
+                  </div>
+                  <p class="empty-support max-w-[600px] m-0 text-[var(--text-soft)] text-sm leading-[1.7] text-center max-[680px]:text-sm" id="emptySupport">
+                    从制度查询、纪要整理到方案起草，这里更适合处理具体工作任务，而不是泛泛聊天。
+                  </p>
+                  <div class="suggestion-label mt-2 text-[var(--text-faint)] text-[12px] font-bold tracking-[0.04em]" id="emptySuggestionLabel">建议从这些常见任务开始</div>
+                  <div class="suggestion-strip w-full max-w-[760px] flex flex-wrap justify-center gap-3" id="promptChipList">
+                    <button class="prompt-chip min-h-[38px] px-4 inline-flex items-center gap-2 rounded-[14px] bg-white/96 border border-[rgba(232,235,239,0.98)] text-[var(--text-soft)] text-[13px] font-semibold transition-all duration-160 hover:-translate-y-0.5 hover:text-[var(--text)] hover:border-[rgba(189,223,230,0.95)] hover:shadow-[0_8px_18px_rgba(23,28,38,0.05)] active:translate-y-0" data-prompt="帮我整理一版新员工入职工具清单">整理入职清单</button>
+                    <button class="prompt-chip min-h-[38px] px-4 inline-flex items-center gap-2 rounded-[14px] bg-white/96 border border-[rgba(232,235,239,0.98)] text-[var(--text-soft)] text-[13px] font-semibold transition-all duration-160 hover:-translate-y-0.5 hover:text-[var(--text)] hover:border-[rgba(189,223,230,0.95)] hover:shadow-[0_8px_18px_rgba(23,28,38,0.05)] active:translate-y-0" data-prompt="把这份流程说明改写成面向员工的 FAQ">改写流程 FAQ</button>
+                    <button class="prompt-chip min-h-[38px] px-4 inline-flex items-center gap-2 rounded-[14px] bg-white/96 border border-[rgba(232,235,239,0.98)] text-[var(--text-soft)] text-[13px] font-semibold transition-all duration-160 hover:-translate-y-0.5 hover:text-[var(--text)] hover:border-[rgba(189,223,230,0.95)] hover:shadow-[0_8px_18px_rgba(23,28,38,0.05)] active:translate-y-0" data-prompt="根据会议纪要输出一版可执行行动项">提炼行动项</button>
+                  </div>
+
+                  <div class="empty-composer-area min-h-[calc(104px+22px)] w-[min(100%,calc(830px+52px))] max-[1120px]:w-[min(100%,calc(830px+36px))] max-[1120px]:p-[12px_18px_10px] max-[900px]:w-[min(100%,calc(830px+20px))] max-[900px]:p-[12px_14px_10px] mx-auto p-[12px_26px_10px] flex flex-col">
+                    <div class="composer min-h-[104px] max-[680px]:min-h-[112px] flex-1 rounded-[22px] border border-[rgba(211,221,228,0.96)] bg-white shadow-[0_32px_62px_rgba(23,28,38,0.09),inset_0_1px_0_rgba(255,255,255,0.92)] p-[18px_18px_12px] flex flex-col gap-3 transition-all duration-160 focus-within:border-[rgba(189,223,230,0.98)] focus-within:shadow-[0_36px_72px_rgba(23,28,38,0.1),0_0_0_4px_rgba(71,185,210,0.11)]">
+                      <div class="composer-upload hidden [&.is-visible]:!grid gap-3" aria-live="polite">
+                        <div class="upload-file-grid flex flex-nowrap gap-3 items-stretch overflow-x-auto overflow-y-hidden"></div>
+                      </div>
+                      <textarea class="composer-input w-full min-h-[36px] flex-1 resize-none border-0 outline-none p-0 bg-transparent text-[var(--text)] text-[15px] leading-[1.7] overflow-hidden" id="emptyComposerInput" rows="2" placeholder="输入你的问题，我可以帮你查资料、写方案、整理内容"></textarea>
+                      <input class="upload-input" type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.md,.ppt,.pptx,image/*" hidden />
+                      <div class="composer-bottom flex items-center justify-between gap-3.5 max-[680px]:flex-col max-[680px]:items-stretch">
+                        <div class="composer-left inline-flex items-center gap-2.5 max-[680px]:justify-between">
+                          <button class="round-btn text-[var(--accent-strong)] border-[rgba(189,223,230,0.95)] bg-[rgba(242,250,252,0.94)] w-10 h-10 rounded-xl inline-flex items-center justify-center transition-all duration-160 hover:-translate-y-0.5 active:translate-y-0" aria-label="添加" data-action="upload">
+                            <svg class="icon w-[18px] h-[18px] stroke-currentColor stroke-[1.8] fill-none stroke-linecap-round stroke-linejoin-round" viewBox="0 0 24 24">
+                              <path d="M12 5v14"></path>
+                              <path d="M5 12h14"></path>
+                            </svg>
+                          </button>
+                        </div>
+                        <div class="composer-right inline-flex items-center gap-2.5 max-[680px]:justify-between">
+                          <div class="model-select relative">
+                            <button class="model-chip group/chip h-10 px-3 rounded-xl text-sm font-semibold text-[var(--accent-strong)] inline-flex items-center justify-center transition-all duration-160 hover:-translate-y-0.5 active:translate-y-0" aria-label="切换模型" aria-expanded="false">
+                              <span>GLM-5.0</span>
+                              <svg class="icon icon-sm ml-1 w-[16px] h-[16px] stroke-currentColor stroke-[1.8] fill-none stroke-linecap-round stroke-linejoin-round transition-transform duration-160 group-[.is-open]/chip:rotate-180 group-[.is-open]/chip:text-[var(--text-soft)]" viewBox="0 0 24 24">
+                                <path d="m6 9 6 6 6-6"></path>
+                              </svg>
+                            </button>
+                            <div class="model-menu absolute right-0 bottom-[calc(100%+8px)] min-w-[116px] p-1.5 hidden [&.is-open]:!grid grid-flow-row gap-0.5 border border-[rgba(232,236,240,0.98)] rounded-[14px] bg-[rgba(253,253,254,0.99)] shadow-[0_14px_28px_rgba(23,28,38,0.08),0_2px_8px_rgba(23,28,38,0.03)]" aria-hidden="true">
+                              <button class="model-option min-h-[34px] px-2.5 inline-flex items-center rounded-xl text-[rgba(56,67,79,0.96)] text-[13px] font-normal whitespace-nowrap transition-all duration-160 hover:bg-[rgba(244,247,250,0.96)] is-active" data-model="GLM-5.0">GLM-5.0</button>
+                              <button class="model-option min-h-[34px] px-2.5 inline-flex items-center rounded-xl text-[rgba(56,67,79,0.96)] text-[13px] font-normal whitespace-nowrap transition-all duration-160 hover:bg-[rgba(244,247,250,0.96)]" data-model="GLM-4.7">GLM-4.7</button>
+                            </div>
+                          </div>
+                          <button class="send-btn w-9 h-9 rounded-xl bg-gradient-to-b from-[var(--send-start)] to-[var(--send-end)] text-white shadow-[0_8px_18px_rgba(63,170,194,0.24)] inline-flex items-center justify-center transition-all duration-160 hover:-translate-y-0.5 hover:shadow-[0_10px_22px_rgba(63,170,194,0.3)] active:translate-y-0" aria-label="发送">
+                            <svg class="icon w-[18px] h-[18px] stroke-currentColor stroke-[1.8] fill-none stroke-linecap-round stroke-linejoin-round" viewBox="0 0 24 24">
+                              <path d="M12 19V5"></path>
+                              <path d="m6 11 6-6 6 6"></path>
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="footnote mt-0.5 text-center text-[rgba(118,129,141,0.92)] text-[11px] flex-none">v1.0.1 XXX公司</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="composer-wrap group-[.is-empty]/main:!hidden group-[.is-workspace]/main:!hidden border-t-0 bg-[rgba(255,255,255,0.98)]">
+              <div class="composer-area min-h-[calc(104px+22px)] w-[min(100%,calc(830px+52px))] max-[1120px]:w-[min(100%,calc(830px+36px))] max-[1120px]:p-[12px_18px_10px] max-[900px]:w-[min(100%,calc(830px+20px))] max-[900px]:p-[12px_14px_10px] mx-auto p-[12px_26px_10px] flex flex-col">
+                <div class="composer min-h-[104px] max-[680px]:min-h-[112px] flex-1 rounded-[22px] border border-[rgba(211,221,228,0.96)] bg-white shadow-[0_32px_62px_rgba(23,28,38,0.09),inset_0_1px_0_rgba(255,255,255,0.92)] p-[18px_18px_12px] flex flex-col gap-3 transition-all duration-160 focus-within:border-[rgba(189,223,230,0.98)] focus-within:shadow-[0_36px_72px_rgba(23,28,38,0.1),0_0_0_4px_rgba(71,185,210,0.11)]">
+                  <div class="composer-upload hidden [&.is-visible]:!grid gap-3" aria-live="polite">
+                    <div class="upload-file-grid flex flex-nowrap gap-3 items-stretch overflow-x-auto overflow-y-hidden"></div>
+                  </div>
+                  <textarea class="composer-input w-full min-h-[36px] flex-1 resize-none border-0 outline-none p-0 bg-transparent text-[var(--text)] text-[15px] leading-[1.7] overflow-hidden" id="articleComposerInput" rows="2" placeholder="继续提问，例如：帮我把这份说明整理成面向员工的 FAQ 版本"></textarea>
+                  <input class="upload-input" type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.md,.ppt,.pptx,image/*" hidden />
+                  <div class="composer-bottom flex items-center justify-between gap-3.5 max-[680px]:flex-col max-[680px]:items-stretch">
+                    <div class="composer-left inline-flex items-center gap-2.5 max-[680px]:justify-between">
+                      <button class="round-btn text-[var(--accent-strong)] border-[rgba(189,223,230,0.95)] bg-[rgba(242,250,252,0.94)] w-10 h-10 rounded-xl inline-flex items-center justify-center transition-all duration-160 hover:-translate-y-0.5 active:translate-y-0" aria-label="添加" data-action="upload">
+                        <svg class="icon w-[18px] h-[18px] stroke-currentColor stroke-[1.8] fill-none stroke-linecap-round stroke-linejoin-round" viewBox="0 0 24 24">
+                          <path d="M12 5v14"></path>
+                          <path d="M5 12h14"></path>
+                        </svg>
+                      </button>
+                    </div>
+                    <div class="composer-right inline-flex items-center gap-2.5 max-[680px]:justify-between">
+                      <div class="model-select relative">
+                        <button class="model-chip group/chip h-10 px-3 rounded-xl text-sm font-semibold text-[var(--accent-strong)] inline-flex items-center justify-center transition-all duration-160 hover:-translate-y-0.5 active:translate-y-0" aria-label="切换模型" aria-expanded="false">
+                          <span>GLM-5.0</span>
+                          <svg class="icon icon-sm ml-1 w-[16px] h-[16px] stroke-currentColor stroke-[1.8] fill-none stroke-linecap-round stroke-linejoin-round" viewBox="0 0 24 24">
+                            <path d="m6 9 6 6 6-6"></path>
+                          </svg>
+                        </button>
+                        <div class="model-menu absolute right-0 bottom-[calc(100%+8px)] min-w-[116px] p-1.5 hidden [&.is-open]:!grid grid-flow-row gap-0.5 border border-[rgba(232,236,240,0.98)] rounded-[14px] bg-[rgba(253,253,254,0.99)] shadow-[0_14px_28px_rgba(23,28,38,0.08),0_2px_8px_rgba(23,28,38,0.03)]" aria-hidden="true">
+                          <button class="model-option min-h-[34px] px-2.5 inline-flex items-center rounded-xl text-[rgba(56,67,79,0.96)] text-[13px] font-normal whitespace-nowrap transition-all duration-160 hover:bg-[rgba(244,247,250,0.96)] is-active" data-model="GLM-5.0">GLM-5.0</button>
+                          <button class="model-option min-h-[34px] px-2.5 inline-flex items-center rounded-xl text-[rgba(56,67,79,0.96)] text-[13px] font-normal whitespace-nowrap transition-all duration-160 hover:bg-[rgba(244,247,250,0.96)]" data-model="GLM-4.7">GLM-4.7</button>
+                        </div>
+                      </div>
+                      <button class="send-btn w-9 h-9 rounded-xl bg-gradient-to-b from-[var(--send-start)] to-[var(--send-end)] text-white shadow-[0_8px_18px_rgba(63,170,194,0.24)] inline-flex items-center justify-center transition-all duration-160 hover:-translate-y-0.5 hover:shadow-[0_10px_22px_rgba(63,170,194,0.3)] active:translate-y-0" aria-label="发送">
+                        <svg class="icon w-[18px] h-[18px] stroke-currentColor stroke-[1.8] fill-none stroke-linecap-round stroke-linejoin-round" viewBox="0 0 24 24">
+                          <path d="M12 19V5"></path>
+                          <path d="m6 11 6-6 6 6"></path>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div class="footnote mt-0.5 text-center text-[rgba(118,129,141,0.92)] text-[11px] flex-none">v1.0.1 XXX公司</div>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+      <div class="mobile-backdrop fixed inset-0 hidden bg-[rgba(12,24,32,0.16)] opacity-0 pointer-events-none transition-all duration-160 z-20 peer-[.is-mobile-nav-open]:!block peer-[.is-mobile-nav-open]:!opacity-100 peer-[.is-mobile-nav-open]:!pointer-events-auto" aria-hidden="true"></div>
+    </div>
+`;
 
       const app = document.querySelector(".app");
       const mainLayout = document.querySelector(".main-layout");
@@ -37,11 +369,11 @@ assistAiPrototypeRoot.innerHTML = "    <div class=\"app-shell\">\n      <div cla
       const primarySidebarGroup = document.querySelector(".sidebar-group");
       if (primarySidebarGroup) {
         const skillExploreNavButton = document.createElement("a");
-        skillExploreNavButton.className = "nav-item";
+        skillExploreNavButton.className = "nav-item w-full min-h-[42px] px-2.5 flex items-center gap-[11px] text-left rounded-[10px] text-[rgba(47,58,70,0.98)] text-[15px] font-normal transition-all duration-160 ease-out hover:bg-white/72 active:bg-white/72 [&.is-active]:bg-white/98 [&.is-active]:text-[rgba(38,49,61,0.98)] [&.is-active]:shadow-[inset_0_0_0_1px_rgba(228,233,238,0.98),0_6px_14px_rgba(24,31,41,0.03)]";
         skillExploreNavButton.href = "./explore.html";
         skillExploreNavButton.dataset.navTarget = "skill-explore-workspace";
         skillExploreNavButton.innerHTML = `
-          <svg class="icon nav-item-icon" viewBox="0 0 24 24">
+          <svg class="icon nav-item-icon w-[22px] h-[22px] text-[#54bed5] flex-none" viewBox="0 0 24 24">
             <path d="M12 3.5 14.7 9l5.9.9-4.3 4.2 1 5.9-5.3-2.8-5.3 2.8 1-5.9-4.3-4.2L9.3 9z"></path>
           </svg>
           <span>探索技能</span>
@@ -49,11 +381,11 @@ assistAiPrototypeRoot.innerHTML = "    <div class=\"app-shell\">\n      <div cla
         primarySidebarGroup.appendChild(skillExploreNavButton);
 
         const automationNavButton = document.createElement("a");
-        automationNavButton.className = "nav-item";
+        automationNavButton.className = "nav-item w-full min-h-[42px] px-2.5 flex items-center gap-[11px] text-left rounded-[10px] text-[rgba(47,58,70,0.98)] text-[15px] font-normal transition-all duration-160 ease-out hover:bg-white/72 active:bg-white/72 [&.is-active]:bg-white/98 [&.is-active]:text-[rgba(38,49,61,0.98)] [&.is-active]:shadow-[inset_0_0_0_1px_rgba(228,233,238,0.98),0_6px_14px_rgba(24,31,41,0.03)]";
         automationNavButton.href = "./automation.html";
         automationNavButton.dataset.navTarget = "automation-workspace";
         automationNavButton.innerHTML = `
-          <svg class="icon nav-item-icon" viewBox="0 0 24 24">
+          <svg class="icon nav-item-icon w-[22px] h-[22px] text-[#54bed5] flex-none" viewBox="0 0 24 24">
             <rect x="4.5" y="5" width="15" height="15" rx="3"></rect>
             <path d="M8 3.5v3"></path>
             <path d="M16 3.5v3"></path>
@@ -484,16 +816,16 @@ assistAiPrototypeRoot.innerHTML = "    <div class=\"app-shell\">\n      <div cla
             const presentation = getFilePresentation(file);
             const sizeLabel = presentation.sizeLabel || formatFileSize(file.size);
             return `
-              <div class="upload-file-card">
-                <div class="upload-file-icon ${presentation.iconClass}">
+              <div class="upload-file-card relative min-w-0 flex-[0_0_320px] w-[320px] p-[12px_42px_12px_12px] flex items-center gap-3 rounded-2xl bg-[rgba(248,249,251,0.98)] border border-[rgba(235,238,242,0.98)] shadow-[inset_0_1px_0_rgba(255,255,255,0.92)]">
+                <div class="upload-file-icon w-[34px] h-[34px] flex-none grid place-items-center rounded-xl text-[rgba(255,255,255,0.94)] bg-gradient-to-b from-[var(--send-start)] to-[var(--send-end)] border border-[rgba(171,220,228,0.92)] shadow-[0_4px_10px_rgba(63,170,194,0.1)] ${presentation.iconClass}">
                   ${presentation.icon}
                 </div>
-                <div class="upload-file-meta">
-                  <div class="upload-file-name">${escapeHtml(file.name)}</div>
-                  <div class="upload-file-subtitle">${presentation.typeLabel} · ${sizeLabel}</div>
+                <div class="upload-file-meta min-w-0 grid gap-1">
+                  <div class="upload-file-name whitespace-nowrap overflow-hidden text-ellipsis text-[var(--text)] text-sm font-semibold">${escapeHtml(file.name)}</div>
+                  <div class="upload-file-subtitle text-[var(--text-faint)] text-xs font-medium">${presentation.typeLabel} · ${sizeLabel}</div>
                 </div>
-                <button class="upload-file-remove" type="button" data-upload-remove="${index}" aria-label="移除文件">
-                  <svg class="icon icon-sm" viewBox="0 0 24 24">
+                <button class="upload-file-remove absolute top-2.25 right-2.25 w-6 h-6 grid place-items-center rounded-lg text-[rgba(118,129,141,0.88)] transition-all duration-160 hover:bg-[rgba(238,242,246,0.96)] hover:text-[var(--text-soft)]" type="button" data-upload-remove="${index}" aria-label="移除文件">
+                  <svg class="icon icon-sm w-[16px] h-[16px]" viewBox="0 0 24 24">
                     <path d="M6 6l12 12"></path>
                     <path d="M18 6 6 18"></path>
                   </svg>
@@ -556,12 +888,12 @@ assistAiPrototypeRoot.innerHTML = "    <div class=\"app-shell\">\n      <div cla
         const sections = [
           {
             title: "关键结论",
-            icon: `<svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M12 3v11"></path><path d="m8 10 4-7 4 7"></path><path d="M10 18h4"></path><path d="M9 21h6"></path></svg>`,
+            icon: `<svg class="icon icon-sm w-[16px] h-[16px] stroke-currentColor stroke-[1.8] fill-none stroke-linecap-round stroke-linejoin-round" viewBox="0 0 24 24"><path d="M12 3v11"></path><path d="m8 10 4-7 4 7"></path><path d="M10 18h4"></path><path d="M9 21h6"></path></svg>`,
             paragraphs: [first]
           },
           {
             title: "核心思路",
-            icon: `<svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M4 12h16"></path><path d="M12 4v16"></path><circle cx="12" cy="12" r="8"></circle></svg>`,
+            icon: `<svg class="icon icon-sm w-[16px] h-[16px] stroke-currentColor stroke-[1.8] fill-none stroke-linecap-round stroke-linejoin-round" viewBox="0 0 24 24"><path d="M4 12h16"></path><path d="M12 4v16"></path><circle cx="12" cy="12" r="8"></circle></svg>`,
             paragraphs: coreParagraphs
           }
         ];
@@ -569,7 +901,7 @@ assistAiPrototypeRoot.innerHTML = "    <div class=\"app-shell\">\n      <div cla
         if (safeParagraphs.length > 1) {
           sections.push({
             title: "下一步建议",
-            icon: `<svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M5 12h14"></path><path d="m13 6 6 6-6 6"></path></svg>`,
+            icon: `<svg class="icon icon-sm w-[16px] h-[16px] stroke-currentColor stroke-[1.8] fill-none stroke-linecap-round stroke-linejoin-round" viewBox="0 0 24 24"><path d="M5 12h14"></path><path d="m13 6 6 6-6 6"></path></svg>`,
             paragraphs: [last]
           });
         }
@@ -577,14 +909,14 @@ assistAiPrototypeRoot.innerHTML = "    <div class=\"app-shell\">\n      <div cla
         return sections
           .map(
             (section) => `
-              <section class="response-section">
-                <div class="response-heading">
+              <section class="response-section grid gap-3 first:pt-0 pt-0.5">
+                <div class="response-heading inline-flex items-center gap-2.5 text-[rgba(39,49,61,0.96)] text-[15px] font-medium tracking-[-0.01em]">
                   ${section.icon}
                   <span>${section.title}</span>
                 </div>
-                <div class="response-divider" aria-hidden="true"></div>
-                <div class="response-copy">
-                  ${section.paragraphs.map((text) => `<p>${escapeHtml(text)}</p>`).join("")}
+                <div class="response-divider w-[34px] h-0 border-t-[3px] border-dotted border-[rgba(110,120,132,0.72)]" aria-hidden="true"></div>
+                <div class="response-copy grid gap-3.5">
+                  ${section.paragraphs.map((text) => `<p class="m-0 text-[var(--text)] text-[15px] leading-[1.86]">${escapeHtml(text)}</p>`).join("")}
                 </div>
               </section>
             `
@@ -607,28 +939,28 @@ assistAiPrototypeRoot.innerHTML = "    <div class=\"app-shell\">\n      <div cla
         const assistantSections = buildResponseSections(session.assistant);
 
         articleThread.innerHTML = `
-          <div class="message-row user-row">
-            <p class="article-intro">${escapeHtml(session.user)}</p>
+          <div class="message-row user-row flex items-start gap-2 justify-end">
+            <p class="article-intro m-0 max-w-[min(72%,680px)] p-[14px_16px] rounded-2xl bg-gradient-to-b from-[rgba(246,248,250,0.98)] to-[rgba(241,244,247,0.98)] border border-[rgba(233,237,241,0.98)] shadow-[0_4px_12px_rgba(23,28,38,0.02)] text-[var(--text)] text-[15px] leading-[1.85]">${escapeHtml(session.user)}</p>
           </div>
-          <div class="message-row agent-row">
-            <div class="agent-avatar" aria-hidden="true">
-              <img src="${currentShell.avatar}" alt="" />
+          <div class="message-row agent-row flex items-start gap-3.5 mt-3.5 justify-start">
+            <div class="agent-avatar w-[30px] h-[30px] flex-none grid place-items-center rounded-full bg-[var(--brand-mark)] text-white shadow-[0_6px_14px_rgba(84,190,213,0.16)] mt-0" aria-hidden="true">
+              <img class="w-3.5 h-3.5 block object-contain opacity-100" src="${currentShell.avatar}" alt="" />
             </div>
-            <section class="text-card">
-              <div class="response-panel">
+            <section class="text-card group/textcard flex-1 w-auto max-w-[860px] relative">
+              <div class="response-panel grid gap-[22px] p-0 border-0 rounded-none bg-transparent shadow-none">
                 ${assistantSections}
               </div>
-              <div class="assistant-actions">
-                <button class="meta-action" aria-label="刷新演示结果">
-                  <svg class="icon" viewBox="0 0 24 24">
+              <div class="assistant-actions flex items-center gap-2 mt-2 p-0 border-t-0 opacity-32 transition-opacity duration-160 group-hover/textcard:opacity-100 group-focus-within/textcard:opacity-100">
+                <button class="meta-action w-6 h-6 grid place-items-center rounded-md text-[rgba(120,130,141,0.94)] opacity-86 transition-all duration-160 hover:bg-black/5 hover:text-[var(--text)] hover:opacity-100" aria-label="刷新演示结果">
+                  <svg class="icon w-[18px] h-[18px] stroke-currentColor stroke-[1.8] fill-none stroke-linecap-round stroke-linejoin-round" viewBox="0 0 24 24">
                     <path d="M7.2 8.3A6.5 6.5 0 0 1 18 10"></path>
                     <path d="M17.5 5.5V10H13"></path>
                     <path d="M16.8 15.7A6.5 6.5 0 0 1 6 14"></path>
                     <path d="M6.5 18.5V14H11"></path>
                   </svg>
                 </button>
-                <button class="meta-action" aria-label="导出内容">
-                  <svg class="icon" viewBox="0 0 24 24">
+                <button class="meta-action w-6 h-6 grid place-items-center rounded-md text-[rgba(120,130,141,0.94)] opacity-86 transition-all duration-160 hover:bg-black/5 hover:text-[var(--text)] hover:opacity-100" aria-label="导出内容">
+                  <svg class="icon w-[18px] h-[18px] stroke-currentColor stroke-[1.8] fill-none stroke-linecap-round stroke-linejoin-round" viewBox="0 0 24 24">
                     <path d="M10 5H7a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h3"></path>
                     <path d="M14 5h3a2 2 0 0 1 2 2v3"></path>
                     <path d="m13 11 6 0"></path>

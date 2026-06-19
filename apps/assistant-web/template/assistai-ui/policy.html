@@ -4,10 +4,156 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AssistAI 企业员工助手</title>
-    <link rel="stylesheet" href="./css/assistai-base.css" />
-    <link rel="stylesheet" href="./css/assistai-sidebar.css" />
-    <link rel="stylesheet" href="./css/assistai-chat.css" />
-    
+            <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              bg: 'oklch(97.9% 0.004 255)',
+              panel: 'oklch(99.2% 0.002 255)',
+              'panel-soft': 'oklch(96.8% 0.004 255)',
+              text: 'oklch(24.5% 0.014 248)',
+              'text-soft': 'oklch(46.5% 0.012 246)',
+              'text-faint': 'oklch(63.5% 0.011 244)',
+              line: 'oklch(90% 0.004 255)',
+              'line-strong': 'oklch(85% 0.005 255)',
+              accent: 'oklch(67% 0.11 212)',
+              'accent-soft': 'oklch(95.8% 0.024 206)',
+              'accent-strong': 'oklch(62% 0.115 208)',
+              'brand-mark': 'oklch(72% 0.106 204)',
+            },
+            boxShadow: {
+              sm: '0 2px 8px rgba(23, 28, 38, 0.04)',
+              md: '0 12px 30px rgba(23, 28, 38, 0.06)',
+            },
+            fontFamily: {
+              sans: ['"SF Pro Display"', '"PingFang SC"', '"Hiragino Sans GB"', '"Microsoft YaHei"', 'sans-serif'],
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+
+:root {
+  color-scheme: light;
+  --bg: oklch(97.9% 0.004 255);
+  --panel: oklch(99.2% 0.002 255);
+  --panel-soft: oklch(96.8% 0.004 255);
+  --text: oklch(24.5% 0.014 248);
+  --text-soft: oklch(46.5% 0.012 246);
+  --text-faint: oklch(63.5% 0.011 244);
+  --line: oklch(90% 0.004 255);
+  --line-strong: oklch(85% 0.005 255);
+  --accent: oklch(67% 0.11 212);
+  --accent-soft: oklch(95.8% 0.024 206);
+  --accent-strong: oklch(62% 0.115 208);
+  --accent-gradient: linear-gradient(135deg, oklch(75% 0.11 199), oklch(65% 0.11 214));
+  --brand-mark: oklch(72% 0.106 204);
+  --brand-mark-border: oklch(65% 0.108 206);
+  --send-start: oklch(71% 0.113 201);
+  --send-end: oklch(63% 0.121 209);
+  --shadow-sm: 0 2px 8px rgba(23, 28, 38, 0.04);
+  --shadow-md: 0 12px 30px rgba(23, 28, 38, 0.06);
+  --focus-ring: 0 0 0 3px rgba(71, 185, 210, 0.18);
+  --sidebar-width: 272px;
+  --topbar-height: 62px;
+  --composer-height: 104px;
+  --shell-radius: 18px;
+  --content-max-width: 830px;
+  --composer-max-width: 830px;
+  --font-sans: "SF Pro Display", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  font-family: var(--font-sans);
+  background:
+    linear-gradient(180deg, rgba(247, 250, 252, 0.98), rgba(243, 247, 250, 0.98)),
+    radial-gradient(circle at top left, rgba(120, 138, 189, 0.035), transparent 26%),
+    radial-gradient(circle at bottom right, rgba(120, 138, 189, 0.028), transparent 22%),
+    var(--bg);
+  color: var(--text);
+}
+
+body {
+  overflow: hidden;
+}
+
+button {
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  cursor: pointer;
+}
+
+textarea {
+  font: inherit;
+}
+
+/* Base custom utility selectors that match JS DOM queries but style with Tailwind */
+.icon {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: none;
+}
+
+.icon-sm {
+  width: 16px;
+  height: 16px;
+}
+
+/* Custom Scrollbars */
+.sidebar-scroll::-webkit-scrollbar,
+.main-scroll::-webkit-scrollbar,
+.upload-file-grid::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.sidebar-scroll::-webkit-scrollbar-thumb,
+.main-scroll::-webkit-scrollbar-thumb {
+  background: rgba(197, 203, 213, 0.6);
+  border-radius: 999px;
+}
+
+.sidebar-scroll::-webkit-scrollbar-track,
+.main-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.upload-file-grid::-webkit-scrollbar {
+  display: none;
+}
+
+
+/* Interactive Overrides */
+
+
+/* Input overrides */
+textarea::placeholder {
+  color: rgba(118, 129, 141, 0.9) !important;
+}
+button:focus-visible {
+  outline: none !important;
+  box-shadow: var(--focus-ring) !important;
+}
+
+    </style>
   </head>
   <body data-initial-view="assistant-home" data-initial-assistant="regulation-assistant">
     <div id="assistai-root"></div>
