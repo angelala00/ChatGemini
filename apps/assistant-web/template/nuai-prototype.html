@@ -1,0 +1,4182 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>NUAI智能体</title>
+    <style>
+        /* ==================== Reset & Base ==================== */
+        *, *::before, *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #4F46E5;
+            --primary-light: #6366F1;
+            --primary-dark: #3730A3;
+            --accent: #06B6D4;
+            --bg-dark: #0F172A;
+            --bg-sidebar: #111827;
+            --bg-card: #1E293B;
+            --bg-input: #334155;
+            --text-primary: #F8FAFC;
+            --text-secondary: #94A3B8;
+            --text-muted: #64748B;
+            --border: #1F2937;
+            --border-light: #334155;
+            --success: #10B981;
+            --warning: #F59E0B;
+            --gradient-1: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --gradient-2: linear-gradient(135deg, #4F46E5 0%, #06B6D4 100%);
+            --gradient-hero: linear-gradient(180deg, #0F172A 0%, #1a1a2e 50%, #16213e 100%);
+            --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+            --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4);
+            --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.5);
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --radius-xl: 24px;
+            --sidebar-width: 260px;
+            --header-height: 56px;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        a { color: inherit; text-decoration: none; }
+        button { cursor: pointer; border: none; font-family: inherit; }
+
+        /* ==================== HEADER ==================== */
+        .header {
+            position: fixed;
+            top: 0;
+            left: var(--sidebar-width);
+            right: 0;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+            height: var(--header-height);
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        .header__title {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-secondary);
+        }
+
+        .header__title--active {
+            color: var(--text-primary);
+        }
+
+        /* ==================== LEFT SIDEBAR ==================== */
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            width: var(--sidebar-width);
+            background: var(--bg-sidebar);
+            border-right: 1px solid var(--border);
+            z-index: 1100;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Sidebar Logo */
+        .sidebar__logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+
+        .sidebar__logo-icon {
+            width: 36px;
+            height: 36px;
+            background: var(--gradient-2);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 16px;
+            color: #fff;
+            flex-shrink: 0;
+        }
+
+        .sidebar__logo-text {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text-primary);
+            letter-spacing: 0.5px;
+        }
+
+        .sidebar__logo-badge {
+            font-size: 10px;
+            padding: 2px 6px;
+            background: rgba(79, 70, 229, 0.2);
+            color: var(--primary-light);
+            border-radius: 4px;
+            font-weight: 500;
+            margin-left: auto;
+        }
+
+        /* New Task Button */
+        .sidebar__new-task {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin: 16px 16px 8px;
+            padding: 10px;
+            background: var(--gradient-2);
+            border-radius: var(--radius-sm);
+            color: #fff;
+            font-size: 14px;
+            font-weight: 500;
+            transition: opacity 0.2s, transform 0.2s;
+            flex-shrink: 0;
+        }
+
+        .sidebar__new-task:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
+        /* Nav Section */
+        .sidebar__nav {
+            padding: 8px 12px;
+            flex-shrink: 0;
+        }
+
+        .sidebar__section-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            padding: 8px 12px 6px;
+        }
+
+        .sidebar__nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 12px;
+            border-radius: var(--radius-sm);
+            font-size: 14px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.15s;
+            position: relative;
+        }
+
+        .sidebar__nav-item:hover {
+            background: rgba(255, 255, 255, 0.04);
+            color: var(--text-primary);
+        }
+
+        .sidebar__nav-item--active {
+            background: rgba(79, 70, 229, 0.12);
+            color: var(--primary-light);
+        }
+
+        .sidebar__nav-item--active::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 3px;
+            height: 20px;
+            background: var(--primary-light);
+            border-radius: 0 2px 2px 0;
+        }
+
+        .sidebar__nav-icon {
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+
+        .sidebar__nav-divider {
+            height: 1px;
+            background: var(--border);
+            margin: 8px 12px;
+        }
+
+        /* Sidebar Scrollable Area */
+        .sidebar__scroll {
+            flex: 1;
+            overflow-y: auto;
+            padding-bottom: 16px;
+        }
+
+        /* History Section */
+        .sidebar__history {
+            padding: 0 12px;
+        }
+
+        .sidebar__history-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: all 0.15s;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .sidebar__history-item:hover {
+            background: rgba(255, 255, 255, 0.04);
+            color: var(--text-secondary);
+        }
+
+        .sidebar__history-icon {
+            font-size: 14px;
+            flex-shrink: 0;
+            opacity: 0.6;
+        }
+
+        /* Sidebar Footer */
+        .sidebar__footer {
+            padding: 12px 16px;
+            border-top: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+
+        .sidebar__footer-user {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+
+        .sidebar__footer-user:hover {
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .sidebar__footer-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            background: var(--bg-input);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            color: var(--text-muted);
+            flex-shrink: 0;
+        }
+
+        .sidebar__footer-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .sidebar__footer-name {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+
+        .sidebar__footer-plan {
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        /* Theme Switcher */
+        .sidebar__settings-btn {
+            cursor: pointer;
+            font-size: 16px;
+            transition: opacity 0.2s;
+        }
+
+        .sidebar__settings-btn:hover { opacity: 0.7; }
+
+        .sidebar__settings-panel {
+            display: none;
+            position: absolute;
+            bottom: 60px;
+            left: 16px;
+            right: 16px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-md);
+            padding: 16px;
+            z-index: 100;
+            box-shadow: var(--shadow-lg);
+        }
+
+        .sidebar__settings-panel--open { display: block; }
+
+        .sidebar__settings-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .sidebar__settings-header span:first-child {
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .sidebar__settings-close {
+            cursor: pointer;
+            color: var(--text-muted);
+            transition: color 0.2s;
+        }
+
+        .sidebar__settings-close:hover { color: var(--text-primary); }
+
+        .sidebar__settings-section {
+            margin-bottom: 16px;
+        }
+
+        .sidebar__settings-label {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 10px;
+        }
+
+        .sidebar__theme-options {
+            display: flex;
+            gap: 8px;
+        }
+
+        .sidebar__theme-option {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 10px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border-light);
+            font-size: 13px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .sidebar__theme-option:hover {
+            border-color: var(--primary);
+            color: var(--primary-light);
+        }
+
+        .sidebar__theme-option--active {
+            background: rgba(79, 70, 229, 0.15);
+            border-color: var(--primary);
+            color: var(--primary-light);
+        }
+
+        .sidebar__theme-icon {
+            font-size: 16px;
+        }
+
+        /* ==================== Light Theme ==================== */
+        body.theme-light {
+            --bg-dark: #F8FAFC;
+            --bg-sidebar: #FFFFFF;
+            --bg-card: #FFFFFF;
+            --bg-input: #F1F5F9;
+            --text-primary: #1E293B;
+            --text-secondary: #475569;
+            --text-muted: #94A3B8;
+            --border: #E2E8F0;
+            --border-light: #E2E8F0;
+        }
+
+        body.theme-light .header {
+            background: rgba(248, 250, 252, 0.85);
+            border-bottom-color: #E2E8F0;
+        }
+
+        body.theme-light .sidebar {
+            border-right-color: #E2E8F0;
+        }
+
+        body.theme-light .sidebar__nav-item:hover {
+            background: rgba(0, 0, 0, 0.04);
+        }
+
+        body.theme-light .sidebar__nav-item--active {
+            background: rgba(79, 70, 229, 0.08);
+        }
+
+        /* Hero Section Light */
+        body.theme-light .hero {
+            background: linear-gradient(180deg, #F8FAFC 0%, #EEF2FF 50%, #E0E7FF 100%);
+        }
+
+        body.theme-light .hero::before {
+            background: radial-gradient(ellipse at center, rgba(79, 70, 229, 0.08) 0%, transparent 60%);
+        }
+
+        body.theme-light .hero__badge {
+            background: rgba(79, 70, 229, 0.1);
+            border-color: rgba(79, 70, 229, 0.2);
+        }
+
+        body.theme-light .search-box__input-wrapper {
+            background: #FFFFFF;
+            border-color: #E2E8F0;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+        }
+
+        body.theme-light .search-box__input {
+            background: #F1F5F9;
+        }
+
+        body.theme-light .category-tag {
+            background: rgba(0, 0, 0, 0.04);
+            border-color: rgba(0, 0, 0, 0.08);
+        }
+
+        body.theme-light .trending__item {
+            background: rgba(0, 0, 0, 0.02);
+        }
+
+        body.theme-light .trending__item:hover {
+            background: rgba(0, 0, 0, 0.05);
+        }
+
+        body.theme-light .feature-card {
+            background: #FFFFFF;
+            border-color: #E2E8F0;
+        }
+
+        body.theme-light .feature-card:hover {
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+        }
+
+        /* Search Result Page Light */
+        body.theme-light .result-page {
+            background: #F8FAFC;
+        }
+
+        body.theme-light .result-header {
+            background: rgba(248, 250, 252, 0.9);
+        }
+
+        body.theme-light .ai-answer {
+            background: #FFFFFF;
+            border-color: #E2E8F0;
+        }
+
+        body.theme-light .sources {
+            background: #FFFFFF;
+            border-color: #E2E8F0;
+        }
+
+        body.theme-light .source-item {
+            background: #F8FAFC;
+        }
+
+        body.theme-light .follow-up__item {
+            background: #FFFFFF;
+            border-color: #E2E8F0;
+        }
+
+        body.theme-light .result-input-area__input {
+            background: #FFFFFF;
+            border-color: #E2E8F0;
+        }
+
+        /* Chat Page Light */
+        body.theme-light .chat-sidebar {
+            background: #FFFFFF;
+            border-right-color: #E2E8F0;
+        }
+
+        body.theme-light .chat-sidebar__item:hover {
+            background: #F1F5F9;
+        }
+
+        body.theme-light .chat-message--ai .chat-message__bubble {
+            background: #FFFFFF;
+            border-color: #E2E8F0;
+        }
+
+        body.theme-light .chat-input-area {
+            border-top-color: #E2E8F0;
+        }
+
+        body.theme-light .chat-input-area__wrapper {
+            background: #FFFFFF;
+            border-color: #E2E8F0;
+        }
+
+        body.theme-light .chat-tool {
+            background: #F1F5F9;
+        }
+
+        /* Writing Page Light */
+        body.theme-light .writing-sidebar {
+            background: #FFFFFF;
+            border-right-color: #E2E8F0;
+        }
+
+        body.theme-light .writing-template {
+            background: #F8FAFC;
+        }
+
+        body.theme-light .writing-template:hover {
+            background: rgba(79, 70, 229, 0.08);
+        }
+
+        body.theme-light .writing-editor__prompt {
+            background: #FFFFFF;
+            border-color: #E2E8F0;
+        }
+
+        body.theme-light .writing-editor__output {
+            background: #FFFFFF;
+            border-color: #E2E8F0;
+        }
+
+        body.theme-light .writing-toolbar__btn {
+            background: #F1F5F9;
+        }
+
+        /* Knowledge Base Light */
+        body.theme-light .kb-sidebar {
+            background: #FFFFFF;
+            border-right-color: #E2E8F0;
+        }
+
+        body.theme-light .kb-sidebar__tab:hover {
+            background: rgba(0, 0, 0, 0.04);
+        }
+
+        body.theme-light .kb-sidebar__tab--active {
+            background: rgba(79, 70, 229, 0.08);
+        }
+
+        body.theme-light .kb-db-selector__dropdown {
+            background: #F1F5F9;
+            border-color: #E2E8F0;
+        }
+
+        body.theme-light .kb-upload-area {
+            border-color: #E2E8F0;
+        }
+
+        body.theme-light .kb-upload-area:hover {
+            border-color: var(--primary);
+            background: rgba(79, 70, 229, 0.03);
+        }
+
+        body.theme-light .kb-upload-area__btn {
+            background: #F1F5F9;
+            border-color: #E2E8F0;
+        }
+
+        body.theme-light .kb-file-item {
+            background: #F1F5F9;
+        }
+
+        body.theme-light .kb-chat {
+            background: #F8FAFC;
+        }
+
+        body.theme-light .kb-chat__message--ai .kb-chat__bubble {
+            background: #FFFFFF;
+            border-color: #E2E8F0;
+        }
+
+        body.theme-light .kb-chat__message--user .kb-chat__bubble {
+            background: #F1F5F9;
+            color: #1E293B;
+        }
+
+        body.theme-light .kb-chat__input-area {
+            background: #F8FAFC;
+            border-top-color: #E2E8F0;
+        }
+
+        body.theme-light .kb-chat__input-wrapper {
+            background: #FFFFFF;
+            border-color: #E2E8F0;
+        }
+
+        /* Tasks Page Light */
+        body.theme-light .tasks-stat {
+            background: #FFFFFF;
+            border-color: #E2E8F0;
+        }
+
+        body.theme-light .tasks-list-container {
+            background: #FFFFFF;
+            border-color: #E2E8F0;
+        }
+
+        body.theme-light .tasks-table-header {
+            background: #F8FAFC;
+            border-bottom-color: #E2E8F0;
+        }
+
+        body.theme-light .task-row {
+            border-bottom-color: #E2E8F0;
+        }
+
+        body.theme-light .task-row:hover {
+            background: rgba(0, 0, 0, 0.02);
+        }
+
+        body.theme-light .task-row__action-btn {
+            border-color: #E2E8F0;
+        }
+
+        body.theme-light .task-row__action-btn:hover {
+            background: #F1F5F9;
+        }
+
+        body.theme-light .history-table-header {
+            background: #F8FAFC;
+        }
+
+        body.theme-light .history-row {
+            border-bottom-color: #E2E8F0;
+        }
+
+        body.theme-light .history-row:hover {
+            background: rgba(0, 0, 0, 0.02);
+        }
+
+        /* Assets Page Light */
+        body.theme-light .assets-page {
+            background: #F8FAFC;
+        }
+
+        body.theme-light .asset-card {
+            background: #FFFFFF;
+            border-color: #E2E8F0;
+        }
+
+        body.theme-light .asset-card:hover {
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+        }
+
+        body.theme-light .asset-card__info {
+            background: rgba(0, 0, 0, 0.02);
+        }
+
+        body.theme-light .assets-filter {
+            background: #FFFFFF;
+            border-color: #E2E8F0;
+        }
+
+        body.theme-light .assets-search__input {
+            background: #FFFFFF;
+            border-color: #E2E8F0;
+        }
+
+        /* Settings Panel Light */
+        body.theme-light .sidebar__settings-panel {
+            background: #FFFFFF;
+            border-color: #E2E8F0;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+        }
+
+        body.theme-light .sidebar__settings-header {
+            border-bottom-color: #E2E8F0;
+        }
+
+        body.theme-light .sidebar__theme-option {
+            border-color: #E2E8F0;
+        }
+
+        body.theme-light .sidebar__theme-option:hover {
+            border-color: var(--primary);
+        }
+
+        /* Footer Light */
+        body.theme-light .footer {
+            border-top-color: #E2E8F0;
+        }
+
+        /* ==================== MAIN CONTENT AREA ==================== */
+        .main-wrapper {
+            margin-left: var(--sidebar-width);
+            padding-top: var(--header-height);
+            min-height: 100vh;
+        }
+
+        /* ==================== Hero Section ==================== */
+        .hero {
+            min-height: calc(100vh - var(--header-height));
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 32px 60px;
+            background: var(--gradient-hero);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(ellipse at center, rgba(79, 70, 229, 0.12) 0%, transparent 60%);
+            animation: pulse 8s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 0.5; }
+            50% { transform: scale(1.1); opacity: 0.8; }
+        }
+
+        .hero__content {
+            position: relative;
+            z-index: 1;
+            text-align: center;
+            max-width: 800px;
+            width: 100%;
+        }
+
+        .hero__badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 16px;
+            background: rgba(79, 70, 229, 0.15);
+            border: 1px solid rgba(79, 70, 229, 0.3);
+            border-radius: 20px;
+            font-size: 13px;
+            color: var(--primary-light);
+            margin-bottom: 24px;
+        }
+
+        .hero__title {
+            font-size: 48px;
+            font-weight: 700;
+            line-height: 1.2;
+            margin-bottom: 16px;
+            background: linear-gradient(135deg, #fff 0%, #a5b4fc 50%, #06b6d4 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero__subtitle {
+            font-size: 18px;
+            color: var(--text-secondary);
+            margin-bottom: 40px;
+            line-height: 1.8;
+        }
+
+        /* ==================== Search Box ==================== */
+        .search-box {
+            width: 100%;
+            max-width: 720px;
+            margin: 0 auto;
+        }
+
+        .search-box__input-wrapper {
+            position: relative;
+            background: var(--bg-card);
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-lg);
+            padding: 8px;
+            transition: all 0.3s;
+        }
+
+        .search-box__input-wrapper:focus-within {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+        }
+
+        .search-box__tabs {
+            display: flex;
+            gap: 4px;
+            padding: 0 8px 8px;
+        }
+
+        .search-box__tab {
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-size: 13px;
+            color: var(--text-muted);
+            background: transparent;
+            transition: all 0.2s;
+        }
+
+        .search-box__tab:hover {
+            color: var(--text-secondary);
+            background: var(--bg-input);
+        }
+
+        .search-box__tab--active {
+            color: #fff;
+            background: var(--primary);
+        }
+
+        .search-box__input {
+            width: 100%;
+            padding: 14px 50px 14px 16px;
+            background: var(--bg-input);
+            border: none;
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            font-size: 15px;
+            outline: none;
+        }
+
+        .search-box__input::placeholder { color: var(--text-muted); }
+
+        .search-box__submit {
+            position: absolute;
+            right: 24px;
+            bottom: 24px;
+            width: 36px;
+            height: 36px;
+            background: var(--gradient-2);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-size: 18px;
+            transition: transform 0.2s;
+        }
+
+        .search-box__submit:hover { transform: scale(1.05); }
+
+        /* ==================== Category Tags ==================== */
+        .categories {
+            display: none;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 32px;
+        }
+
+        .categories--visible {
+            display: flex;
+        }
+
+        .category-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 18px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 20px;
+            font-size: 14px;
+            color: var(--text-secondary);
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        .category-tag:hover {
+            background: rgba(79, 70, 229, 0.15);
+            border-color: rgba(79, 70, 229, 0.3);
+            color: var(--primary-light);
+            transform: translateY(-1px);
+        }
+
+        .category-tag__icon { font-size: 16px; }
+
+        /* ==================== Trending ==================== */
+        .trending {
+            margin-top: 40px;
+            max-width: 720px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .trending__label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+        }
+
+        .trending__list {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+        }
+
+        .trending__item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 14px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: var(--radius-sm);
+            font-size: 14px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .trending__item:hover {
+            background: rgba(255, 255, 255, 0.06);
+            color: var(--text-primary);
+        }
+
+        .trending__rank {
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+
+        .trending__rank--hot {
+            background: linear-gradient(135deg, #ef4444, #f97316);
+            color: #fff;
+        }
+
+        .trending__rank--normal {
+            background: var(--bg-input);
+            color: var(--text-muted);
+        }
+
+        /* ==================== Features Section ==================== */
+        .features {
+            padding: 80px 32px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .features__header {
+            text-align: center;
+            margin-bottom: 60px;
+        }
+
+        .features__title {
+            font-size: 36px;
+            font-weight: 700;
+            margin-bottom: 12px;
+        }
+
+        .features__desc {
+            font-size: 16px;
+            color: var(--text-secondary);
+        }
+
+        .features__grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 24px;
+        }
+
+        .feature-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-lg);
+            padding: 32px;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+
+        .feature-card:hover {
+            border-color: var(--primary);
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .feature-card__icon {
+            width: 48px;
+            height: 48px;
+            border-radius: var(--radius-md);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+
+        .feature-card__icon--search { background: rgba(79, 70, 229, 0.15); }
+        .feature-card__icon--chat { background: rgba(6, 182, 212, 0.15); }
+        .feature-card__icon--write { background: rgba(16, 185, 129, 0.15); }
+        .feature-card__icon--doc { background: rgba(245, 158, 11, 0.15); }
+        .feature-card__icon--ppt { background: rgba(239, 68, 68, 0.15); }
+        .feature-card__icon--image { background: rgba(168, 85, 247, 0.15); }
+
+        .feature-card__title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .feature-card__text {
+            font-size: 14px;
+            color: var(--text-muted);
+            line-height: 1.7;
+        }
+
+        /* ==================== Search Result Page ==================== */
+        .result-page {
+            display: none;
+            min-height: calc(100vh - var(--header-height));
+            background: var(--bg-dark);
+        }
+
+        .result-page.active { display: block; }
+
+        .result-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 12px 32px;
+            border-bottom: 1px solid var(--border);
+            background: rgba(15, 23, 42, 0.9);
+            backdrop-filter: blur(12px);
+            position: sticky;
+            top: var(--header-height);
+            z-index: 100;
+        }
+
+        .result-header__back {
+            color: var(--text-secondary);
+            font-size: 20px;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+
+        .result-header__back:hover { color: var(--text-primary); }
+
+        .result-header__input {
+            flex: 1;
+            max-width: 680px;
+            padding: 10px 16px;
+            background: var(--bg-input);
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            font-size: 14px;
+            outline: none;
+        }
+
+        .result-header__input:focus { border-color: var(--primary); }
+
+        .result-container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 32px;
+        }
+
+        /* AI Answer */
+        .ai-answer {
+            background: var(--bg-card);
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-lg);
+            padding: 28px;
+            margin-bottom: 24px;
+        }
+
+        .ai-answer__header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+
+        .ai-answer__badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            background: rgba(79, 70, 229, 0.15);
+            border-radius: 6px;
+            font-size: 13px;
+            color: var(--primary-light);
+            font-weight: 500;
+        }
+
+        .ai-answer__actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .ai-answer__action {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            background: transparent;
+            color: var(--text-muted);
+            font-size: 16px;
+            transition: all 0.2s;
+        }
+
+        .ai-answer__action:hover {
+            background: var(--bg-input);
+            color: var(--text-primary);
+        }
+
+        .ai-answer__content {
+            font-size: 15px;
+            line-height: 1.9;
+            color: var(--text-primary);
+        }
+
+        .ai-answer__content p { margin-bottom: 16px; }
+        .ai-answer__content strong { color: var(--accent); }
+        .ai-answer__content a {
+            color: var(--primary-light);
+            text-decoration: underline;
+            text-underline-offset: 3px;
+        }
+
+        /* Sources */
+        .sources {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-md);
+            padding: 20px;
+            margin-bottom: 24px;
+        }
+
+        .sources__title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .sources__grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+        }
+
+        .source-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            padding: 10px;
+            background: var(--bg-card);
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .source-item:hover { background: var(--bg-input); }
+
+        .source-item__num {
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--primary);
+            border-radius: 4px;
+            font-size: 11px;
+            color: #fff;
+            flex-shrink: 0;
+        }
+
+        .source-item__text {
+            color: var(--text-secondary);
+            line-height: 1.4;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        /* Follow-up */
+        .follow-up { margin-top: 24px; }
+
+        .follow-up__title {
+            font-size: 14px;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+        }
+
+        .follow-up__list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .follow-up__item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 16px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-sm);
+            font-size: 14px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .follow-up__item:hover {
+            border-color: var(--primary);
+            color: var(--text-primary);
+        }
+
+        .follow-up__icon {
+            color: var(--accent);
+            font-size: 16px;
+        }
+
+        /* Input Area */
+        .result-input-area {
+            margin-top: 32px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .result-input-area__input {
+            flex: 1;
+            padding: 14px 16px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-md);
+            color: var(--text-primary);
+            font-size: 14px;
+            outline: none;
+        }
+
+        .result-input-area__input:focus { border-color: var(--primary); }
+
+        /* ==================== Chat / Writing inner sidebar ==================== */
+        .inner-layout {
+            display: none;
+            min-height: calc(100vh - var(--header-height));
+        }
+
+        .inner-layout.active { display: flex; }
+
+        .chat-sidebar {
+            width: 260px;
+            background: var(--bg-card);
+            border-right: 1px solid var(--border);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .chat-sidebar__new {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 10px;
+            background: var(--gradient-2);
+            border-radius: var(--radius-sm);
+            color: #fff;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .chat-sidebar__history { flex: 1; overflow-y: auto; }
+        .chat-sidebar__label {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+        }
+
+        .chat-sidebar__item {
+            padding: 10px 12px;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .chat-sidebar__item:hover {
+            background: var(--bg-input);
+            color: var(--text-primary);
+        }
+
+        .chat-main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chat-messages {
+            flex: 1;
+            padding: 32px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        .chat-message { display: flex; gap: 12px; }
+        .chat-message--user { justify-content: flex-end; }
+
+        .chat-message__avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+
+        .chat-message--ai .chat-message__avatar {
+            background: var(--gradient-2);
+            color: #fff;
+        }
+
+        .chat-message--user .chat-message__avatar {
+            background: var(--bg-input);
+            color: var(--text-secondary);
+        }
+
+        .chat-message__bubble {
+            max-width: 70%;
+            padding: 14px 18px;
+            border-radius: var(--radius-md);
+            font-size: 14px;
+            line-height: 1.7;
+        }
+
+        .chat-message--ai .chat-message__bubble {
+            background: var(--bg-card);
+            border: 1px solid var(--border-light);
+        }
+
+        .chat-message--user .chat-message__bubble {
+            background: var(--primary);
+            color: #fff;
+        }
+
+        .chat-input-area {
+            padding: 20px 32px;
+            border-top: 1px solid var(--border);
+        }
+
+        .chat-input-area__wrapper {
+            display: flex;
+            align-items: flex-end;
+            gap: 8px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-md);
+            padding: 12px;
+        }
+
+        .chat-input-area__textarea {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: var(--text-primary);
+            font-size: 14px;
+            resize: none;
+            outline: none;
+            min-height: 24px;
+            max-height: 120px;
+            font-family: inherit;
+            line-height: 1.6;
+        }
+
+        .chat-input-area__submit {
+            width: 36px;
+            height: 36px;
+            background: var(--gradient-2);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+
+        .chat-tools {
+            display: flex;
+            gap: 12px;
+            margin-top: 12px;
+        }
+
+        .chat-tool {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            background: var(--bg-input);
+            border-radius: 6px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .chat-tool:hover {
+            background: rgba(79, 70, 229, 0.2);
+            color: var(--primary-light);
+        }
+
+        /* ==================== Writing Page ==================== */
+        .writing-sidebar {
+            width: 280px;
+            background: var(--bg-card);
+            border-right: 1px solid var(--border);
+            padding: 24px;
+        }
+
+        .writing-sidebar__title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+
+        .writing-templates {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .writing-template {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 14px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid transparent;
+            border-radius: var(--radius-sm);
+            font-size: 14px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .writing-template:hover {
+            background: rgba(79, 70, 229, 0.1);
+            border-color: rgba(79, 70, 229, 0.3);
+            color: var(--text-primary);
+        }
+
+        .writing-template__icon { font-size: 18px; }
+
+        .writing-main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .writing-editor { flex: 1; padding: 32px; }
+
+        .writing-editor__prompt {
+            width: 100%;
+            max-width: 680px;
+            margin: 0 auto 24px;
+            padding: 16px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-md);
+            color: var(--text-primary);
+            font-size: 15px;
+            outline: none;
+            min-height: 80px;
+            resize: vertical;
+            font-family: inherit;
+            line-height: 1.6;
+        }
+
+        .writing-editor__output {
+            max-width: 680px;
+            margin: 0 auto;
+            background: var(--bg-card);
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-lg);
+            padding: 28px;
+            min-height: 300px;
+        }
+
+        .writing-editor__output-label {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-bottom: 16px;
+        }
+
+        .writing-editor__output-text {
+            font-size: 15px;
+            line-height: 1.9;
+            color: var(--text-primary);
+        }
+
+        .writing-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 0;
+            border-top: 1px solid var(--border);
+            margin-top: auto;
+        }
+
+        .writing-toolbar__btn {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            background: var(--bg-input);
+            border-radius: 6px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            transition: all 0.2s;
+        }
+
+        .writing-toolbar__btn:hover {
+            background: rgba(79, 70, 229, 0.2);
+            color: var(--primary-light);
+        }
+
+        /* ==================== Skills Page (探索技能) ==================== */
+        .skills-page { display: none; padding: 24px 32px; }
+        .skills-page.active { display: block; }
+
+        /* Skills Tabs */
+        .skills-tabs {
+            display: flex;
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+
+        .skills-tab {
+            font-size: 16px;
+            font-weight: 500;
+            color: var(--text-muted);
+            cursor: pointer;
+            padding-bottom: 8px;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .skills-tab:hover { color: var(--text-secondary); }
+        .skills-tab--active {
+            color: var(--text-primary);
+            border-bottom-color: var(--primary);
+        }
+
+        .skills-page__header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 24px;
+        }
+
+        .skills-page__title {
+            font-size: 24px;
+            font-weight: 700;
+        }
+
+        .skills-page__search {
+            width: 320px;
+            padding: 10px 16px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            font-size: 14px;
+            outline: none;
+        }
+
+        .skills-page__search:focus { border-color: var(--primary); }
+
+        .skills-filters {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+        }
+
+        .skills-filter {
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            background: var(--bg-card);
+            border: 1px solid var(--border-light);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .skills-filter:hover {
+            border-color: var(--primary);
+            color: var(--primary-light);
+        }
+
+        .skills-filter--active {
+            background: var(--primary);
+            border-color: var(--primary);
+            color: #fff;
+        }
+
+        .skills-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+        }
+
+        @media (max-width: 1200px) {
+            .skills-grid { grid-template-columns: repeat(3, 1fr); }
+        }
+
+        .skill-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-md);
+            padding: 24px;
+            cursor: pointer;
+            transition: all 0.25s;
+        }
+
+        .skill-card:hover {
+            border-color: var(--primary);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .skill-card__icon {
+            width: 48px;
+            height: 48px;
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            margin-bottom: 16px;
+        }
+
+        .skill-card__icon--blue { background: rgba(79, 70, 229, 0.15); }
+        .skill-card__icon--green { background: rgba(16, 185, 129, 0.15); }
+        .skill-card__icon--orange { background: rgba(245, 158, 11, 0.15); }
+        .skill-card__icon--purple { background: rgba(168, 85, 247, 0.15); }
+        .skill-card__icon--red { background: rgba(239, 68, 68, 0.15); }
+        .skill-card__icon--cyan { background: rgba(6, 182, 212, 0.15); }
+
+        .skill-card__name {
+            font-size: 15px;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+
+        .skill-card__desc {
+            font-size: 13px;
+            color: var(--text-muted);
+            line-height: 1.5;
+            margin-bottom: 12px;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .skill-card__meta {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .skill-card__users {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .skill-card__tag {
+            padding: 2px 8px;
+            background: rgba(79, 70, 229, 0.1);
+            color: var(--primary-light);
+            border-radius: 4px;
+            font-size: 11px;
+        }
+
+        /* ==================== Tasks Page (定时任务) ==================== */
+        .tasks-page { display: none; padding: 24px 32px; }
+        .tasks-page.active { display: block; }
+
+        /* Stats Cards */
+        .tasks-stats {
+            display: inline-flex;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        .tasks-stat {
+            background: var(--bg-card);
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-sm);
+            padding: 6px 32px;
+            min-width: 140px;
+        }
+
+        .tasks-stat__label {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-bottom: 2px;
+        }
+
+        .tasks-stat__value {
+            font-size: 20px;
+            font-weight: 700;
+        }
+
+        .tasks-stat__value--blue { color: var(--primary-light); }
+        .tasks-stat__value--green { color: var(--success); }
+        .tasks-stat__value--orange { color: var(--warning); }
+
+        /* Tasks Tabs */
+        .tasks-tabs {
+            display: flex;
+            gap: 24px;
+            margin-bottom: 20px;
+        }
+
+        .tasks-tab {
+            font-size: 16px;
+            font-weight: 500;
+            color: var(--text-muted);
+            cursor: pointer;
+            padding-bottom: 8px;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .tasks-tab:hover { color: var(--text-secondary); }
+        .tasks-tab--active {
+            color: var(--text-primary);
+            border-bottom-color: var(--primary);
+        }
+
+        /* Execution History */
+        .tasks-history {
+            display: none;
+        }
+
+        .tasks-history.active { display: block; }
+
+        .tasks-list.active { display: block; }
+        .tasks-list { display: none; }
+
+        .history-table-header {
+            display: grid;
+            grid-template-columns: 1fr 140px 100px 100px 120px;
+            gap: 16px;
+            padding: 14px 24px;
+            background: rgba(255, 255, 255, 0.02);
+            border-bottom: 1px solid var(--border-light);
+            font-size: 13px;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        .history-row {
+            display: grid;
+            grid-template-columns: 1fr 140px 100px 100px 120px;
+            gap: 16px;
+            padding: 16px 24px;
+            border-bottom: 1px solid var(--border);
+            align-items: center;
+            transition: background 0.15s;
+        }
+
+        .history-row:last-child { border-bottom: none; }
+        .history-row:hover { background: rgba(255, 255, 255, 0.02); }
+
+        .history-row__task {
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .history-row__time {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .history-row__status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+        }
+
+        .history-row__status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .history-row__status-dot--success { background: var(--success); }
+        .history-row__status-dot--failed { background: #ef4444; }
+
+        .history-row__duration {
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        /* Create Task Button */
+        .tasks-create-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            background: var(--primary);
+            color: #fff;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            font-family: inherit;
+        }
+
+        .tasks-create-btn:hover { opacity: 0.85; }
+
+        /* Task List Container */
+        .tasks-list-container {
+            background: var(--bg-card);
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+        }
+
+        /* Table Header */
+        .tasks-table-header {
+            display: grid;
+            grid-template-columns: 1fr 160px 140px 280px;
+            gap: 16px;
+            padding: 14px 24px;
+            background: rgba(255, 255, 255, 0.02);
+            border-bottom: 1px solid var(--border-light);
+            font-size: 13px;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        /* Task Row */
+        .task-row {
+            display: grid;
+            grid-template-columns: 1fr 160px 140px 280px;
+            gap: 16px;
+            padding: 18px 24px;
+            border-bottom: 1px solid var(--border);
+            align-items: center;
+            transition: background 0.15s;
+        }
+
+        .task-row:last-child { border-bottom: none; }
+        .task-row:hover { background: rgba(255, 255, 255, 0.02); }
+
+        .task-row__info {
+            min-width: 0;
+        }
+
+        .task-row__name {
+            font-size: 15px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .task-row__desc {
+            font-size: 13px;
+            color: var(--text-muted);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .task-row__schedule {
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .task-row__status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+        }
+
+        .task-row__status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .task-row__status-dot--active { background: var(--success); }
+        .task-row__status-dot--paused { background: var(--warning); }
+
+        .task-row__status--paused { color: var(--text-muted); }
+
+        /* Action Buttons */
+        .task-row__actions {
+            display: flex;
+            gap: 6px;
+        }
+
+        .task-row__action-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            color: var(--text-secondary);
+            background: transparent;
+            border: 1px solid var(--border-light);
+            cursor: pointer;
+            transition: all 0.15s;
+            white-space: nowrap;
+            font-family: inherit;
+        }
+
+        .task-row__action-btn:hover {
+            background: var(--bg-input);
+            color: var(--text-primary);
+            border-color: var(--border-light);
+        }
+
+        .task-row__action-btn--danger {
+            color: #ef4444;
+            border-color: rgba(239, 68, 68, 0.3);
+        }
+
+        .task-row__action-btn--danger:hover {
+            background: rgba(239, 68, 68, 0.1);
+            border-color: rgba(239, 68, 68, 0.5);
+        }
+
+        @media (max-width: 900px) {
+            .tasks-table-header, .task-row {
+                grid-template-columns: 1fr 120px 80px;
+            }
+            .tasks-table-header > :nth-child(4), .task-row > :nth-child(4) { display: none; }
+        }
+
+        /* ==================== Knowledge Base Page (知识库) ==================== */
+        .kb-page { display: none; min-height: calc(100vh - var(--header-height)); }
+        .kb-page.active { display: flex !important; }
+
+        .kb-sidebar {
+            width: 300px;
+            background: var(--bg-card);
+            border-right: 1px solid var(--border-light);
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .kb-sidebar__tabs {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            margin-bottom: 20px;
+        }
+
+        .kb-sidebar__tab {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 14px;
+            border-radius: var(--radius-sm);
+            font-size: 14px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .kb-sidebar__tab:hover { background: rgba(255, 255, 255, 0.04); color: var(--text-primary); }
+        .kb-sidebar__tab--active { background: rgba(79, 70, 229, 0.15); color: var(--primary-light); }
+
+        .kb-sidebar__divider { height: 1px; background: var(--border); margin: 16px 0; }
+
+        .kb-sidebar__section-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+        }
+
+        .kb-db-selector { margin-bottom: 20px; }
+        .kb-db-selector__label { font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; }
+
+        .kb-db-selector__dropdown {
+            width: 100%;
+            padding: 10px 12px;
+            background: var(--bg-input);
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            font-size: 13px;
+            outline: none;
+        }
+
+        .kb-db-selector__dropdown:focus { border-color: var(--primary); }
+
+        .kb-upload-area {
+            border: 2px dashed var(--border-light);
+            border-radius: var(--radius-md);
+            padding: 24px;
+            text-align: center;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        .kb-upload-area:hover { border-color: var(--primary); background: rgba(79, 70, 229, 0.05); }
+        .kb-upload-area__icon { font-size: 32px; margin-bottom: 8px; }
+        .kb-upload-area__text { font-size: 14px; color: var(--text-secondary); margin-bottom: 4px; }
+        .kb-upload-area__hint { font-size: 12px; color: var(--text-muted); margin-bottom: 12px; }
+
+        .kb-upload-area__btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            background: var(--bg-input);
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-sm);
+            color: var(--text-secondary);
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        .kb-upload-area__btn:hover { background: rgba(79, 70, 229, 0.15); border-color: var(--primary); color: var(--primary-light); }
+
+        .kb-uploaded-files { margin-top: 16px; }
+
+        .kb-file-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 12px;
+            background: var(--bg-input);
+            border-radius: var(--radius-sm);
+            margin-bottom: 6px;
+            font-size: 13px;
+        }
+
+        .kb-file-item__info { display: flex; align-items: center; gap: 8px; }
+        .kb-file-item__icon { font-size: 16px; }
+        .kb-file-item__name { color: var(--text-primary); }
+
+        .kb-file-item__remove {
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            background: transparent;
+            color: var(--text-muted);
+            cursor: pointer;
+        }
+
+        .kb-file-item__remove:hover { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+
+        /* KB Chat Area */
+        .kb-chat { flex: 1; display: flex; flex-direction: column; background: var(--bg-dark); }
+
+        .kb-chat__messages {
+            flex: 1;
+            padding: 32px 48px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        .kb-chat__message { display: flex; gap: 12px; max-width: 85%; }
+        .kb-chat__message--user { align-self: flex-end; flex-direction: row-reverse; }
+
+        .kb-chat__avatar {
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
+        .kb-chat__message--ai .kb-chat__avatar {
+            background: var(--primary);
+            color: #fff;
+        }
+
+        .kb-chat__message--user .kb-chat__avatar {
+            background: #ef4444;
+            color: #fff;
+        }
+
+        .kb-chat__bubble {
+            padding: 12px 16px;
+            border-radius: var(--radius-sm);
+            font-size: 14px;
+            line-height: 1.7;
+        }
+
+        .kb-chat__message--ai .kb-chat__bubble {
+            background: var(--bg-card);
+            color: var(--text-primary);
+        }
+
+        .kb-chat__message--user .kb-chat__bubble {
+            background: rgba(255, 255, 255, 0.04);
+            color: var(--text-primary);
+        }
+
+        .kb-chat__input-area {
+            padding: 20px 48px 24px;
+            border-top: 1px solid var(--border);
+            background: var(--bg-dark);
+        }
+
+        .kb-chat__input-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-md);
+            padding: 8px 12px;
+            transition: border-color 0.2s;
+        }
+
+        .kb-chat__input-wrapper:focus-within {
+            border-color: var(--primary);
+        }
+
+        .kb-chat__input-tools {
+            display: flex;
+            gap: 4px;
+        }
+
+        .kb-chat__tool-btn {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            background: transparent;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .kb-chat__tool-btn:hover {
+            background: var(--bg-input);
+            color: var(--text-primary);
+        }
+
+        .kb-chat__input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: var(--text-primary);
+            font-size: 14px;
+            resize: none;
+            outline: none;
+            min-height: 24px;
+            font-family: inherit;
+            line-height: 1.6;
+        }
+
+        .kb-chat__input::placeholder { color: var(--text-muted); }
+
+        .kb-chat__submit {
+            width: 32px;
+            height: 32px;
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 18px;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+
+        .kb-chat__submit:hover { color: var(--primary-light); }
+
+        .kb-chat__kb-indicator {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 8px;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .kb-chat__kb-indicator__dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--success);
+        }
+
+        /* ==================== Agent Market Page (Agent市场) ==================== */
+        .agent-market-page { display: none; }
+        .agent-market-page.active { display: block; }
+
+        .agent-market__container { padding: 32px; }
+
+        .agent-market__header { margin-bottom: 24px; }
+        .agent-market__title { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+        .agent-market__subtitle { font-size: 15px; color: var(--text-muted); }
+
+        .agent-market__search {
+            position: relative;
+            max-width: 400px;
+            margin-bottom: 24px;
+        }
+
+        .agent-market__search-icon {
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 16px;
+            color: var(--text-muted);
+        }
+
+        .agent-market__search-input {
+            width: 100%;
+            padding: 12px 16px 12px 40px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-md);
+            color: var(--text-primary);
+            font-size: 14px;
+            outline: none;
+        }
+
+        .agent-market__search-input:focus { border-color: var(--primary); }
+
+        .agent-market__tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 28px;
+            flex-wrap: wrap;
+        }
+
+        .agent-market__tab {
+            padding: 8px 18px;
+            border-radius: 20px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            background: var(--bg-card);
+            border: 1px solid var(--border-light);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .agent-market__tab:hover {
+            border-color: var(--primary);
+            color: var(--primary-light);
+        }
+
+        .agent-market__tab--active {
+            background: var(--primary);
+            border-color: var(--primary);
+            color: #fff;
+        }
+
+        .agent-market__grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+        }
+
+        @media (max-width: 1200px) {
+            .agent-market__grid { grid-template-columns: repeat(3, 1fr); }
+        }
+
+        @media (max-width: 768px) {
+            .agent-market__grid { grid-template-columns: repeat(2, 1fr); }
+        }
+
+        .agent-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-md);
+            padding: 20px;
+            transition: all 0.25s;
+            cursor: pointer;
+        }
+
+        .agent-card:hover {
+            border-color: var(--primary);
+            transform: translateY(-3px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .agent-card__avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            margin-bottom: 14px;
+        }
+
+        .agent-card__name {
+            font-size: 15px;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+
+        .agent-card__desc {
+            font-size: 13px;
+            color: var(--text-muted);
+            line-height: 1.5;
+            margin-bottom: 12px;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .agent-card__meta {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .agent-card__users {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .agent-card__tag {
+            padding: 2px 8px;
+            background: rgba(79, 70, 229, 0.15);
+            color: var(--primary-light);
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+
+        /* Agent Market Light Theme */
+        body.theme-light .agent-market__search-input {
+            background: #FFFFFF;
+            border-color: #E2E8F0;
+        }
+
+        body.theme-light .agent-market__tab {
+            background: #FFFFFF;
+            border-color: #E2E8F0;
+        }
+
+        body.theme-light .agent-card {
+            background: #FFFFFF;
+            border-color: #E2E8F0;
+        }
+
+        body.theme-light .agent-card:hover {
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+        }
+
+        /* ==================== Assets Page (个人资产) ==================== */
+        .assets-page { display: none; padding: 24px 32px; }
+        .assets-page.active { display: block; }
+
+        .assets-page__title {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 24px;
+        }
+
+        /* Main Tabs */
+        .assets-main-tabs {
+            display: flex;
+            gap: 24px;
+            margin-bottom: 20px;
+        }
+
+        .assets-main-tab {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-muted);
+            cursor: pointer;
+            padding-bottom: 8px;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .assets-main-tab:hover { color: var(--text-secondary); }
+        .assets-main-tab--active {
+            color: var(--text-primary);
+            border-bottom-color: var(--primary);
+        }
+
+        /* Filter Tabs */
+        .assets-filter-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+        }
+
+        .assets-filter {
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            background: var(--bg-card);
+            border: 1px solid var(--border-light);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .assets-filter:hover {
+            border-color: var(--primary);
+            color: var(--primary-light);
+        }
+
+        .assets-filter--active {
+            background: var(--primary);
+            border-color: var(--primary);
+            color: #fff;
+        }
+
+        .assets-search {
+            margin-left: auto;
+            position: relative;
+        }
+
+        .assets-search__input {
+            width: 220px;
+            padding: 8px 12px 8px 32px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            font-size: 13px;
+            outline: none;
+        }
+
+        .assets-search__input:focus { border-color: var(--primary); }
+
+        .assets-search__icon {
+            position: absolute;
+            left: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        /* Assets Grid */
+        .assets-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+        }
+
+        @media (max-width: 1200px) {
+            .assets-grid { grid-template-columns: repeat(3, 1fr); }
+        }
+
+        @media (max-width: 768px) {
+            .assets-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+
+        .asset-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-sm);
+            overflow: hidden;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        .asset-card:hover {
+            border-color: var(--primary);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .asset-card__preview {
+            height: 100px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .asset-card__preview--gradient-1 { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .asset-card__preview--gradient-2 { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
+        .asset-card__preview--gradient-3 { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
+        .asset-card__preview--gradient-4 { background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); }
+        .asset-card__preview--gradient-5 { background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); }
+        .asset-card__preview--gradient-6 { background: linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%); }
+        .asset-card__preview--gradient-7 { background: linear-gradient(135deg, #fccb90 0%, #d57eeb 100%); }
+        .asset-card__preview--gradient-8 { background: linear-gradient(135deg, #e0c3fc 0%, #8ec5fc 100%); }
+
+        .asset-card__preview__icon {
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 36px;
+            z-index: 1;
+        }
+
+        .asset-card__preview::before {
+            content: '';
+            position: absolute;
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.1);
+            top: -20px;
+            right: -20px;
+        }
+
+        .asset-card__preview::after {
+            content: '';
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.08);
+            bottom: -10px;
+            left: -10px;
+        }
+
+        .asset-card__info {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 12px;
+        }
+
+        .asset-card__meta {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+            flex: 1;
+        }
+
+        .asset-card__icon {
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+
+        .asset-card__name {
+            font-size: 13px;
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .asset-card__more {
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            background: transparent;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+
+        .asset-card__more:hover {
+            background: var(--bg-input);
+            color: var(--text-primary);
+        }
+
+        /* ==================== Footer ==================== */
+        .footer {
+            padding: 32px;
+            border-top: 1px solid var(--border);
+            text-align: center;
+        }
+
+        .footer__top {
+            display: flex;
+            justify-content: center;
+            gap: 32px;
+            margin-bottom: 20px;
+        }
+
+        .footer__link {
+            font-size: 14px;
+            color: var(--text-secondary);
+            transition: color 0.2s;
+        }
+
+        .footer__link:hover { color: var(--text-primary); }
+
+        .footer__bottom {
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        /* ==================== Loading Animation ==================== */
+        .loading-dots {
+            display: inline-flex;
+            gap: 4px;
+            padding: 8px 0;
+        }
+
+        .loading-dots__dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--primary-light);
+            animation: loadingBounce 1.4s ease-in-out infinite;
+        }
+
+        .loading-dots__dot:nth-child(2) { animation-delay: 0.2s; }
+        .loading-dots__dot:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes loadingBounce {
+            0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+            40% { transform: scale(1); opacity: 1; }
+        }
+
+        /* ==================== Responsive ==================== */
+        @media (max-width: 768px) {
+            .sidebar { display: none; }
+            .header { left: 0; }
+            .main-wrapper { margin-left: 0; }
+            .hero__title { font-size: 32px; }
+            .features__grid { grid-template-columns: 1fr; }
+            .sources__grid { grid-template-columns: 1fr; }
+            .trending__list { grid-template-columns: 1fr; }
+            .chat-sidebar { display: none; }
+            .writing-sidebar { display: none; }
+        }
+
+        /* ==================== Page switching ==================== */
+        .page { display: none; }
+        .page.active { display: block; }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--bg-input); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+    </style>
+</head>
+<body>
+
+<!-- ==================== LEFT SIDEBAR ==================== -->
+<aside class="sidebar">
+    <!-- Logo -->
+    <div class="sidebar__logo">
+        <div class="sidebar__logo-icon">N</div>
+        <span class="sidebar__logo-text">NUAI</span>
+    </div>
+
+    <!-- New Task -->
+    <button class="sidebar__new-task" data-page="home">
+        <span>✚</span> 新建会话
+    </button>
+
+    <!-- Navigation -->
+    <nav class="sidebar__nav">
+        <div class="sidebar__section-label">功能</div>
+
+        <div class="sidebar__nav-item" data-page="kb">
+            <span class="sidebar__nav-icon">📚</span>
+            知识库
+        </div>
+        <div class="sidebar__nav-item" data-page="agent-market">
+            <span class="sidebar__nav-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+                    <path d="M2 17l10 5 10-5"></path>
+                    <path d="M2 12l10 5 10-5"></path>
+                </svg>
+            </span>
+            Agent市场
+        </div>
+        <div class="sidebar__nav-item" data-page="skills">
+            <span class="sidebar__nav-icon">🔍</span>
+            探索技能
+        </div>
+        <div class="sidebar__nav-item" data-page="tasks">
+            <span class="sidebar__nav-icon">⏰</span>
+            定时任务
+        </div>
+        <div class="sidebar__nav-item" data-page="assets">
+            <span class="sidebar__nav-icon">💰</span>
+            个人资产
+        </div>
+
+    </nav>
+        <div class="sidebar__nav-divider"></div>
+        <div class="sidebar__history">
+            <div class="sidebar__section-label">历史会话</div>
+            <div class="sidebar__history-item">
+                <span class="sidebar__history-icon">💬</span>
+                如何提高工作效率的方案
+            </div>
+            <div class="sidebar__history-item">
+                <span class="sidebar__history-icon">🔍</span>
+                2025年AI技术发展趋势
+            </div>
+            <div class="sidebar__history-item">
+                <span class="sidebar__history-icon">✍️</span>
+                产品需求文档撰写
+            </div>
+            <div class="sidebar__history-item">
+                <span class="sidebar__history-icon">📊</span>
+                Q2季度汇报PPT
+            </div>
+            <div class="sidebar__history-item">
+                <span class="sidebar__history-icon">🎨</span>
+                品牌Logo设计灵感
+            </div>
+            <div class="sidebar__history-item">
+                <span class="sidebar__history-icon">📄</span>
+                市场调研报告生成
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="sidebar__footer">
+        <div class="sidebar__footer-user">
+            <div class="sidebar__footer-avatar">U</div>
+            <div class="sidebar__footer-info">
+                <div class="sidebar__footer-name">用户</div>
+            </div>
+            <span class="sidebar__settings-btn" id="settingsBtn">⚙️</span>
+        </div>
+    </div>
+
+    <!-- Settings Panel -->
+    <div class="sidebar__settings-panel" id="settingsPanel">
+        <div class="sidebar__settings-header">
+            <span>设置</span>
+            <span class="sidebar__settings-close" id="settingsClose">✕</span>
+        </div>
+        <div class="sidebar__settings-section">
+            <div class="sidebar__settings-label">主题风格</div>
+            <div class="sidebar__theme-options">
+                <div class="sidebar__theme-option sidebar__theme-option--active" data-theme="dark">
+                    <span class="sidebar__theme-icon">🌙</span>
+                    <span>深色</span>
+                </div>
+                <div class="sidebar__theme-option" data-theme="light">
+                    <span class="sidebar__theme-icon">☀️</span>
+                    <span>浅色</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</aside>
+
+<!-- ==================== TOP HEADER ==================== -->
+<header class="header">
+</header>
+
+<!-- ==================== MAIN WRAPPER ==================== -->
+<div class="main-wrapper">
+
+<!-- ==================== HOME PAGE ==================== -->
+<main class="page active" id="page-home">
+    <section class="hero">
+        <div class="hero__content">
+            <div class="hero__badge">✨ 全新NUAI超级智能体</div>
+            <h1 class="hero__title">NUAI超级智能体</h1>
+            <p class="hero__subtitle">
+                集AI搜索、对话、写作、文档分析、PPT生成、表格制作于一体<br>
+                让办公更高效，让创作更简单
+            </p>
+
+            <!-- Search Box -->
+            <div class="search-box">
+                <div class="search-box__input-wrapper">
+                    <div class="search-box__tabs">
+                        <button class="search-box__tab search-box__tab--active">AI对话</button>
+                        <button class="search-box__tab">AI搜索</button>
+                    </div>
+                    <input type="text" class="search-box__input" id="homeSearchInput">
+                    <button class="search-box__submit" id="homeSearchBtn">→</button>
+                </div>
+            </div>
+
+            <!-- Categories -->
+            <div class="categories categories--visible">
+                <div class="category-tag"><span class="category-tag__icon">📊</span> 报告</div>
+                <div class="category-tag"><span class="category-tag__icon">📑</span> PPT</div>
+                <div class="category-tag"><span class="category-tag__icon">📄</span> 文档</div>
+                <div class="category-tag"><span class="category-tag__icon">📈</span> 表格</div>
+                <div class="category-tag"><span class="category-tag__icon">🤖</span> Agents</div>
+                <div class="category-tag"><span class="category-tag__icon">⚡</span> Skills</div>
+            </div>
+
+            <!-- Trending -->
+            <div class="trending">
+                <div class="trending__label">🔥 热搜推荐</div>
+                <div class="trending__list">
+                    <div class="trending__item">
+                        <span class="trending__rank trending__rank--hot">1</span>
+                        2025年AI技术发展趋势有哪些？
+                    </div>
+                    <div class="trending__item">
+                        <span class="trending__rank trending__rank--hot">2</span>
+                        如何用AI提高办公效率？
+                    </div>
+                    <div class="trending__item">
+                        <span class="trending__rank trending__rank--normal">3</span>
+                        大语言模型与传统搜索的区别
+                    </div>
+                    <div class="trending__item">
+                        <span class="trending__rank trending__rank--normal">4</span>
+                        NUAI智能体使用教程
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Creation Tools on Home Page -->
+    <section class="features">
+        <div class="features__header">
+            <h2 class="features__title">创作工具</h2>
+            <p class="features__desc">选择你需要的AI创作工具，快速生成专业内容</p>
+        </div>
+        <div class="features__grid">
+            <div class="feature-card">
+                <div class="feature-card__icon feature-card__icon--doc">📄</div>
+                <h3 class="feature-card__title">文档生成</h3>
+                <p class="feature-card__text">一键生成行业报告、论文、商业计划书等专业文档，嵌入数据图表，支持多格式导出。</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-card__icon feature-card__icon--ppt">📊</div>
+                <h3 class="feature-card__title">PPT生成</h3>
+                <p class="feature-card__text">智能排版，一键生成精美PPT，支持动态排版与多格式导出（PPTX/PDF），告别手动排版。</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-card__icon feature-card__icon--image">🎨</div>
+                <h3 class="feature-card__title">图片生成</h3>
+                <p class="feature-card__text">输入描述即可生成高质量图片、插画、设计素材，支持多种风格，满足创意设计需求。</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-card__icon feature-card__icon--search">🎬</div>
+                <h3 class="feature-card__title">视频生成</h3>
+                <p class="feature-card__text">输入脚本自动匹配素材，生成带特效的短视频，支持多场景模板，快速产出精彩内容。</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-card__icon feature-card__icon--write">📈</div>
+                <h3 class="feature-card__title">表格生成</h3>
+                <p class="feature-card__text">智能分析数据并生成可视化图表，无缝衔接Excel工作流，让数据展示更直观专业。</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-card__icon feature-card__icon--chat">🌐</div>
+                <h3 class="feature-card__title">网站生成</h3>
+                <p class="feature-card__text">输入需求描述，自动生成响应式网站页面，支持多模板选择与在线编辑，快速上线。</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features -->
+    <section class="features">
+        <div class="features__header">
+            <h2 class="features__title">六大核心能力</h2>
+            <p class="features__desc">NUAI超级智能体，一站式AI办公解决方案</p>
+        </div>
+        <div class="features__grid">
+            <div class="feature-card">
+                <div class="feature-card__icon feature-card__icon--search">🔍</div>
+                <h3 class="feature-card__title">AI搜索</h3>
+                <p class="feature-card__text">无广告精准搜索，理解自然语言意图，搜索全网信息后输出高质量答案，自动整理为脑图大纲。</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-card__icon feature-card__icon--chat">💬</div>
+                <h3 class="feature-card__title">AI对话</h3>
+                <p class="feature-card__text">多轮智能对话，支持改写、扩展、缩写、总结等操作，快速响应，助力高效沟通与创作。</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-card__icon feature-card__icon--write">✍️</div>
+                <h3 class="feature-card__title">AI写作</h3>
+                <p class="feature-card__text">支持小红书文案、朋友圈、工作日报、演讲稿、行程安排等多种场景，秒级生成优质内容。</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-card__icon feature-card__icon--doc">📄</div>
+                <h3 class="feature-card__title">文档生成</h3>
+                <p class="feature-card__text">一键生成行业报告、论文、商业计划书等专业文档，嵌入数据图表，支持多格式导出。</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-card__icon feature-card__icon--ppt">📊</div>
+                <h3 class="feature-card__title">PPT生成</h3>
+                <p class="feature-card__text">智能排版，一键生成精美PPT，支持动态排版与多格式导出（PPTX/PDF），告别手动排版。</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-card__icon feature-card__icon--image">🎨</div>
+                <h3 class="feature-card__title">图片生成</h3>
+                <p class="feature-card__text">输入描述即可生成高质量图片、插画、设计素材，支持多种风格，满足创意设计需求。</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer__top">
+            <a href="#" class="footer__link">Skypage</a>
+            <a href="#" class="footer__link">Blog</a>
+            <a href="#" class="footer__link">Tutorial</a>
+            <a href="#" class="footer__link">Resources</a>
+        </div>
+        <div class="footer__bottom">
+            Powered by NUAI &nbsp;|&nbsp; <a href="#" class="footer__link">Privacy Policy</a>
+        </div>
+    </footer>
+</main>
+
+<!-- ==================== SEARCH RESULT PAGE ==================== -->
+<main class="page result-page" id="page-search">
+    <div class="result-header">
+        <span class="result-header__back" data-page="home">←</span>
+        <input type="text" class="result-header__input" value="2025年AI技术发展趋势有哪些？" id="resultSearchInput">
+    </div>
+    <div class="result-container">
+        <!-- Sources -->
+        <div class="sources">
+            <div class="sources__title">📚 参考来源</div>
+            <div class="sources__grid">
+                <div class="source-item">
+                    <span class="source-item__num">1</span>
+                    <span class="source-item__text">2025年人工智能行业深度研究报告：技术演进与市场趋势分析</span>
+                </div>
+                <div class="source-item">
+                    <span class="source-item__num">2</span>
+                    <span class="source-item__text">AI发展趋势：大语言模型、多模态与Agent的融合之路</span>
+                </div>
+                <div class="source-item">
+                    <span class="source-item__num">3</span>
+                    <span class="source-item__text">2025科技趋势报告：AI在办公、医疗、教育领域的最新应用</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- AI Answer -->
+        <div class="ai-answer">
+            <div class="ai-answer__header">
+                <span class="ai-answer__badge">🤖 AI回答</span>
+                <div class="ai-answer__actions">
+                    <button class="ai-answer__action" title="复制">📋</button>
+                    <button class="ai-answer__action" title="点赞">👍</button>
+                    <button class="ai-answer__action" title="点踩">👎</button>
+                    <button class="ai-answer__action" title="重新生成">🔄</button>
+                </div>
+            </div>
+            <div class="ai-answer__content">
+                <p>2025年AI技术呈现出以下<strong>五大核心趋势</strong>：</p>
+
+                <p><strong>1. 大语言模型持续进化</strong><br>
+                以NUAI为代表的千亿参数MoE架构模型不断迭代，推理能力提升的同时，推理成本降低了40%以上。超长上下文窗口（100K+ tokens）成为标配，使得复杂任务处理更加精准。</p>
+
+                <p><strong>2. 多模态融合成为主流</strong><br>
+                文本、图片、音频、视频的跨模态理解与生成能力日趋成熟。AI可以从一段文字描述直接生成宣传片，或从会议录音自动提炼要点并生成脑图。</p>
+
+                <p><strong>3. AI Agent（智能体）爆发</strong><br>
+                AI从被动应答走向主动执行，能够自主规划任务、调用工具、完成复杂工作流。NUAI推出的超级智能体平台，支持用户零代码拖拽构建行业专属Agent。</p>
+
+                <p><strong>4. AI Office办公革命</strong><br>
+                一键生成专业文档、PPT、表格成为现实。AI能够自动生成结构严谨的商业报告、论文，智能排版PPT，分析数据并生成可视化图表，彻底改变办公效率。</p>
+
+                <p><strong>5. 搜索模式根本性变革</strong><br>
+                传统关键词搜索被自然语言问答式搜索取代，AI理解意图后搜索全网信息，归纳整合为无广告的高质量答案，并附溯源链接确保可信度。</p>
+            </div>
+        </div>
+
+        <!-- Follow-up -->
+        <div class="follow-up">
+            <div class="follow-up__title">💡 继续追问</div>
+            <div class="follow-up__list">
+                <div class="follow-up__item">
+                    <span class="follow-up__icon">▸</span>
+                    AI Agent在办公场景中的具体应用有哪些？
+                </div>
+                <div class="follow-up__item">
+                    <span class="follow-up__icon">▸</span>
+                    多模态AI与传统AI有什么本质区别？
+                </div>
+                <div class="follow-up__item">
+                    <span class="follow-up__icon">▸</span>
+                    NUAI如何生成PPT和文档？
+                </div>
+            </div>
+        </div>
+
+        <!-- Input Area -->
+        <div class="result-input-area">
+            <input type="text" class="result-input-area__input" placeholder="继续追问...">
+            <button class="search-box__submit">→</button>
+        </div>
+    </div>
+</main>
+
+<!-- ==================== CHAT PAGE ==================== -->
+<main class="page" id="page-chat">
+    <div class="inner-layout active">
+        <aside class="chat-sidebar">
+            <button class="chat-sidebar__new">✚ 新建对话</button>
+            <div class="chat-sidebar__history">
+                <div class="chat-sidebar__label">今天</div>
+                <div class="chat-sidebar__item">如何提高工作效率的方案</div>
+                <div class="chat-sidebar__item">NUAI使用技巧分享</div>
+                <div class="chat-sidebar__label">昨天</div>
+                <div class="chat-sidebar__item">Python数据分析入门指南</div>
+                <div class="chat-sidebar__item">2025年市场营销策略</div>
+                <div class="chat-sidebar__label">更早</div>
+                <div class="chat-sidebar__item">大语言模型原理解析</div>
+                <div class="chat-sidebar__item">产品需求文档撰写模板</div>
+            </div>
+        </aside>
+        <div class="chat-main">
+            <div class="chat-messages">
+                <div class="chat-message chat-message--user">
+                    <div class="chat-message__avatar">U</div>
+                    <div class="chat-message__bubble">你好，请帮我写一份提高工作效率的方案</div>
+                </div>
+                <div class="chat-message chat-message--ai">
+                    <div class="chat-message__avatar">N</div>
+                    <div class="chat-message__bubble">
+                        以下是一份<strong>提高工作效率的综合方案</strong>：<br><br>
+                        <strong>一、目标管理</strong><br>
+                        • 使用OKR方法设定明确目标<br>
+                        • 每日列出3个最重要的任务<br><br>
+                        <strong>二、时间管理</strong><br>
+                        • 番茄工作法：25分钟专注+5分钟休息<br>
+                        • 批量处理邮件和消息<br><br>
+                        <strong>三、工具赋能</strong><br>
+                        • 使用NUAI进行文档自动生成<br>
+                        • 利用AI搜索快速获取信息<br><br>
+                        需要我针对某个方面展开详细说明吗？
+                    </div>
+                </div>
+            </div>
+            <div class="chat-input-area">
+                <div class="chat-input-area__wrapper">
+                    <textarea class="chat-input-area__textarea" placeholder="输入消息，与NUAI对话..." rows="1"></textarea>
+                    <button class="chat-input-area__submit">→</button>
+                </div>
+                <div class="chat-tools">
+                    <div class="chat-tool">✏️ 改写</div>
+                    <div class="chat-tool">📝 扩展</div>
+                    <div class="chat-tool">✂️ 缩写</div>
+                    <div class="chat-tool">📋 总结</div>
+                    <div class="chat-tool">🌐 翻译</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+
+<!-- ==================== WRITING PAGE ==================== -->
+<main class="page" id="page-writing">
+    <div class="inner-layout active">
+        <aside class="writing-sidebar">
+            <h3 class="writing-sidebar__title">✍️ 写作模板</h3>
+            <div class="writing-templates">
+                <div class="writing-template">
+                    <span class="writing-template__icon">📱</span> 小红书文案
+                </div>
+                <div class="writing-template">
+                    <span class="writing-template__icon">💬</span> 朋友圈文案
+                </div>
+                <div class="writing-template">
+                    <span class="writing-template__icon">📋</span> 工作日报
+                </div>
+                <div class="writing-template">
+                    <span class="writing-template__icon">🎤</span> 演讲稿
+                </div>
+                <div class="writing-template">
+                    <span class="writing-template__icon">✈️</span> 行程安排
+                </div>
+                <div class="writing-template">
+                    <span class="writing-template__icon">📧</span> 邮件撰写
+                </div>
+                <div class="writing-template">
+                    <span class="writing-template__icon">📝</span> 论文写作
+                </div>
+                <div class="writing-template">
+                    <span class="writing-template__icon">💼</span> 商业计划书
+                </div>
+            </div>
+        </aside>
+        <div class="writing-main">
+            <div class="writing-editor">
+                <textarea class="writing-editor__prompt" placeholder="描述你的写作需求，例如：&#10;&#10;帮我写一篇关于'AI如何改变办公效率'的演讲稿，时长约5分钟，语气轻松幽默，适合公司内部技术分享会使用。"></textarea>
+                <div class="writing-editor__output">
+                    <div class="writing-editor__output-label">📝 AI生成内容</div>
+                    <div class="writing-editor__output-text">
+                        <p style="color: var(--text-muted);">输入你的写作需求后，NUAI将在这里生成高质量内容...</p>
+                    </div>
+                </div>
+            </div>
+            <div class="writing-toolbar">
+                <div class="writing-toolbar__btn">✏️ 改写</div>
+                <div class="writing-toolbar__btn">📝 扩写</div>
+                <div class="writing-toolbar__btn">✂️ 缩写</div>
+                <div class="writing-toolbar__btn">📋 总结</div>
+                <div class="writing-toolbar__btn">📋 复制</div>
+                <div class="writing-toolbar__btn">🔄 重新生成</div>
+            </div>
+        </div>
+    </div>
+</main>
+
+<main class="page skills-page" id="page-skills">
+    <!-- Tabs -->
+    <div class="skills-tabs">
+        <span class="skills-tab skills-tab--active" data-skills-tab="square">技能广场</span>
+        <span class="skills-tab" data-skills-tab="my">我的技能</span>
+    </div>
+
+    <!-- Skills Square -->
+    <div class="skills-content" id="skills-square">
+        <div class="skills-page__header">
+            <input type="text" class="skills-page__search" placeholder="搜索技能...">
+        </div>
+
+        <div class="skills-filters">
+            <span class="skills-filter skills-filter--active">全部</span>
+            <span class="skills-filter">办公效率</span>
+            <span class="skills-filter">数据分析</span>
+            <span class="skills-filter">内容创作</span>
+            <span class="skills-filter">编程开发</span>
+            <span class="skills-filter">图像处理</span>
+            <span class="skills-filter">翻译</span>
+        </div>
+
+        <div class="skills-grid">
+            <div class="skill-card">
+                <div class="skill-card__icon skill-card__icon--blue"></div>
+                <div class="skill-card__name">数据报告生成</div>
+                <div class="skill-card__desc">自动分析数据并生成结构化报告，支持多种图表类型和导出格式</div>
+                <div class="skill-card__meta">
+                    <span class="skill-card__users">12.5k</span>
+                    <span class="skill-card__tag">办公效率</span>
+                </div>
+            </div>
+            <div class="skill-card">
+                <div class="skill-card__icon skill-card__icon--green"></div>
+                <div class="skill-card__name">PPT智能排版</div>
+                <div class="skill-card__desc">一键生成专业PPT，智能排版布局，支持多种模板和主题风格</div>
+                <div class="skill-card__meta">
+                    <span class="skill-card__users">9.8k</span>
+                    <span class="skill-card__tag">办公效率</span>
+                </div>
+            </div>
+            <div class="skill-card">
+                <div class="skill-card__icon skill-card__icon--orange"></div>
+                <div class="skill-card__name">文档助手</div>
+                <div class="skill-card__desc">智能改写、扩写、缩写、总结，支持多种文体和语言风格</div>
+                <div class="skill-card__meta">
+                    <span class="skill-card__users">15.2k</span>
+                    <span class="skill-card__tag">内容创作</span>
+                </div>
+            </div>
+            <div class="skill-card">
+                <div class="skill-card__icon skill-card__icon--purple"></div>
+                <div class="skill-card__name">AI绘图</div>
+                <div class="skill-card__desc">文字描述生成高质量图片，支持多种艺术风格和分辨率</div>
+                <div class="skill-card__meta">
+                    <span class="skill-card__users">18.3k</span>
+                    <span class="skill-card__tag">图像处理</span>
+                </div>
+            </div>
+            <div class="skill-card">
+                <div class="skill-card__icon skill-card__icon--red"></div>
+                <div class="skill-card__name">智能翻译</div>
+                <div class="skill-card__desc">支持50+语言互译，上下文理解，专业领域术语精准翻译</div>
+                <div class="skill-card__meta">
+                    <span class="skill-card__users">8.6k</span>
+                    <span class="skill-card__tag">翻译</span>
+                </div>
+            </div>
+            <div class="skill-card">
+                <div class="skill-card__icon skill-card__icon--cyan"></div>
+                <div class="skill-card__name">代码助手</div>
+                <div class="skill-card__desc">代码生成、调试、优化，支持Python、Java、JavaScript等主流语言</div>
+                <div class="skill-card__meta">
+                    <span class="skill-card__users">6.4k</span>
+                    <span class="skill-card__tag">编程开发</span>
+                </div>
+            </div>
+            <div class="skill-card">
+                <div class="skill-card__icon skill-card__icon--blue"></div>
+                <div class="skill-card__name">数据分析</div>
+                <div class="skill-card__desc">上传数据自动分析趋势、异常值，生成可视化图表和洞察报告</div>
+                <div class="skill-card__meta">
+                    <span class="skill-card__users">7.2k</span>
+                    <span class="skill-card__tag">数据分析</span>
+                </div>
+            </div>
+            <div class="skill-card">
+                <div class="skill-card__icon skill-card__icon--green"></div>
+                <div class="skill-card__name">邮件助手</div>
+                <div class="skill-card__desc">智能撰写商务邮件，自动回复，支持多语言和多场景模板</div>
+                <div class="skill-card__meta">
+                    <span class="skill-card__users">5.1k</span>
+                    <span class="skill-card__tag">办公效率</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- My Skills -->
+    <div class="skills-content" id="skills-my" style="display: none;">
+        <div style="text-align: center; padding: 60px 20px; color: var(--text-muted);">
+            <div style="font-size: 48px; margin-bottom: 16px;"></div>
+            <h3 style="font-size: 18px; color: var(--text-primary); margin-bottom: 8px;">暂无技能</h3>
+            <p>前往技能广场添加你需要的技能</p>
+        </div>
+    </div>
+</main>
+
+<!-- ==================== TASKS PAGE (定时任务) ==================== -->
+<main class="page tasks-page" id="page-tasks">
+    <!-- Tabs -->
+    <div class="tasks-tabs">
+        <span class="tasks-tab tasks-tab--active" data-tab="list">任务列表</span>
+        <span class="tasks-tab" data-tab="history">执行历史</span>
+    </div>
+
+    <!-- Toolbar -->
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
+        <div></div>
+        <!-- New Task Button -->
+        <button class="tasks-create-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            新建任务
+        </button>
+    </div>
+
+    <!-- Task List -->
+    <div class="tasks-list active">
+        <div class="tasks-table-header">
+            <span>任务名称</span>
+            <span>执行周期</span>
+            <span>状态</span>
+            <span>操作</span>
+        </div>
+
+        <div class="task-row">
+            <div class="task-row__info">
+                <div class="task-row__name">每日数据报告</div>
+                <div class="task-row__desc">自动生成销售数据日报并发送邮件</div>
+            </div>
+            <div class="task-row__schedule">每天 09:00</div>
+            <div class="task-row__status">
+                <span class="task-row__status-dot task-row__status-dot--active"></span>
+                运行中
+            </div>
+            <div class="task-row__actions">
+                <button class="task-row__action-btn">▶ 执行</button>
+                <button class="task-row__action-btn">⏸ 暂停</button>
+                <button class="task-row__action-btn">✎ 编辑</button>
+                <button class="task-row__action-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 6h18"></path>
+                        <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                        <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                        <line x1="10" y1="11" x2="10" y2="17"></line>
+                        <line x1="14" y1="11" x2="14" y2="17"></line>
+                    </svg>
+                    删除
+                </button>
+            </div>
+        </div>
+
+        <div class="task-row">
+            <div class="task-row__info">
+                <div class="task-row__name">周报PPT生成</div>
+                <div class="task-row__desc">每周五自动生成项目进度汇报PPT</div>
+            </div>
+            <div class="task-row__schedule">每周五 17:00</div>
+            <div class="task-row__status">
+                <span class="task-row__status-dot task-row__status-dot--active"></span>
+                运行中
+            </div>
+            <div class="task-row__actions">
+                <button class="task-row__action-btn">▶ 执行</button>
+                <button class="task-row__action-btn">⏸ 暂停</button>
+                <button class="task-row__action-btn">✎ 编辑</button>
+                <button class="task-row__action-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 6h18"></path>
+                        <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                        <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                        <line x1="10" y1="11" x2="10" y2="17"></line>
+                        <line x1="14" y1="11" x2="14" y2="17"></line>
+                    </svg>
+                    删除
+                </button>
+            </div>
+        </div>
+
+        <div class="task-row">
+            <div class="task-row__info">
+                <div class="task-row__name">内容审核</div>
+                <div class="task-row__desc">定时审核发布内容，检测敏感信息</div>
+            </div>
+            <div class="task-row__schedule">每小时</div>
+            <div class="task-row__status">
+                <span class="task-row__status-dot task-row__status-dot--active"></span>
+                运行中
+            </div>
+            <div class="task-row__actions">
+                <button class="task-row__action-btn">▶ 执行</button>
+                <button class="task-row__action-btn">⏸ 暂停</button>
+                <button class="task-row__action-btn"> 编辑</button>
+                <button class="task-row__action-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 6h18"></path>
+                        <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                        <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                        <line x1="10" y1="11" x2="10" y2="17"></line>
+                        <line x1="14" y1="11" x2="14" y2="17"></line>
+                    </svg>
+                    删除
+                </button>
+            </div>
+        </div>
+
+        <div class="task-row">
+            <div class="task-row__info">
+                <div class="task-row__name">市场数据监控</div>
+                <div class="task-row__desc">监控竞品价格变动并生成分析报告</div>
+            </div>
+            <div class="task-row__schedule">每天 08:00</div>
+            <div class="task-row__status task-row__status--paused">
+                <span class="task-row__status-dot task-row__status-dot--paused"></span>
+                已暂停
+            </div>
+            <div class="task-row__actions">
+                <button class="task-row__action-btn">▶ 执行</button>
+                <button class="task-row__action-btn">▶ 启用</button>
+                <button class="task-row__action-btn">✎ 编辑</button>
+                <button class="task-row__action-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 6h18"></path>
+                        <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                        <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                        <line x1="10" y1="11" x2="10" y2="17"></line>
+                        <line x1="14" y1="11" x2="14" y2="17"></line>
+                    </svg>
+                    删除
+                </button>
+            </div>
+        </div>
+
+        <div class="task-row">
+            <div class="task-row__info">
+                <div class="task-row__name">客户跟进提醒</div>
+                <div class="task-row__desc">定期检查客户跟进状态并发送提醒</div>
+            </div>
+            <div class="task-row__schedule">每周一 10:00</div>
+            <div class="task-row__status">
+                <span class="task-row__status-dot task-row__status-dot--active"></span>
+                运行中
+            </div>
+            <div class="task-row__actions">
+                <button class="task-row__action-btn">▶ 执行</button>
+                <button class="task-row__action-btn">⏸ 暂停</button>
+                <button class="task-row__action-btn">✎ 编辑</button>
+                <button class="task-row__action-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 6h18"></path>
+                        <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                        <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                        <line x1="10" y1="11" x2="10" y2="17"></line>
+                        <line x1="14" y1="11" x2="14" y2="17"></line>
+                    </svg>
+                    删除
+                </button>
+            </div>
+        </div>
+
+        <div class="task-row">
+            <div class="task-row__info">
+                <div class="task-row__name">网站内容更新</div>
+                <div class="task-row__desc">定时更新官网产品页面内容</div>
+            </div>
+            <div class="task-row__schedule">每月1号</div>
+            <div class="task-row__status task-row__status--paused">
+                <span class="task-row__status-dot task-row__status-dot--paused"></span>
+                已暂停
+            </div>
+            <div class="task-row__actions">
+                <button class="task-row__action-btn">▶ 执行</button>
+                <button class="task-row__action-btn">▶ 启用</button>
+                <button class="task-row__action-btn">✎ 编辑</button>
+                <button class="task-row__action-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 6h18"></path>
+                        <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                        <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                        <line x1="10" y1="11" x2="10" y2="17"></line>
+                        <line x1="14" y1="11" x2="14" y2="17"></line>
+                    </svg>
+                    删除
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Execution History -->
+    <div class="tasks-history">
+        <div class="tasks-list-container">
+            <div class="history-table-header">
+                <span>任务名称</span>
+                <span>执行时间</span>
+                <span>状态</span>
+                <span>耗时</span>
+                <span>操作</span>
+            </div>
+
+            <div class="history-row">
+                <div class="history-row__task">每日数据报告</div>
+                <div class="history-row__time">今天 09:00</div>
+                <div class="history-row__status">
+                    <span class="history-row__status-dot history-row__status-dot--success"></span>
+                    成功
+                </div>
+                <div class="history-row__duration">2.3s</div>
+                <div class="task-row__actions">
+                    <button class="task-row__action-btn"> 查看</button>
+                    <button class="task-row__action-btn"> 重试</button>
+                </div>
+            </div>
+
+            <div class="history-row">
+                <div class="history-row__task">内容审核</div>
+                <div class="history-row__time">今天 08:00</div>
+                <div class="history-row__status">
+                    <span class="history-row__status-dot history-row__status-dot--success"></span>
+                    成功
+                </div>
+                <div class="history-row__duration">1.1s</div>
+                <div class="task-row__actions">
+                    <button class="task-row__action-btn"> 查看</button>
+                    <button class="task-row__action-btn"> 重试</button>
+                </div>
+            </div>
+
+            <div class="history-row">
+                <div class="history-row__task">周报PPT生成</div>
+                <div class="history-row__time">昨天 17:00</div>
+                <div class="history-row__status">
+                    <span class="history-row__status-dot history-row__status-dot--success"></span>
+                    成功
+                </div>
+                <div class="history-row__duration">5.8s</div>
+                <div class="task-row__actions">
+                    <button class="task-row__action-btn"> 查看</button>
+                    <button class="task-row__action-btn"> 重试</button>
+                </div>
+            </div>
+
+            <div class="history-row">
+                <div class="history-row__task">市场数据监控</div>
+                <div class="history-row__time">昨天 08:00</div>
+                <div class="history-row__status">
+                    <span class="history-row__status-dot history-row__status-dot--failed"></span>
+                    失败
+                </div>
+                <div class="history-row__duration">0.5s</div>
+                <div class="task-row__actions">
+                    <button class="task-row__action-btn"> 查看</button>
+                    <button class="task-row__action-btn"> 重试</button>
+                </div>
+            </div>
+
+            <div class="history-row">
+                <div class="history-row__task">客户跟进提醒</div>
+                <div class="history-row__time">3天前 10:00</div>
+                <div class="history-row__status">
+                    <span class="history-row__status-dot history-row__status-dot--success"></span>
+                    成功
+                </div>
+                <div class="history-row__duration">1.6s</div>
+                <div class="task-row__actions">
+                    <button class="task-row__action-btn"> 查看</button>
+                    <button class="task-row__action-btn"> 重试</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+
+<!-- ==================== KNOWLEDGE BASE PAGE (知识库) ==================== -->
+<main class="page kb-page" id="page-kb">
+    <!-- Sidebar -->
+    <aside class="kb-sidebar">
+        <div class="kb-sidebar__tabs">
+            <div class="kb-sidebar__tab kb-sidebar__tab--active">
+                <span>💬</span> 对话
+            </div>
+            <div class="kb-sidebar__tab">
+                <span></span> 知识库管理</div>
+        </div>
+
+        <div class="kb-sidebar__divider"></div>
+
+
+        <!-- Vector DB Selector -->
+        <div class="kb-db-selector">
+            <div class="kb-db-selector__label">选择向量库</div>
+            <select class="kb-db-selector__dropdown">
+                <option>默认知识库</option><option>产品文档库</option>
+                <option>技术文档库</option>
+                <option>自定义知识库</option></select>
+        </div>
+
+        <div class="kb-sidebar__section-label">上传附件</div>
+
+        <!-- Upload Area -->
+        <div class="kb-upload-area">
+            <div class="kb-upload-area__icon">📁</div>
+            <div class="kb-upload-area__text">拖拽文件到此处</div>
+            <div class="kb-upload-area__hint">单个文件最大 200MB</div>
+            <button class="kb-upload-area__btn">📎 浏览文件</button>
+        </div>
+
+        <!-- Uploaded Files -->
+        <div class="kb-uploaded-files">
+            <div class="kb-file-item">
+                <div class="kb-file-item__info">
+                    <span class="kb-file-item__icon">📄</span>
+                    <span class="kb-file-item__name">产品手册.pdf</span>
+                </div>
+                <button class="kb-file-item__remove">✕</button>
+            </div>
+            <div class="kb-file-item">
+                <div class="kb-file-item__info">
+                    <span class="kb-file-item__icon">📊</span>
+                    <span class="kb-file-item__name">销售数据.xlsx</span>
+                </div>
+                <button class="kb-file-item__remove">✕</button>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Chat Area -->
+    <div class="kb-chat">
+        <div class="kb-chat__messages">
+            <div class="kb-chat__message kb-chat__message--user">
+                <div class="kb-chat__avatar">U</div>
+                <div class="kb-chat__bubble">你好</div>
+            </div>
+            <div class="kb-chat__message kb-chat__message--ai">
+                <div class="kb-chat__avatar">N</div>
+                <div class="kb-chat__bubble">
+                    你好！很高兴为你提供帮助。有什么问题或者需要咨询的吗？
+                </div>
+            </div>
+        </div>
+
+        <div class="kb-chat__input-area">
+            <div class="kb-chat__input-wrapper">
+                <div class="kb-chat__input-tools">
+                    <button class="kb-chat__tool-btn" title="知识库">📚</button></div>
+                <textarea class="kb-chat__input" placeholder="请输入对话内容，换行请使用Shift+Enter。" rows="1"></textarea>
+                <button class="kb-chat__submit" title="发送">➤</button>
+            </div>
+            <div class="kb-chat__kb-indicator">
+                <span class="kb-chat__kb-indicator__dot"></span>
+                知识库已启用 · 基于上传文件回答</div>
+        </div>
+    </div>
+</main>
+
+<!-- ==================== AGENT MARKET PAGE (Agent市场) ==================== -->
+<main class="page agent-market-page" id="page-agent-market">
+    <div class="agent-market__container">
+        <!-- Header -->
+        <div class="agent-market__header">
+            <h1 class="agent-market__title">Agent市场</h1>
+            <p class="agent-market__subtitle">探索更多AI智能体，扩展你的能力边界</p>
+        </div>
+
+        <!-- Search Bar -->
+        <div class="agent-market__search">
+            <span class="agent-market__search-icon">🔍</span>
+            <input type="text" class="agent-market__search-input" placeholder="搜索智能体...">
+        </div>
+
+        <!-- Category Tabs -->
+        <div class="agent-market__tabs">
+            <span class="agent-market__tab agent-market__tab--active">全部</span>
+            <span class="agent-market__tab">办公效率</span>
+            <span class="agent-market__tab">内容创作</span>
+            <span class="agent-market__tab">数据分析</span>
+            <span class="agent-market__tab">编程开发</span>
+            <span class="agent-market__tab">教育学习</span>
+            <span class="agent-market__tab">生活服务</span>
+        </div>
+
+        <!-- Agent Grid -->
+        <div class="agent-market__grid">
+            <div class="agent-card">
+                <div class="agent-card__avatar" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                    <span>📊</span>
+                </div>
+                <div class="agent-card__name">数据分析师</div>
+                <div class="agent-card__desc">专业数据分析智能体，支持多维度数据洞察和可视化报告生成</div>
+                <div class="agent-card__meta">
+                    <span class="agent-card__users">12.5k 使用</span>
+                    <span class="agent-card__tag">热门</span>
+                </div>
+            </div>
+
+            <div class="agent-card">
+                <div class="agent-card__avatar" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                    <span>✍️</span>
+                </div>
+                <div class="agent-card__name">文案助手</div>
+                <div class="agent-card__desc">专业文案创作，支持营销文案、社交媒体内容、品牌故事等多种场景</div>
+                <div class="agent-card__meta">
+                    <span class="agent-card__users">9.8k 使用</span>
+                    <span class="agent-card__tag">推荐</span>
+                </div>
+            </div>
+
+            <div class="agent-card">
+                <div class="agent-card__avatar" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                    <span></span>
+                </div>
+                <div class="agent-card__name">代码助手</div>
+                <div class="agent-card__desc">智能编程助手，支持代码生成、调试、优化，覆盖主流编程语言</div>
+                <div class="agent-card__meta">
+                    <span class="agent-card__users">8.2k 使用</span>
+                    <span class="agent-card__tag">热门</span>
+                </div>
+            </div>
+
+            <div class="agent-card">
+                <div class="agent-card__avatar" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);">
+                    <span></span>
+                </div>
+                <div class="agent-card__name">文档专家</div>
+                <div class="agent-card__desc">专业文档处理，支持报告生成、合同审核、会议纪要整理等</div>
+                <div class="agent-card__meta">
+                    <span class="agent-card__users">7.6k 使用</span>
+                </div>
+            </div>
+
+            <div class="agent-card">
+                <div class="agent-card__avatar" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);">
+                    <span>🎨</span>
+                </div>
+                <div class="agent-card__name">设计助手</div>
+                <div class="agent-card__desc">创意设计智能体，支持Logo设计、海报生成、UI原型设计等</div>
+                <div class="agent-card__meta">
+                    <span class="agent-card__users">6.4k 使用</span>
+                </div>
+            </div>
+
+            <div class="agent-card">
+                <div class="agent-card__avatar" style="background: linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%);">
+                    <span>📈</span>
+                </div>
+                <div class="agent-card__name">营销专家</div>
+                <div class="agent-card__desc">数字营销智能体，支持SEO优化、广告投放策略、社交媒体运营</div>
+                <div class="agent-card__meta">
+                    <span class="agent-card__users">5.9k 使用</span>
+                </div>
+            </div>
+
+            <div class="agent-card">
+                <div class="agent-card__avatar" style="background: linear-gradient(135deg, #fccb90 0%, #d57eeb 100%);">
+                    <span></span>
+                </div>
+                <div class="agent-card__name">翻译大师</div>
+                <div class="agent-card__desc">专业翻译智能体，支持50+语言互译，覆盖商务、技术、文学等领域</div>
+                <div class="agent-card__meta">
+                    <span class="agent-card__users">5.2k 使用</span>
+                </div>
+            </div>
+
+            <div class="agent-card">
+                <div class="agent-card__avatar" style="background: linear-gradient(135deg, #e0c3fc 0%, #8ec5fc 100%);">
+                    <span></span>
+                </div>
+                <div class="agent-card__name">学习导师</div>
+                <div class="agent-card__desc">个性化学习助手，支持知识点讲解、习题解答、学习计划制定</div>
+                <div class="agent-card__meta">
+                    <span class="agent-card__users">4.8k 使用</span>
+                    <span class="agent-card__tag">新</span>
+                </div>
+            </div>
+
+            <div class="agent-card">
+                <div class="agent-card__avatar" style="background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);">
+                    <span>📧</span>
+                </div>
+                <div class="agent-card__name">邮件管家</div>
+                <div class="agent-card__desc">智能邮件处理，支持邮件撰写、分类整理、自动回复等</div>
+                <div class="agent-card__meta">
+                    <span class="agent-card__users">4.1k 使用</span>
+                </div>
+            </div>
+
+            <div class="agent-card">
+                <div class="agent-card__avatar" style="background: linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%);">
+                    <span></span>
+                </div>
+                <div class="agent-card__name">研究助手</div>
+                <div class="agent-card__desc">学术研究智能体，支持文献检索、论文摘要、研究趋势分析</div>
+                <div class="agent-card__meta">
+                    <span class="agent-card__users">3.7k 使用</span>
+                </div>
+            </div>
+
+            <div class="agent-card">
+                <div class="agent-card__avatar" style="background: linear-gradient(135deg, #d4fc79 0%, #96e6a1 100%);">
+                    <span>📱</span>
+                </div>
+                <div class="agent-card__name">社交媒体运营</div>
+                <div class="agent-card__desc">社交媒体管理，支持内容规划、发布调度、数据分析</div>
+                <div class="agent-card__meta">
+                    <span class="agent-card__users">3.2k 使用</span>
+                </div>
+            </div>
+
+            <div class="agent-card">
+                <div class="agent-card__avatar" style="background: linear-gradient(135deg, #fbc2eb 0%, #a6c1ee 100%);">
+                    <span>🎬</span>
+                </div>
+                <div class="agent-card__name">视频剪辑师</div>
+                <div class="agent-card__desc">视频处理智能体，支持脚本生成、剪辑建议、字幕自动添加</div>
+                <div class="agent-card__meta">
+                    <span class="agent-card__users">2.8k 使用</span>
+                    <span class="agent-card__tag">新</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+
+<!-- ==================== ASSETS PAGE (个人资产) ==================== -->
+<main class="page assets-page" id="page-assets">
+    <h2 class="assets-page__title">资产</h2>
+
+    <!-- Main Tabs -->
+    <div class="assets-main-tabs">
+        <span class="assets-main-tab assets-main-tab--active" data-asset-tab="generated">AI 生成</span>
+        <span class="assets-main-tab" data-asset-tab="uploaded">我的上传</span>
+        <span class="assets-main-tab" data-asset-tab="favorites">我的收藏</span>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="assets-filter-bar">
+        <span class="assets-filter assets-filter--active">全部</span>
+        <span class="assets-filter">网页</span>
+        <span class="assets-filter">文档</span>
+        <span class="assets-filter">表格</span>
+        <span class="assets-filter">演示文稿</span>
+        <span class="assets-filter">图片</span>
+        <span class="assets-filter">视频</span>
+        <span class="assets-filter">音频</span>
+        <div class="assets-search">
+            <span class="assets-search__icon">🔍</span>
+            <input type="text" class="assets-search__input" placeholder="搜索文件/任务名">
+        </div>
+    </div>
+
+    <!-- Assets Grid -->
+    <div class="assets-grid">
+        <div class="asset-card">
+            <div class="asset-card__preview asset-card__preview--gradient-1">
+                <span class="asset-card__preview__icon">&lt;/&gt;</span>
+            </div>
+            <div class="asset-card__info">
+                <div class="asset-card__meta">
+                    <span class="asset-card__icon">&lt;/&gt;</span>
+                    <span class="asset-card__name">工作汇报PPT</span>
+                </div>
+                <button class="asset-card__more">⋯</button>
+            </div>
+        </div>
+        <div class="asset-card">
+            <div class="asset-card__preview asset-card__preview--gradient-2">
+                <span class="asset-card__preview__icon">📄</span>
+            </div>
+            <div class="asset-card__info">
+                <div class="asset-card__meta">
+                    <span class="asset-card__icon">📄</span>
+                    <span class="asset-card__name">数据分析报告</span>
+                </div>
+                <button class="asset-card__more">⋯</button>
+            </div>
+        </div>
+        <div class="asset-card">
+            <div class="asset-card__preview asset-card__preview--gradient-3">
+                <span class="asset-card__preview__icon">📊</span>
+            </div>
+            <div class="asset-card__info">
+                <div class="asset-card__meta">
+                    <span class="asset-card__icon">📊</span>
+                    <span class="asset-card__name">销售数据表格</span>
+                </div>
+                <button class="asset-card__more"></button>
+            </div>
+        </div>
+        <div class="asset-card">
+            <div class="asset-card__preview asset-card__preview--gradient-4">
+                <span class="asset-card__preview__icon">🖼️</span>
+            </div>
+            <div class="asset-card__info">
+                <div class="asset-card__meta">
+                    <span class="asset-card__icon">🖼️</span>
+                    <span class="asset-card__name">产品宣传图</span>
+                </div>
+                <button class="asset-card__more">⋯</button>
+            </div>
+        </div>
+        <div class="asset-card">
+            <div class="asset-card__preview asset-card__preview--gradient-5">
+                <span class="asset-card__preview__icon">🌐</span>
+            </div>
+            <div class="asset-card__info">
+                <div class="asset-card__meta">
+                    <span class="asset-card__icon">🌐</span>
+                    <span class="asset-card__name">活动落地页</span>
+                </div>
+                <button class="asset-card__more">⋯</button>
+            </div>
+        </div>
+        <div class="asset-card">
+            <div class="asset-card__preview asset-card__preview--gradient-6">
+                <span class="asset-card__preview__icon">🎬</span>
+            </div>
+            <div class="asset-card__info">
+                <div class="asset-card__meta">
+                    <span class="asset-card__icon">🎬</span>
+                    <span class="asset-card__name">产品介绍视频</span>
+                </div>
+                <button class="asset-card__more">⋯</button>
+            </div>
+        </div>
+        <div class="asset-card">
+            <div class="asset-card__preview asset-card__preview--gradient-7">
+                <span class="asset-card__preview__icon">📝</span>
+            </div>
+            <div class="asset-card__info">
+                <div class="asset-card__meta">
+                    <span class="asset-card__icon">📝</span>
+                    <span class="asset-card__name">会议纪要文档</span>
+                </div>
+                <button class="asset-card__more">⋯</button>
+            </div>
+        </div>
+        <div class="asset-card">
+            <div class="asset-card__preview asset-card__preview--gradient-8">
+                <span class="asset-card__preview__icon">🎨</span>
+            </div>
+            <div class="asset-card__info">
+                <div class="asset-card__meta">
+                    <span class="asset-card__icon">🎨</span>
+                    <span class="asset-card__name">品牌Logo设计</span>
+                </div>
+                <button class="asset-card__more">⋯</button>
+            </div>
+        </div>
+    </div>
+</main>
+
+</div><!-- /main-wrapper -->
+
+<!-- ==================== JAVASCRIPT ==================== -->
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+    const pageTitles = {
+        kb: '知识库',
+        agentMarket: 'Agent市场',
+        skills: '探索技能',
+        tasks: '定时任务',
+        assets: '个人资产',
+    };
+
+    // Sidebar navigation
+    document.querySelectorAll('.sidebar__nav-item, .sidebar__new-task, .result-header__back').forEach(item => {
+        item.addEventListener('click', (e) => {
+            const pageId = item.getAttribute('data-page');
+            if (!pageId) return;
+
+            // Update sidebar active state
+            document.querySelectorAll('.sidebar__nav-item').forEach(n => n.classList.remove('sidebar__nav-item--active'));
+            document.querySelectorAll(`.sidebar__nav-item[data-page="${pageId}"]`).forEach(n => n.classList.add('sidebar__nav-item--active'));
+
+            // Update header title
+            const titleEl = document.getElementById('headerTitle');
+            if (titleEl) titleEl.textContent = pageTitles[pageId] || 'NUAI';
+
+            // Switch pages
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            const targetPage = document.getElementById(`page-${pageId}`);
+            if (targetPage) targetPage.classList.add('active');
+        });
+    });
+
+    // Home search submit → navigate to search results
+    document.getElementById('homeSearchBtn').addEventListener('click', performSearch);
+    document.getElementById('homeSearchInput').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') performSearch();
+    });
+
+    function performSearch() {
+        const query = document.getElementById('homeSearchInput').value.trim();
+        if (query) {
+            document.getElementById('resultSearchInput').value = query;
+
+            // Update active state
+            document.querySelectorAll('.sidebar__nav-item').forEach(n => n.classList.remove('sidebar__nav-item--active'));
+            document.querySelectorAll('.sidebar__nav-item[data-page="search"]').forEach(n => n.classList.add('sidebar__nav-item--active'));
+            const titleEl = document.getElementById('headerTitle');
+            if (titleEl) titleEl.textContent = 'AI搜索';
+
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.getElementById('page-search').classList.add('active');
+        }
+    }
+
+    // Tab switching in search box
+    document.querySelectorAll('.search-box__tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.search-box__tab').forEach(t => t.classList.remove('search-box__tab--active'));
+            tab.classList.add('search-box__tab--active');
+
+            const tabText = tab.textContent.trim();
+            const categories = document.querySelector('.categories');
+            if (tabText === 'AI对话') {
+                categories.classList.add('categories--visible');
+                navigateTo('chat');
+            } else {
+                categories.classList.remove('categories--visible');
+            }
+        });
+    });
+
+    function navigateTo(pageId) {
+        document.querySelectorAll('.sidebar__nav-item').forEach(n => n.classList.remove('sidebar__nav-item--active'));
+        document.querySelectorAll(`.sidebar__nav-item[data-page="${pageId}"]`).forEach(n => n.classList.add('sidebar__nav-item--active'));
+        document.getElementById('headerTitle').textContent = pageTitles[pageId] || 'NUAI';
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+        document.getElementById(`page-${pageId}`).classList.add('active');
+    }
+
+    // Trending item click → search
+    document.querySelectorAll('.trending__item').forEach(item => {
+        item.addEventListener('click', () => {
+            document.getElementById('homeSearchInput').value = item.textContent.trim();
+            performSearch();
+        });
+    });
+
+    // Follow-up click
+    document.querySelectorAll('.follow-up__item').forEach(item => {
+        item.addEventListener('click', () => {
+            alert(`继续追问：${item.textContent.trim()}`);
+        });
+    });
+
+    // Template click
+    document.querySelectorAll('.writing-template').forEach(template => {
+        template.addEventListener('click', () => {
+            const name = template.textContent.trim();
+            document.querySelector('.writing-editor__prompt').placeholder = `请描述你需要的${name}的具体要求...\n\n例如：帮我写一篇${name}`;
+        });
+    });
+
+    // Chat textarea auto-resize
+    const chatTextarea = document.querySelector('.chat-input-area__textarea');
+    if (chatTextarea) {
+        chatTextarea.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+        });
+    }
+
+    // Skills filter click handler
+    document.querySelectorAll('.skills-filter').forEach(filter => {
+        filter.addEventListener('click', () => {
+            document.querySelectorAll('.skills-filter').forEach(f => f.classList.remove('skills-filter--active'));
+            filter.classList.add('skills-filter--active');
+        });
+    });
+
+    // Skills tabs click handler
+    document.querySelectorAll('.skills-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.skills-tab').forEach(t => t.classList.remove('skills-tab--active'));
+            tab.classList.add('skills-tab--active');
+
+            const tabType = tab.getAttribute('data-skills-tab');
+            document.getElementById('skills-square').style.display = tabType === 'square' ? 'block' : 'none';
+            document.getElementById('skills-my').style.display = tabType === 'my' ? 'block' : 'none';
+        });
+    });
+
+    // Tasks tabs click handler
+    document.querySelectorAll('.tasks-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.tasks-tab').forEach(t => t.classList.remove('tasks-tab--active'));
+            tab.classList.add('tasks-tab--active');
+
+            const tabType = tab.getAttribute('data-tab');
+            document.querySelector('.tasks-list').classList.toggle('active', tabType === 'list');
+            document.querySelector('.tasks-history').classList.toggle('active', tabType === 'history');
+        });
+    });
+
+    // Assets main tabs click handler
+    document.querySelectorAll('.assets-main-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.assets-main-tab').forEach(t => t.classList.remove('assets-main-tab--active'));
+            tab.classList.add('assets-main-tab--active');
+        });
+    });
+
+    // Assets filter click handler
+    document.querySelectorAll('.assets-filter').forEach(filter => {
+        filter.addEventListener('click', () => {
+            document.querySelectorAll('.assets-filter').forEach(f => f.classList.remove('assets-filter--active'));
+            filter.classList.add('assets-filter--active');
+        });
+    });
+
+    // KB sidebar tabs click handler
+    document.querySelectorAll('.kb-sidebar__tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.kb-sidebar__tab').forEach(t => t.classList.remove('kb-sidebar__tab--active'));
+            tab.classList.add('kb-sidebar__tab--active');
+        });
+    });
+
+    // KB file remove handler
+    document.querySelectorAll('.kb-file-item__remove').forEach(btn => {
+        btn.addEventListener('click', () => {
+            btn.closest('.kb-file-item').remove();
+        });
+    });
+
+    // Theme switcher
+    const settingsBtn = document.getElementById('settingsBtn');
+    const settingsPanel = document.getElementById('settingsPanel');
+    const settingsClose = document.getElementById('settingsClose');
+
+    if (settingsBtn && settingsPanel) {
+        settingsBtn.addEventListener('click', () => {
+            settingsPanel.classList.toggle('sidebar__settings-panel--open');
+        });
+    }
+
+    if (settingsClose && settingsPanel) {
+        settingsClose.addEventListener('click', () => {
+            settingsPanel.classList.remove('sidebar__settings-panel--open');
+        });
+    }
+
+    // Close panel when clicking outside
+    document.addEventListener('click', (e) => {
+        if (settingsPanel && !e.target.closest('.sidebar__settings-panel') && !e.target.closest('.sidebar__settings-btn')) {
+            settingsPanel.classList.remove('sidebar__settings-panel--open');
+        }
+    });
+
+    // Theme option click handler
+    document.querySelectorAll('.sidebar__theme-option').forEach(option => {
+        option.addEventListener('click', () => {
+            document.querySelectorAll('.sidebar__theme-option').forEach(o => o.classList.remove('sidebar__theme-option--active'));
+            option.classList.add('sidebar__theme-option--active');
+
+            const theme = option.getAttribute('data-theme');
+            if (theme === 'light') {
+                document.body.classList.add('theme-light');
+            } else {
+                document.body.classList.remove('theme-light');
+            }
+        });
+    });
+
+    // Agent market tabs click handler
+    document.querySelectorAll('.agent-market__tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.agent-market__tab').forEach(t => t.classList.remove('agent-market__tab--active'));
+            tab.classList.add('agent-market__tab--active');
+        });
+    });
+});
+</script>
+
+</body>
+</html>

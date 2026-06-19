@@ -30,12 +30,17 @@
 
 - **目录位置**：`apps/assistant-web/template/assistai-ui/`
 - **当前结构**：
-  - `assistai-ui.css`：四个原型页面共享的样式定义。
-  - `assistai-ui.js`：共享的页面骨架、演示数据和交互逻辑。
+  - `assistai-ui.css`：基础布局、聊天壳层和通用组件样式。
+  - `assistai-workspaces.css`：资料库、智能体广场、定时任务、探索技能等 workspace 页面样式。
+  - `assistai-data.js`：集中维护原型所需的 mock 数据。
+  - `assistai-workspaces.js`：集中维护 workspace 类页面的渲染函数。
+  - `assistai-ui.js`：共享的页面骨架、主交互逻辑和各模块装配。
   - `index.html`、`library.html`、`gpts.html`、`policy.html`：仅保留页面入口配置，通过 `body data-*` 声明初始视图和初始助手。
 - **维护约束**：
+  - 继续保持静态原型可直接本地打开，不要引入必须依赖构建流程的模块组织方式。
   - 公共布局、交互、文案数据优先修改共享文件，不要再把整套内联 `style` 或 `script` 复制回单页。
-  - 新增原型页面时，优先复用 `assistai-ui.js` 的初始化模式，只增加轻量入口页或扩展共享配置。
+  - 新增 workspace 页面时，优先往 `assistai-workspaces.js` 和 `assistai-workspaces.css` 扩展；新增 mock 数据优先放到 `assistai-data.js`。
+  - 新增原型页面入口时，保持轻量 HTML，只声明 `body data-*` 并按顺序引入共享 CSS/JS。
 
 ## 管理员页 GPTs 可见性
 
