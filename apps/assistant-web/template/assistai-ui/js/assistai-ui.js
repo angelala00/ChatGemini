@@ -49,6 +49,23 @@ assistAiPrototypeRoot.innerHTML = `
                 <img class="nav-item-logo w-[22px] h-[22px] block object-contain flex-none" src="../../src/assets/icons/apps.svg" alt="" />
                 <span>智能体广场</span>
               </a>
+              <a class="nav-item w-full min-h-[42px] px-2.5 flex items-center gap-[11px] text-left rounded-[10px] text-[rgba(47,58,70,0.98)] text-[15px] font-normal transition-all duration-160 ease-out hover:bg-white/72 active:bg-white/72 [&.is-active]:bg-white/98 [&.is-active]:text-[rgba(38,49,61,0.98)] [&.is-active]:shadow-[inset_0_0_0_1px_rgba(228,233,238,0.98),0_6px_14px_rgba(24,31,41,0.03)]" data-nav-target="skill-explore-workspace" href="./explore.html">
+                <svg class="icon nav-item-icon w-[22px] h-[22px] text-[#54bed5] flex-none" viewBox="0 0 24 24">
+                  <path d="M12 3.5 14.7 9l5.9.9-4.3 4.2 1 5.9-5.3-2.8-5.3 2.8 1-5.9-4.3-4.2L9.3 9z"></path>
+                </svg>
+                <span>探索技能</span>
+              </a>
+              <a class="nav-item w-full min-h-[42px] px-2.5 flex items-center gap-[11px] text-left rounded-[10px] text-[rgba(47,58,70,0.98)] text-[15px] font-normal transition-all duration-160 ease-out hover:bg-white/72 active:bg-white/72 [&.is-active]:bg-white/98 [&.is-active]:text-[rgba(38,49,61,0.98)] [&.is-active]:shadow-[inset_0_0_0_1px_rgba(228,233,238,0.98),0_6px_14px_rgba(24,31,41,0.03)]" data-nav-target="automation-workspace" href="./automation.html">
+                <svg class="icon nav-item-icon w-[22px] h-[22px] text-[#54bed5] flex-none" viewBox="0 0 24 24">
+                  <rect x="4.5" y="5" width="15" height="15" rx="3"></rect>
+                  <path d="M8 3.5v3"></path>
+                  <path d="M16 3.5v3"></path>
+                  <path d="M7.5 11h9"></path>
+                  <path d="M12 11v5"></path>
+                  <path d="m12 16 2 2"></path>
+                </svg>
+                <span>定时任务</span>
+              </a>
               <a class="nav-item w-full min-h-[42px] px-2.5 flex items-center gap-[11px] text-left rounded-[10px] text-[rgba(47,58,70,0.98)] text-[15px] font-normal transition-all duration-160 ease-out hover:bg-white/72 active:bg-white/72 [&.is-active]:bg-white/98 [&.is-active]:text-[rgba(38,49,61,0.98)] [&.is-active]:shadow-[inset_0_0_0_1px_rgba(228,233,238,0.98),0_6px_14px_rgba(24,31,41,0.03)]" data-nav-target="regulation-assistant" href="./policy.html">
                 <img class="nav-item-logo w-[22px] h-[22px] block object-contain flex-none" src="../../public/gpts/policy.svg" alt="" />
                 <span>制度助手</span>
@@ -454,37 +471,7 @@ assistAiPrototypeRoot.innerHTML = `
       const profileButton = document.querySelector(".profile");
       const profileMenu = document.getElementById("profileMenu");
       const profileMenuItems = Array.from(document.querySelectorAll(".profile-menu-item"));
-      const primarySidebarGroup = document.querySelector(".sidebar-group");
-      if (primarySidebarGroup) {
-        const skillExploreNavButton = document.createElement("a");
-        skillExploreNavButton.className = "nav-item w-full min-h-[42px] px-2.5 flex items-center gap-[11px] text-left rounded-[10px] text-[rgba(47,58,70,0.98)] text-[15px] font-normal transition-all duration-160 ease-out hover:bg-white/72 active:bg-white/72 [&.is-active]:bg-white/98 [&.is-active]:text-[rgba(38,49,61,0.98)] [&.is-active]:shadow-[inset_0_0_0_1px_rgba(228,233,238,0.98),0_6px_14px_rgba(24,31,41,0.03)]";
-        skillExploreNavButton.href = "./explore.html";
-        skillExploreNavButton.dataset.navTarget = "skill-explore-workspace";
-        skillExploreNavButton.innerHTML = `
-          <svg class="icon nav-item-icon w-[22px] h-[22px] text-[#54bed5] flex-none" viewBox="0 0 24 24">
-            <path d="M12 3.5 14.7 9l5.9.9-4.3 4.2 1 5.9-5.3-2.8-5.3 2.8 1-5.9-4.3-4.2L9.3 9z"></path>
-          </svg>
-          <span>探索技能</span>
-        `;
-        primarySidebarGroup.appendChild(skillExploreNavButton);
-
-        const automationNavButton = document.createElement("a");
-        automationNavButton.className = "nav-item w-full min-h-[42px] px-2.5 flex items-center gap-[11px] text-left rounded-[10px] text-[rgba(47,58,70,0.98)] text-[15px] font-normal transition-all duration-160 ease-out hover:bg-white/72 active:bg-white/72 [&.is-active]:bg-white/98 [&.is-active]:text-[rgba(38,49,61,0.98)] [&.is-active]:shadow-[inset_0_0_0_1px_rgba(228,233,238,0.98),0_6px_14px_rgba(24,31,41,0.03)]";
-        automationNavButton.href = "./automation.html";
-        automationNavButton.dataset.navTarget = "automation-workspace";
-        automationNavButton.innerHTML = `
-          <svg class="icon nav-item-icon w-[22px] h-[22px] text-[#54bed5] flex-none" viewBox="0 0 24 24">
-            <rect x="4.5" y="5" width="15" height="15" rx="3"></rect>
-            <path d="M8 3.5v3"></path>
-            <path d="M16 3.5v3"></path>
-            <path d="M7.5 11h9"></path>
-            <path d="M12 11v5"></path>
-            <path d="m12 16 2 2"></path>
-          </svg>
-          <span>定时任务</span>
-        `;
-        primarySidebarGroup.appendChild(automationNavButton);
-      }
+      // Dynamically load nav buttons
       const navButtons = Array.from(document.querySelectorAll("[data-nav-target]"));
       const historyItems = Array.from(document.querySelectorAll(".history-item"));
       const composerInputs = Array.from(document.querySelectorAll(".composer-input"));
