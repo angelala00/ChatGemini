@@ -22,9 +22,10 @@ interface GptsItem {
 
 interface MyGptsProps {
     readonly onToggleSidebar?: () => void;
+    readonly sidebarExpand?: boolean;
 }
 
-const MyGpts = ({ onToggleSidebar }: MyGptsProps) => {
+const MyGpts = ({ onToggleSidebar, sidebarExpand }: MyGptsProps) => {
     const [items, setItems] = useState<GptsItem[]>([]);
     const navigate = useNavigate();
     const { t } = useTranslation();
@@ -84,6 +85,7 @@ const MyGpts = ({ onToggleSidebar }: MyGptsProps) => {
                 title={topbarTitle}
                 actions={topbarActions}
                 onToggleSidebar={onToggleSidebar}
+                sidebarExpand={sidebarExpand}
             />
 
             <main className="mx-auto w-full max-w-[840px] px-5 pb-20 pt-10 sm:px-8">

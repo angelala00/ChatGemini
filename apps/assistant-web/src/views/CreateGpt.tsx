@@ -122,9 +122,10 @@ const formatFileSize = (size?: number) => {
 
 interface CreateGptProps {
     readonly onToggleSidebar?: () => void;
+    readonly sidebarExpand?: boolean;
 }
 
-const CreateGpt = ({ onToggleSidebar }: CreateGptProps) => {
+const CreateGpt = ({ onToggleSidebar, sidebarExpand }: CreateGptProps) => {
     const [name, setName] = useState("");
     const [desc, setDesc] = useState("");
     const [systemPrompt, setSystemPrompt] = useState("");
@@ -402,6 +403,7 @@ const CreateGpt = ({ onToggleSidebar }: CreateGptProps) => {
                 title={topbarTitle}
                 actions={topbarActions}
                 onToggleSidebar={onToggleSidebar}
+                sidebarExpand={sidebarExpand}
             />
 
             <main className="mx-auto w-full max-w-[1120px] px-5 pb-24 pt-10 sm:px-8 lg:px-10">

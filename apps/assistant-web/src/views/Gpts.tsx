@@ -149,9 +149,10 @@ const Section = ({ title, description, items, onToggle }: SectionProps) => {
 
 interface GptsProps {
     readonly onToggleSidebar?: () => void;
+    readonly sidebarExpand?: boolean;
 }
 
-const Gpts = ({ onToggleSidebar }: GptsProps) => {
+const Gpts = ({ onToggleSidebar, sidebarExpand }: GptsProps) => {
     const [items, setItems] = useState<GptsItem[]>([]);
     const [canManage, setCanManage] = useState(false);
     const dispatch = useDispatch();
@@ -224,6 +225,7 @@ const Gpts = ({ onToggleSidebar }: GptsProps) => {
                 title={t("views.Gpts.page_title")}
                 actions={topbarActions}
                 onToggleSidebar={onToggleSidebar}
+                sidebarExpand={sidebarExpand}
             />
 
             <main className="mx-auto w-full max-w-[1180px] px-5 pb-20 sm:px-8 lg:px-10">

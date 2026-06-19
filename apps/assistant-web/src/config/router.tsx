@@ -26,6 +26,8 @@ export interface RouterComponentProps {
     subTitle?: string;
     samples?: string[];
     userName?: string;
+    onToggleSidebar?: () => void;
+    sidebarExpand?: boolean;
 }
 
 export interface RouterConfigRoutes {
