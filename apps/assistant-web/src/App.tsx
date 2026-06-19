@@ -222,6 +222,29 @@ const App = () => {
     const [currentLocale, setCurrentLocale] = useState(fallback);
     const [hasLogined, setHasLogined] = useState(false);
     const [userName, setUserName] = useState("");
+    const [theme, setTheme] = useState<"light" | "dark" | "system">("light");
+
+    useEffect(() => {
+        const root = window.document.documentElement;
+        const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+
+        const applyTheme = () => {
+            const isDark = theme === "dark" || (theme === "system" && mediaQuery.matches);
+            if (isDark) {
+                root.classList.add("dark");
+            } else {
+                root.classList.remove("dark");
+            }
+        };
+
+        applyTheme();
+        localStorage.setItem("theme", theme);
+
+        if (theme === "system") {
+            mediaQuery.addEventListener("change", applyTheme);
+            return () => mediaQuery.removeEventListener("change", applyTheme);
+        }
+    }, [theme]);
     const [uploadInlineData, setUploadInlineData] =
         useState<GenerativeContentBlob>({ data: "", mimeType: "" });
     const [sidebarExpand, setSidebarExpand] = useState(window.innerWidth > 900);
@@ -1699,6 +1722,8 @@ const App = () => {
                             onToggleSidebar={() =>
                                 setSidebarExpand((state) => !state)
                             }
+                            theme={theme}
+                            onSwitchTheme={setTheme}
                         />
                         <Container
                             className="col-start-2 flex h-screen min-w-0 flex-col bg-white/95 max-[900px]:col-start-1"

@@ -239,7 +239,7 @@ const CreateGpt = ({ onToggleSidebar, sidebarExpand }: CreateGptProps) => {
                     setVisibleModelIds(normalizeModelIds(data.visible_model_ids, nextModels));
                 } else {
                     setVisibleModelIds((current) =>
-                        current.length ? normalizeModelIds(current, nextModels) : nextModels.map((item) => item.id),
+                        current.length ? normalizeModelIds(current, nextModels) : nextModels.map((item: AvailableModel) => item.id),
                     );
                 }
                 setPreferredModel(

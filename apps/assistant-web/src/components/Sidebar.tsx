@@ -46,11 +46,30 @@ interface SidebarProps {
     readonly onSwitchLocale: (locale: string) => void;
     readonly onRenameSession: (id: string, newTitle: string) => void;
     readonly onToggleSidebar: () => void;
+    readonly theme: "light" | "dark" | "system";
+    readonly onSwitchTheme: (theme: "light" | "dark" | "system") => void;
 }
 
-const APP_VERSION = "v1.6.3";
+const APP_VERSION = "v1.7.0";
 
 const releaseHistory = [
+    {
+        version: "v1.7.0",
+        date: "2026.06",
+        type: "minor",
+        zhTitle: "全站深色与浅色模式支持",
+        zhChanges: [
+            "新增系统设置主题切换，支持浅色模式、深色模式及系统偏好自动同步。",
+            "深度重构侧边栏、主聊天区、智能体广场、我的智能体及智能体创建等所有工作区的深色适配。",
+            "完美适配管理员配置界面与数据看板的浅色/深色主题，优化大量细节与图表对比度。",
+        ],
+        enTitle: "Global Light & Dark Themes Support",
+        enChanges: [
+            "Added theme selector in system settings supporting Light, Dark, and System Auto Sync modes.",
+            "Refactored dark mode styling overrides for sidebar, chat panel, explore agents, my agents, and agent creation workspaces.",
+            "Fully adapted admin config console and dashboard console visual themes, optimizing details and chart contrasts.",
+        ],
+    },
     {
         version: "v1.6.3",
         date: "2026.06",
@@ -510,6 +529,8 @@ export const Sidebar = (props: SidebarProps) => {
         onSwitchLocale,
         onRenameSession,
         onToggleSidebar,
+        theme,
+        onSwitchTheme,
     } = props;
     const navigate = useNavigate();
     const location = useLocation();
@@ -807,7 +828,7 @@ export const Sidebar = (props: SidebarProps) => {
                                                 : !!currentSession?.title?.length
                                                   ? currentSession.title
                                                   : currentSession?.parts || id;
-                                        let path;
+                                        let path = "";
                                         const sessionExtension = sessionExtensions[id];
                                         const effectiveGid =
                                             sessionExtension?.["gid"] || summary?.gid || "";
@@ -1266,13 +1287,42 @@ export const Sidebar = (props: SidebarProps) => {
                                     })}
                                 </div>
                             </section>
-                            <section className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-4">
-                                <h3 className="text-sm font-semibold text-slate-900">
-                                    {t("components.Sidebar.future_preferences")}
-                                </h3>
-                                <p className="mt-1 text-xs leading-5 text-slate-500">
-                                    {t("components.Sidebar.future_preferences_hint")}
-                                </p>
+                            <section className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-4 dark:border-slate-800 dark:bg-slate-900/40">
+                                <div className="flex flex-col gap-1">
+                                    <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                                        {t("components.Sidebar.theme_title")}
+                                    </h3>
+                                    <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">
+                                        {t("components.Sidebar.theme_subtitle")}
+                                    </p>
+                                </div>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                    {([
+                                        { value: "light", label: t("components.Sidebar.theme_light") },
+                                        { value: "dark", label: t("components.Sidebar.theme_dark") },
+                                        { value: "system", label: t("components.Sidebar.theme_system") }
+                                    ] as const).map(({ value, label }) => {
+                                        const isActive = theme === value;
+                                        const isDisabled = value !== "light";
+                                        return (
+                                            <button
+                                                key={value}
+                                                type="button"
+                                                disabled={isDisabled}
+                                                className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                                                    isActive
+                                                        ? "border-[#7fb7c5] bg-[#e8f4f7] text-[#276675] dark:border-[#5293a3] dark:bg-[#1a3842] dark:text-[#5cb7cd]"
+                                                        : isDisabled
+                                                          ? "border-slate-100 bg-slate-50 text-slate-400 cursor-not-allowed dark:border-slate-800 dark:bg-slate-950 dark:text-slate-600"
+                                                          : "border-slate-200 bg-white text-slate-600 hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400 dark:hover:bg-slate-900"
+                                                }`}
+                                                onClick={() => onSwitchTheme(value)}
+                                            >
+                                                {label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </section>
                         </div>
                     </div>

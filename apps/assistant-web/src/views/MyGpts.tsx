@@ -51,7 +51,7 @@ const MyGpts = ({ onToggleSidebar, sidebarExpand }: MyGptsProps) => {
                     .then((res) => {
                         if (res.ok) {
                             setItems((prev) => prev.filter((it) => it.gid !== gid));
-                            sendUserAlert(t("views.MyGpts.delete_success"), { type: "success" });
+                            sendUserAlert(t("views.MyGpts.delete_success"));
                         }
                     })
                     .catch(() => {});
