@@ -5,8 +5,8 @@ export const getDomainAndPath = () => {
 };
 
 export const getFullPath = (path: string) => {
-    if (location.host === "localhost:3000"){
-        return "http://localhost:5008" + path
+    if (location.port === "3000" || location.port === "3001" || location.port === "5173") {
+        return `http://${location.hostname}:5008` + path;
     } else {
         return location.origin + joinPath(getBasePath(), path);
     }
