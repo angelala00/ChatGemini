@@ -16,6 +16,7 @@ from app.routes.file_routes import (
     stop_file_retention_scheduler,
 )
 from app.routes.gpts_routes import router as gpts_router
+from app.routes.library_routes import router as library_router
 from app.routes.metrics_routes import router as metrics_router
 from app.routes.platform_routes import router as platform_router
 from app.routes.runtime_routes import router as runtime_router
@@ -60,6 +61,7 @@ app.include_router(chat_router, prefix="")
 app.include_router(trace_router, prefix="")
 app.include_router(file_router, prefix="")
 app.include_router(gpts_router, prefix="")
+app.include_router(library_router, prefix="")
 app.include_router(metrics_router, prefix="")
 app.include_router(platform_router, prefix="")
 app.include_router(runtime_router, prefix="")

@@ -5,9 +5,20 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
-from app.admin.access_control import resolve_user_permissions
+from app.admin.access_control import (
+    GPTS_VISIBILITY_POLICY,
+    LIBRARY_VISIBILITY_POLICY,
+    resolve_user_permissions,
+    user_keys,
+)
+from app.admin.visibility_policy import (
+    get_feature_enabled,
+    get_visibility_config,
+    is_user_allowed,
+    normalize_visibility_payload,
+    upsert_visibility_flags,
+)
 from app.auth.auth_routes import get_current_user
-from app.base_config import model_config
 from app.storage.business_store import (
     delete_admin_feature_flag,
     delete_admin_model_config,
@@ -202,64 +213,18 @@ def _normalize_feature_flag_payload(payload: AdminFeatureFlagPayload) -> dict[st
     }
 
 
-def _gpts_feature_enabled() -> bool:
-    item = get_admin_feature_flag("gpts_feature_enabled")
-    if item is None:
-        return bool(model_config.GPTS_FEATURE_ENABLED)
-    value = item.get("config_value")
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, (int, float)):
-        return bool(value)
-    if isinstance(value, str):
-        return value.strip().lower() in {"1", "true", "yes", "on"}
-    return bool(model_config.GPTS_FEATURE_ENABLED)
-
-
-def _gpts_visibility_config() -> tuple[str, list[str], bool]:
-    scope_item = get_admin_feature_flag("gpts_visible_scope")
-    users_item = get_admin_feature_flag("gpts_visible_users")
-    fallback_users = sorted(
-        str(item).strip() for item in model_config.GPTS_WHITE_LIST if str(item).strip()
-    )
-
-    normalized_scope = ""
-    if scope_item is not None:
-        scope_value = str(scope_item.get("config_value") or "").strip().lower()
-        if scope_value in {"all", "restricted"}:
-            normalized_scope = scope_value
-
-    normalized_users: list[str] = []
-    if users_item is not None:
-        raw_users = users_item.get("config_value")
-        if isinstance(raw_users, list):
-            for item in raw_users:
-                if isinstance(item, str):
-                    normalized = item.strip()
-                    if normalized and normalized not in normalized_users:
-                        normalized_users.append(normalized)
-
-    if normalized_scope:
-        return normalized_scope, sorted(normalized_users), False
-
-    if fallback_users:
-        return "restricted", fallback_users, True
-    return "all", [], True
-
-
 def _normalize_gpts_visibility_payload(payload: AdminGptsVisibilityPayload) -> dict[str, Any]:
-    visible_scope = payload.visible_scope.strip().lower()
-    if visible_scope not in {"all", "restricted"}:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid visible_scope")
-    visible_users: list[str] = []
-    for item in payload.visible_users:
-        normalized = item.strip()
-        if normalized and normalized not in visible_users:
-            visible_users.append(normalized)
-    return {
-        "visible_scope": visible_scope,
-        "visible_users": visible_users,
-    }
+    try:
+        return normalize_visibility_payload(payload.visible_scope, payload.visible_users)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+
+
+def _normalize_library_visibility_payload(payload: AdminGptsVisibilityPayload) -> dict[str, Any]:
+    try:
+        return normalize_visibility_payload(payload.visible_scope, payload.visible_users)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
 
 
 @router.get("/permission")
@@ -313,8 +278,8 @@ async def admin_audit_logs(
 @router.get("/gpts-overview")
 async def admin_gpts_overview(user: dict = Depends(get_current_user)) -> dict[str, object]:
     permissions = ensure_admin_access(user)
-    feature_enabled = _gpts_feature_enabled()
-    visible_scope, whitelist_users, using_fallback = _gpts_visibility_config()
+    feature_enabled = get_feature_enabled(GPTS_VISIBILITY_POLICY)
+    visible_scope, whitelist_users, using_fallback = get_visibility_config(GPTS_VISIBILITY_POLICY)
     permission_items = list_admin_user_permissions()
     explicit_manage_users = sorted(
         {
@@ -327,9 +292,11 @@ async def admin_gpts_overview(user: dict = Depends(get_current_user)) -> dict[st
     )
     fallback_manage_users = [item for item in whitelist_users if item not in explicit_manage_users]
     current_permissions = resolve_user_permissions(user)
-    current_user_allowed = feature_enabled and (
-        visible_scope == "all"
-        or bool(set(whitelist_users) & {item for item in (str(user.get("email") or "").strip(), str(user.get("sub") or "").strip()) if item})
+    current_user_allowed = is_user_allowed(
+        user_keys(user),
+        feature_enabled=feature_enabled,
+        visible_scope=visible_scope,
+        visible_users=whitelist_users,
     )
     return {
         "feature_enabled": feature_enabled,
@@ -346,6 +313,26 @@ async def admin_gpts_overview(user: dict = Depends(get_current_user)) -> dict[st
     }
 
 
+@router.get("/library-overview")
+async def admin_library_overview(user: dict = Depends(get_current_user)) -> dict[str, object]:
+    permissions = ensure_admin_access(user)
+    feature_enabled = get_feature_enabled(LIBRARY_VISIBILITY_POLICY)
+    visible_scope, whitelist_users, _using_fallback = get_visibility_config(LIBRARY_VISIBILITY_POLICY)
+    current_user_allowed = is_user_allowed(
+        user_keys(user),
+        feature_enabled=feature_enabled,
+        visible_scope=visible_scope,
+        visible_users=whitelist_users,
+    )
+    return {
+        "feature_enabled": feature_enabled,
+        "visible_scope": visible_scope,
+        "whitelist_users": whitelist_users,
+        "current_user_allowed": current_user_allowed,
+        "permissions": sorted(permissions),
+    }
+
+
 @router.put("/gpts-visibility")
 async def update_admin_gpts_visibility(
     payload: AdminGptsVisibilityPayload,
@@ -354,24 +341,18 @@ async def update_admin_gpts_visibility(
     permissions = ensure_admin_permission(user, "feature_flags.manage")
     normalized = _normalize_gpts_visibility_payload(payload)
     updated_by = str(user.get("email") or user.get("sub") or "")
-    before_scope, before_users, _ = _gpts_visibility_config()
+    before_scope, before_users, _ = get_visibility_config(GPTS_VISIBILITY_POLICY)
     before_state = {
         "visible_scope": before_scope,
         "visible_users": before_users,
     }
-    scope_item = upsert_admin_feature_flag(
-        config_key="gpts_visible_scope",
-        config_value=normalized["visible_scope"],
-        value_type="string",
-        description="Controls whether GPTS is visible to all users or restricted to listed users.",
+    scope_item, users_item = upsert_visibility_flags(
+        GPTS_VISIBILITY_POLICY,
+        visible_scope=normalized["visible_scope"],
+        visible_users=normalized["visible_users"],
         updated_by=updated_by,
-    )
-    users_item = upsert_admin_feature_flag(
-        config_key="gpts_visible_users",
-        config_value=normalized["visible_users"],
-        value_type="json",
-        description="List of user identifiers that can see GPTS when visibility is restricted.",
-        updated_by=updated_by,
+        scope_description="Controls whether GPTS is visible to all users or restricted to listed users.",
+        users_description="List of user identifiers that can see GPTS when visibility is restricted.",
     )
     after_state = {
         "visible_scope": normalized["visible_scope"],
@@ -386,6 +367,49 @@ async def update_admin_gpts_visibility(
         action="update",
         resource_type="gpts_visibility",
         resource_key="gpts_visibility",
+        before_state=before_state,
+        after_state=after_state,
+    )
+    return {
+        "item": after_state,
+        "permissions": sorted(permissions),
+    }
+
+
+@router.put("/library-visibility")
+async def update_admin_library_visibility(
+    payload: AdminGptsVisibilityPayload,
+    user: dict = Depends(get_current_user),
+) -> dict[str, object]:
+    permissions = ensure_admin_permission(user, "feature_flags.manage")
+    normalized = _normalize_library_visibility_payload(payload)
+    updated_by = str(user.get("email") or user.get("sub") or "")
+    before_scope, before_users, _using_fallback = get_visibility_config(LIBRARY_VISIBILITY_POLICY)
+    before_state = {
+        "visible_scope": before_scope,
+        "visible_users": before_users,
+    }
+    scope_item, users_item = upsert_visibility_flags(
+        LIBRARY_VISIBILITY_POLICY,
+        visible_scope=normalized["visible_scope"],
+        visible_users=normalized["visible_users"],
+        updated_by=updated_by,
+        scope_description="Controls whether the personal library entry is visible to all users or restricted to listed users.",
+        users_description="List of user identifiers that can see the personal library entry when visibility is restricted.",
+    )
+    after_state = {
+        "visible_scope": normalized["visible_scope"],
+        "visible_users": normalized["visible_users"],
+        "feature_flags": {
+            "library_visible_scope": scope_item,
+            "library_visible_users": users_item,
+        },
+    }
+    _record_admin_audit(
+        user=user,
+        action="update",
+        resource_type="library_visibility",
+        resource_key="library_visibility",
         before_state=before_state,
         after_state=after_state,
     )

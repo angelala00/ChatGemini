@@ -85,9 +85,11 @@ DEFAULT_MAX_UPLOAD_FILENAME_CHARS = 255
 DEFAULT_MAX_MODEL_ID_CHARS = 200
 FILE_PURPOSE_SESSION_ATTACHMENT = "session_attachment"
 FILE_PURPOSE_ASSISTANT_KNOWLEDGE = "assistant_knowledge"
+FILE_PURPOSE_LIBRARY_FILE = "library_file"
 ALLOWED_FILE_PURPOSES = {
     FILE_PURPOSE_SESSION_ATTACHMENT,
     FILE_PURPOSE_ASSISTANT_KNOWLEDGE,
+    FILE_PURPOSE_LIBRARY_FILE,
 }
 UPLOAD_READ_CHUNK_BYTES = 1024 * 1024
 DEFAULT_IMAGE_MAX_WIDTH = 4096
@@ -580,17 +582,15 @@ async def _store_upload_object(
         raise
 
 
-@router.post("/upload")
-async def upload_file(
-    file: UploadFile = File(...),
-    model_id: str = Form("auto"),
-    gid: str = Form("gptassistant"),
-    purpose: str = Form(FILE_PURPOSE_SESSION_ATTACHMENT),
-    conversation_id: str | None = Form(None),
-    user: dict = Depends(get_current_user),
-):
-    gpt_logger.info(f"path=upload_file user={user.get('email', '')} at={time.strftime('%Y-%m-%d %H:%M:%S')}")
-
+async def _upload_file_core(
+    *,
+    file: UploadFile,
+    model_id: str,
+    gid: str,
+    purpose: str,
+    conversation_id: str | None,
+    user: dict,
+) -> dict[str, object]:
     if not file:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -766,16 +766,24 @@ async def upload_file(
         )
 
         gpt_logger.info(
-            "upload_request_succeeded model_id=%s filename=%s file_id=%s storage_backend=%s object_key=%s",
+            "upload_request_succeeded model_id=%s filename=%s file_id=%s storage_backend=%s object_key=%s purpose=%s gid=%s",
             model_id,
             file.filename,
             file_id,
             object_meta["storage_backend"],
             object_meta["object_key"],
+            purpose,
+            gid,
         )
 
-        return JSONResponse(
-            {"message": "File successfully uploaded", "file_id": file_id, "original_filename": file.filename})
+        return {
+            "message": "File successfully uploaded",
+            "file_id": file_id,
+            "original_filename": file.filename,
+            "filename": safe_display_filename(file.filename),
+            "size_bytes": file_size,
+            "upload_time": get_file_mapping(file_id, gid).get("uploadTime"),
+        }
     except HTTPException as exc:
         gpt_logger.warning(
             "upload_request_failed model_id=%s filename=%s content_type=%s detail=%s",
@@ -821,6 +829,27 @@ async def upload_file(
                 "upload_reservation_release_failed reservation_id=%s",
                 reservation_id,
             )
+
+
+@router.post("/upload")
+async def upload_file(
+    file: UploadFile = File(...),
+    model_id: str = Form("auto"),
+    gid: str = Form("gptassistant"),
+    purpose: str = Form(FILE_PURPOSE_SESSION_ATTACHMENT),
+    conversation_id: str | None = Form(None),
+    user: dict = Depends(get_current_user),
+):
+    gpt_logger.info(f"path=upload_file user={user.get('email', '')} at={time.strftime('%Y-%m-%d %H:%M:%S')}")
+    payload = await _upload_file_core(
+        file=file,
+        model_id=model_id,
+        gid=gid,
+        purpose=purpose,
+        conversation_id=conversation_id,
+        user=user,
+    )
+    return JSONResponse(payload)
 
 
 # 通过文件ID下载文件
@@ -870,43 +899,10 @@ async def get_file_name(file_id, user: dict = Depends(get_current_user)):
 
 # 删除过期文件的函数
 def delete_expired_files():
-    if FILE_LIFETIME_DAYS <= 0:
-        gpt_logger.info("expired_file_cleanup_skipped reason=disabled")
-        return
-    with distributed_task_lock("file-retention-cleanup") as acquired:
-        if not acquired:
-            gpt_logger.info("expired_file_cleanup_skipped reason=lock_not_acquired")
-            return
-        now = datetime.now(timezone.utc)
-        file_mapping = load_file_mapping()
-
-        for file_id, file_data in list(file_mapping.items()):
-            try:
-                if (
-                    file_data.get("purpose", FILE_PURPOSE_SESSION_ATTACHMENT)
-                    != FILE_PURPOSE_SESSION_ATTACHMENT
-                ):
-                    continue
-                upload_time_raw = str(file_data.get("uploadTime") or "")
-                upload_time = datetime.fromisoformat(upload_time_raw.replace("Z", "+00:00"))
-                if upload_time.tzinfo is None:
-                    upload_time = upload_time.replace(tzinfo=timezone.utc)
-                if (now - upload_time).total_seconds() <= FILE_LIFETIME_DAYS * 86400:
-                    continue
-                delete_file_reference(file_id, file_data)
-            except ValueError:
-                gpt_logger.warning(
-                    "expired_file_invalid_upload_time file_id=%s upload_time=%s",
-                    file_id,
-                    file_data.get("uploadTime"),
-                )
-            except Exception:
-                gpt_logger.exception(
-                    "expired_file_cleanup_failed file_id=%s storage_backend=%s object_key=%s",
-                    file_id,
-                    file_data.get("storageBackend"),
-                    file_data.get("objectKey"),
-                )
+    gpt_logger.info(
+        "expired_file_cleanup_skipped reason=retention_disabled file_lifetime_days=%s",
+        FILE_LIFETIME_DAYS,
+    )
 
 
 _cleanup_scheduler: BackgroundScheduler | None = None
@@ -916,10 +912,10 @@ def start_file_retention_scheduler() -> None:
     global _cleanup_scheduler
     if _cleanup_scheduler is not None and _cleanup_scheduler.running:
         return
-    scheduler = BackgroundScheduler()
-    scheduler.add_job(delete_expired_files, "interval", days=1)
-    scheduler.start()
-    _cleanup_scheduler = scheduler
+    gpt_logger.info(
+        "file_retention_scheduler_not_started reason=retention_disabled file_lifetime_days=%s",
+        FILE_LIFETIME_DAYS,
+    )
 
 
 def stop_file_retention_scheduler() -> None:

@@ -48,6 +48,8 @@
 ## 3. 存储语义
 - **普通附件 (Session Attachment)**：属于特定会话，随会话生命周期管理（默认 7 天过期）。
 - **知识文件 (Assistant Knowledge)**：属于智能体资产，仅随智能体手动删除时清理。
+- **资料库文件 (Library File)**：属于当前用户的个人资料库，独立于会话附件与智能体知识文件；MVP 阶段直接复用 `file_mapping` 与对象存储，以 `purpose=library_file` 区分。
+- **个人文件保留策略**：当前产品语义下，个人上传文件（含历史会话上传附件）不做自动过期清理；文件保留框架仍在代码中，但默认停用，只允许用户手动删除。
 - **内容去重**：上传时基于 SHA-256 进行内容寻址，同一用户重复上传相同内容仅增加引用，不重复占用存储空间。
 - **MinIO endpoint 故障切换**：`MINIO_ENDPOINT` 支持配置单个地址，或用英文逗号/分号分隔多个 `host:port`；对象存储层会优先复用当前活跃 endpoint，失败时按配置顺序切换到下一个可用 endpoint。
 - **统一智能体主表**：新版本已切换到 `agents` 作为统一智能体主表，承载系统智能体与普通自定义智能体；旧 `custom_gpts` 仅保留给未升级节点兼容读取，新代码不再向其中写入。
@@ -55,6 +57,8 @@
 - **制度目录一致性**：`document_catalog.json` 可保留人工维护的目录描述，但制度助手读取目录时会用当前 `file_mapping` 中的 `assistant_knowledge` 文件校准条目，移除已删除文件并补入新增文件，确保后续正文读取使用真实文件名。
 - **统一模型配置语义**：`admin_model_configs` 是全局模型目录的权威来源，未登记或已禁用的模型不会进入任何智能体的模型清单；各智能体再通过自身配置中的 `visible_model_ids` 与 `default_model` 控制实际可见范围和默认模型，`gptassistant` 不再依赖后台 feature flag 保存这些默认值。
 - **智能体入口可见性**：`gpts_feature_enabled` 只控制 GPTs 总开关；“更多智能体”入口对谁可见由管理员配置中的 `gpts_visible_scope` 与 `gpts_visible_users` 决定。运行时优先读取 DB 配置，未配置时才兼容回退到 `GPTS_WHITE_LIST`。
+- **资料库入口可见性**：个人资料库入口使用独立的 `library_feature_enabled`、`library_visible_scope`、`library_visible_users` 配置；不要复用 GPTs 白名单语义。
+- **可见性策略抽象**：GPTs 与资料库入口这类“开关 + scope + users (+ fallback)”规则，统一收敛到 `app/admin/visibility_policy.py`，新增同类型入口时优先复用，不要在路由里重复手写。
 - **系统助手同步**：启动初始化从纯内置注册表识别系统助手并补种到 `agents`；已有记录仅同步 `assistant_kind` 与 `handler_key` 执行身份，不覆盖数据库中的名称、提示词、默认模型、可见模型或 ACL 等可编辑配置。
 - **智能体编辑语义**：`PUT /api/gpts/{gid}` 按合并更新处理，保留编辑页未提交的现有字段；系统助手的 `gid`、`assistant_kind`、`handler_key` 与 `required_pinned` 属于受保护字段，编辑名称、提示词或默认模型时不能被覆盖或清空。
 - **制度知识入库**：启动初始化会把 `FILE_BASE/regulationassistant` 下的知识文件幂等迁移到当前对象存储后端，并写入 `file_mapping`，以 `purpose=assistant_knowledge` 标识；制度工具优先从这类 DB 映射读取目录和正文，目录缺失时会从映射集合合成一个兼容目录。
