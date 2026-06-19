@@ -32,8 +32,8 @@
 - **当前结构 (已全面 Tailwind 化)**：
   - `js/assistai-data.js`：集中维护原型所需的 mock 数据。
   - `js/assistai-ui.js`：共享的页面骨架、主交互逻辑和消息模板（已全部重构为 Tailwind 实用类）。
-  - `js/*-workspace.js`：各功能工作空间的渲染逻辑（gpts、library、automation、explore）。
-  - `*.html`：6 个物理入口文件，仅包含最小的 HTML 骨架、Tailwind Play CDN 引入、以及最小化 `<style>` 标签（声明 CSS 主题变量、系统重置和自定义滚动条，不含组件外观样式）。
+  - `js/*-workspace.js`：各功能工作空间的渲染逻辑（gpts、library、automation、explore、admin、voiceLab）。
+  - `*.html`：8 个物理入口文件（包含新增的 admin.html 和 voice-lab.html），仅包含最小的 HTML 骨架、Tailwind Play CDN 引入、以及最小化 `<style>` 标签（声明 CSS 主题变量、系统重置和自定义滚动条，不含组件外观样式）。
 - **两边架构与布局对应关系**：
   - **组件外壳映射**：原型中的 `js/assistai-ui.js` 骨架 ➔ React 的 `Sidebar.tsx` + `Topbar.tsx` 组件。
   - **视图空间映射**：原型的各个 `js/*-workspace.js` ➔ React `src/views/` 对应的独立视图页面（如 `gpts-workspace.js` ➔ `src/views/Gpts.tsx`）。

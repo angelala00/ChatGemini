@@ -172,20 +172,49 @@ assistAiPrototypeRoot.innerHTML = `
 
           <div class="sidebar-footer relative grid gap-0.75 pt-2.5 border-t border-[rgba(220,227,232,0.92)]">
             <div class="profile-menu absolute left-[-14px] right-[-14px] bottom-[calc(100%+6px)] p-[10px_14px_8px] hidden [&.is-open]:!grid grid-flow-row gap-0.5 border-0 rounded-none bg-gradient-to-b from-[rgba(246,248,250,0.98)] to-[rgba(241,244,247,0.98)] shadow-none" id="profileMenu" aria-hidden="true">
-              <button class="profile-menu-item min-h-[36px] px-2.5 inline-flex items-center gap-2 rounded-[10px] text-[rgba(56,67,79,0.96)] text-[13px] font-normal transition-all duration-160 hover:bg-[rgba(244,247,250,0.96)]" data-action="settings">
-                <svg class="icon icon-sm w-[16px] h-[16px]" viewBox="0 0 24 24">
-                  <circle cx="12" cy="12" r="3"></circle>
-                  <path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.2a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.2a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3h0a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.2a1.6 1.6 0 0 0 1 1.5h0a1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8v0a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.2a1.6 1.6 0 0 0-1.4 1z"></path>
-                </svg>
-                <span>设置</span>
+              <button class="profile-menu-item min-h-[36px] px-2.5 flex items-center justify-between gap-2 rounded-[10px] text-[rgba(56,67,79,0.96)] text-[13px] font-normal transition-all duration-160 hover:bg-[rgba(229,234,239,0.82)]" data-action="version">
+                <span class="text-[#87919d]">当前版本</span>
+                <span class="font-medium text-[#2f3a46]">v1.6.2</span>
               </button>
-              <button class="profile-menu-item is-danger min-h-[36px] px-2.5 inline-flex items-center gap-2 rounded-[10px] text-[rgba(184,72,72,0.96)] text-[13px] font-normal transition-all duration-160 hover:bg-[rgba(244,247,250,0.96)]" data-action="logout">
-                <svg class="icon icon-sm w-[16px] h-[16px]" viewBox="0 0 24 24">
+              <button class="profile-menu-item min-h-[36px] px-2.5 flex items-center justify-between gap-2 rounded-[10px] text-[rgba(56,67,79,0.96)] text-[13px] font-normal transition-all duration-160 hover:bg-[rgba(229,234,239,0.82)]" data-action="admin">
+                <span class="inline-flex items-center gap-2 text-[#2f3a46]">
+                  <svg class="icon icon-sm w-[16px] h-[16px] text-[#87919d]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                  </svg>
+                  管理后台
+                </span>
+                <span class="text-xs font-medium text-[#87919d]">管理</span>
+              </button>
+              <button class="profile-menu-item min-h-[36px] px-2.5 flex items-center justify-between gap-2 rounded-[10px] text-[rgba(56,67,79,0.96)] text-[13px] font-normal transition-all duration-160 hover:bg-[rgba(229,234,239,0.82)]" data-action="voice-lab">
+                <span class="inline-flex items-center gap-2 text-[#2f3a46]">
+                  <svg class="icon icon-sm w-[16px] h-[16px] text-[#87919d]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                    <line x1="12" y1="19" x2="12" y2="23"></line>
+                    <line x1="8" y1="23" x2="16" y2="23"></line>
+                  </svg>
+                  语音测试
+                </span>
+                <span class="text-xs font-medium text-[#87919d]">实验</span>
+              </button>
+              <button class="profile-menu-item min-h-[36px] px-2.5 flex items-center gap-2 rounded-[10px] text-[rgba(56,67,79,0.96)] text-[13px] font-normal transition-all duration-160 hover:bg-[rgba(229,234,239,0.82)]" data-action="settings">
+                <svg class="icon icon-sm w-[16px] h-[16px] text-[#87919d]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="3"></circle>
+                  <path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3h0a1.6 1.6 0 0 0-1-1.5V3a2 2 0 1 1-4 0v-.2a1.6 1.6 0 0 0-1 1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.2a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3h0a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.2a1.6 1.6 0 0 0 1 1.5h0a1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8v0a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.2a1.6 1.6 0 0 0-1.4 1z"></path>
+                </svg>
+                <span>系统设置</span>
+              </button>
+              <div class="min-h-[36px] px-2.5 flex items-center justify-between gap-2 rounded-[10px] text-[rgba(56,67,79,0.96)] text-[13px] font-normal">
+                <span class="text-[#87919d]">技术支持</span>
+                <span class="min-w-0 truncate font-medium text-[#2f3a46]">@assist_team</span>
+              </div>
+              <button class="profile-menu-item is-danger min-h-[36px] px-2.5 flex items-center gap-2 rounded-[10px] text-[rgba(184,72,72,0.96)] text-[13px] font-normal transition-all duration-160 hover:bg-[rgba(244,247,250,0.96)]" data-action="logout">
+                <svg class="icon icon-sm w-[16px] h-[16px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
                   <path d="m16 17 5-5-5-5"></path>
                   <path d="M21 12H9"></path>
                 </svg>
-                <span>退出</span>
+                <span>退出登录</span>
               </button>
             </div>
             <button class="profile w-full min-h-[44px] p-[0_8px_0_10px] flex items-center justify-between gap-[11px] text-left rounded-xl bg-transparent border-0 shadow-none hover:bg-white/72" aria-label="打开账号菜单">
@@ -193,8 +222,10 @@ assistAiPrototypeRoot.innerHTML = `
                 <span class="avatar w-[30px] h-[30px] grid place-items-center rounded-full bg-gradient-to-b from-[rgba(212,146,114,0.96)] to-[rgba(190,124,95,0.96)] text-white text-[12px] font-semibold shadow-none">Z</span>
                 <span class="profile-name flex items-center gap-2 min-w-0 text-sm text-[rgba(47,58,70,0.98)] font-normal">zhangsan</span>
               </span>
-              <svg class="icon icon-sm w-[16px] h-[16px]" viewBox="0 0 24 24">
-                <path d="m6 9 6 6 6-6"></path>
+              <svg class="icon w-5 h-5 text-[#87919d]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="1.25" fill="currentColor" stroke="none"></circle>
+                <circle cx="5" cy="12" r="1.25" fill="currentColor" stroke="none"></circle>
+                <circle cx="19" cy="12" r="1.25" fill="currentColor" stroke="none"></circle>
               </svg>
             </button>
           </div>
@@ -328,13 +359,70 @@ assistAiPrototypeRoot.innerHTML = `
                     </div>
                   </div>
                 </div>
-                <div class="footnote mt-0.5 text-center text-[rgba(118,129,141,0.92)] text-[11px] flex-none">v1.0.1 XXX公司</div>
+                <div class="footnote mt-0.5 text-center text-[rgba(118,129,141,0.92)] text-[11px] flex-none">v1.6.2 XXX公司</div>
               </div>
             </div>
           </div>
         </main>
       </div>
       <div class="mobile-backdrop fixed inset-0 hidden bg-[rgba(12,24,32,0.16)] opacity-0 pointer-events-none transition-all duration-160 z-20 peer-[.is-mobile-nav-open]:!block peer-[.is-mobile-nav-open]:!opacity-100 peer-[.is-mobile-nav-open]:!pointer-events-auto" aria-hidden="true"></div>
+      
+      <!-- Version History Modal -->
+      <div id="versionModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 px-4 hidden">
+        <div class="flex max-h-[78vh] w-full max-w-[560px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl transition-all" onclick="event.stopPropagation()">
+          <div class="flex items-center justify-between border-b border-slate-200/60 px-5 py-4">
+            <div>
+              <h2 class="text-base font-semibold text-slate-900">功能变更记录</h2>
+              <p class="mt-1 text-xs font-normal text-slate-500">当前版本 v1.6.2</p>
+            </div>
+            <button type="button" id="closeVersionModalBtn" class="rounded-md p-2 transition-colors hover:bg-slate-100" aria-label="关闭功能变更记录">
+              <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path>
+              </svg>
+            </button>
+          </div>
+          <div class="min-h-0 overflow-y-auto px-5 py-4">
+            <div class="space-y-4" id="versionModalList"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Settings Modal -->
+      <div id="settingsModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 px-4 hidden">
+        <div class="w-full max-w-[520px] overflow-hidden rounded-2xl bg-white shadow-2xl transition-all" onclick="event.stopPropagation()">
+          <div class="flex items-center justify-between border-b border-slate-200/60 px-5 py-4">
+            <div>
+              <h2 class="text-base font-semibold text-slate-900">系统设置</h2>
+              <p class="mt-1 text-xs font-normal text-slate-500">管理语言、外观和记忆等个人偏好。</p>
+            </div>
+            <button type="button" id="closeSettingsModalBtn" class="rounded-md p-2 transition-colors hover:bg-slate-100" aria-label="关闭系统设置">
+              <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path>
+              </svg>
+            </button>
+          </div>
+          <div class="grid gap-4 px-5 py-5">
+            <section class="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-4">
+              <div class="flex flex-col gap-1">
+                <h3 class="text-sm font-semibold text-slate-900">语言</h3>
+                <p class="text-xs leading-5 text-slate-500">选择界面显示语言，设置会保存在当前浏览器中。</p>
+              </div>
+              <div class="mt-3 flex flex-wrap gap-2" id="settingsLangContainer">
+                <button type="button" class="rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors border-[#7fb7c5] bg-[#e8f4f7] text-[#276675]" data-lang="zh">
+                  简体中文
+                </button>
+                <button type="button" class="rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors border-slate-200 bg-white text-slate-600 hover:bg-slate-100" data-lang="en">
+                  English
+                </button>
+              </div>
+            </section>
+            <section class="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-4">
+              <h3 class="text-sm font-semibold text-slate-900">更多设置</h3>
+              <p class="mt-1 text-xs leading-5 text-slate-500">配色、记忆等偏好后续会在这里配置。</p>
+            </section>
+          </div>
+        </div>
+      </div>
     </div>
 `;
 
@@ -436,6 +524,7 @@ assistAiPrototypeRoot.innerHTML = `
         crumbTitle,
         escapeHtml,
         updateTopbarRight,
+        showFeedback,
         setCurrentLibraryTab(value) {
           currentLibraryTab = value;
         }
@@ -445,11 +534,15 @@ assistAiPrototypeRoot.innerHTML = `
       const libraryRenderers = window.AssistAiPrototypeWorkspaces?.library?.createRendererSet(context) || {};
       const automationRenderers = window.AssistAiPrototypeWorkspaces?.automation?.createRendererSet(context) || {};
       const exploreRenderers = window.AssistAiPrototypeWorkspaces?.explore?.createRendererSet(context) || {};
+      const adminRenderers = window.AssistAiPrototypeWorkspaces?.admin?.createRendererSet(context) || {};
+      const voiceLabRenderers = window.AssistAiPrototypeWorkspaces?.voiceLab?.createRendererSet(context) || {};
 
       const { renderMyGptsWorkspace = () => {}, renderCreateGptWorkspace = () => {}, renderWorkspace = () => {} } = gptsRenderers;
       const { renderLibraryWorkspace = () => {} } = libraryRenderers;
       const { renderAutomationWorkspace = () => {} } = automationRenderers;
       const { renderSkillExploreWorkspace = () => {} } = exploreRenderers;
+      const { renderAdminWorkspace = () => {} } = adminRenderers;
+      const { renderVoiceLabWorkspace = () => {} } = voiceLabRenderers;
       let currentModelIndex = 0;
       let feedbackTimer = null;
       let activeHistoryEntry = null;
@@ -468,6 +561,248 @@ assistAiPrototypeRoot.innerHTML = `
       function closeProfileMenu() {
         profileMenu?.classList.remove("is-open");
         profileMenu?.setAttribute("aria-hidden", "true");
+      }
+
+      // Modals setup
+      const versionModal = document.getElementById("versionModal");
+      const settingsModal = document.getElementById("settingsModal");
+      const closeVersionModalBtn = document.getElementById("closeVersionModalBtn");
+      const closeSettingsModalBtn = document.getElementById("closeSettingsModalBtn");
+
+      if (versionModal) {
+        versionModal.addEventListener("click", () => versionModal.classList.add("hidden"));
+      }
+      if (closeVersionModalBtn) {
+        closeVersionModalBtn.addEventListener("click", () => versionModal.classList.add("hidden"));
+      }
+      if (settingsModal) {
+        settingsModal.addEventListener("click", () => settingsModal.classList.add("hidden"));
+      }
+      if (closeSettingsModalBtn) {
+        closeSettingsModalBtn.addEventListener("click", () => settingsModal.classList.add("hidden"));
+      }
+
+      const settingsLangBtns = document.querySelectorAll("#settingsLangContainer button");
+      settingsLangBtns.forEach(btn => {
+        btn.addEventListener("click", () => {
+          settingsLangBtns.forEach(b => {
+            b.className = "rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors border-slate-200 bg-white text-slate-600 hover:bg-slate-100";
+          });
+          btn.className = "rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors border-[#7fb7c5] bg-[#e8f4f7] text-[#276675]";
+          const lang = btn.dataset.lang;
+          showFeedback(lang === "zh" ? "已切换界面语言为简体中文（演示）" : "Language switched to English (Demo)");
+        });
+      });
+
+      const APP_VERSION = "v1.6.2";
+      const releaseHistory = [
+          {
+              version: "v1.6.2",
+              date: "2026.06",
+              type: "patch",
+              zhTitle: "智能体广场页顶部样式对齐",
+              zhChanges: [
+                  "将更多智能体页面顶部区从独立圆角卡片调整为与原型 topbar 一致的轻薄半透明顶栏风格。",
+                  "同步统一该区域的字体节奏、边线层级和青灰配色，使其更贴近 AssistAI 原型。",
+              ]
+          },
+          {
+              version: "v1.6.0",
+              date: "2026.06",
+              type: "minor",
+              zhTitle: "主助手迁入我的智能体",
+              zhChanges: [
+                  "主助手 AI 助手迁移为可管理的系统智能体，可在“我的智能体”中直接编辑提示词、默认模型、可见模型和知识文件。",
+                  "制度助手、主助手和普通自定义智能体统一采用 owner/admin/viewer 权限与同一套编辑界面。",
+                  "管理后台不再维护主助手默认模型与可见模型，相关配置入口改为迁移提示。",
+              ]
+          },
+          {
+              version: "v1.5.0",
+              date: "2026.06",
+              type: "minor",
+              zhTitle: "智能体与附件端内隔离",
+              zhChanges: [
+                  "默认按登录端隔离智能体可见性和普通附件归属，避免不同入口之间的文件互通。",
+                  "支持审核后的全局智能体跨端可见，知识文件随智能体作用域统一管理。",
+              ]
+          },
+          {
+              version: "v1.4.0",
+              date: "2026.06",
+              type: "minor",
+              zhTitle: "附件内容去重",
+              zhChanges: [
+                  "同一用户重复上传相同文件时复用已有存储对象，减少 MinIO 空间占用。",
+                  "会话附件与智能体知识文件共享安全引用计数语义，最后一个引用删除后才清理对象。",
+              ]
+          },
+          {
+              version: "v1.3.4",
+              date: "2026.06",
+              type: "patch",
+              zhTitle: "聊天流式兼容修复",
+              zhChanges: [
+                  "修复部分智能体在生产环境中已收到流式响应但页面空白的问题。",
+                  "前端聊天流解析改为同时兼容旧版 message 流和新版 kernel 事件流。",
+              ]
+          },
+          {
+              version: "v1.3.3",
+              date: "2026.06",
+              type: "patch",
+              zhTitle: "智能体术语统一",
+              zhChanges: [
+                  "将创建、探索、管理等页面中的 GPT 和专项助手统一命名为智能体。",
+                  "保留主聊天入口的 AI 助手称呼，并保持内部配置名不变。",
+              ]
+          },
+          {
+              version: "v1.3.2",
+              date: "2026.06",
+              type: "patch",
+              zhTitle: "智能体首选模型",
+              zhChanges: [
+                  "创建和编辑智能体时可从当前可用模型中选择首选模型。",
+                  "首选模型下线或不可见时，智能体会自动降级到全局默认模型，避免聊天中断。",
+              ]
+          },
+          {
+              version: "v1.3.1",
+              date: "2026.06",
+              type: "patch",
+              zhTitle: "智能体页面视觉统一",
+              zhChanges: [
+                  "重新设计更多智能体和创建智能体页面，使其与主聊天助手保持统一的视觉语言。",
+                  "优化智能体探索卡片、配置表单、知识文件和权限区域的层级与交互。",
+              ]
+          },
+          {
+              version: "v1.3.0",
+              date: "2026.06",
+              type: "minor",
+              zhTitle: "智能体长期知识文件",
+              zhChanges: [
+                  "创建和编辑智能体时支持维护智能体全局长期知识文件。",
+                  "智能体会在需要资料时通过文档工具按需读取知识文件，不会默认把全部正文放入上下文。",
+              ]
+          },
+          {
+              version: "v1.2.1",
+              date: "2026.06",
+              type: "patch",
+              zhTitle: "默认中文与语言切换",
+              zhChanges: [
+                  "新用户默认进入中文界面。",
+                  "账号菜单新增系统设置入口，可在设置中切换界面语言。",
+              ]
+          },
+          {
+              version: "v1.2.0",
+              date: "2026.06",
+              type: "minor",
+              zhTitle: "管理员配置页",
+              zhChanges: [
+                  "增加管理后台能力，支持有权限的管理员统一维护模型、权限、功能开关等核心配置。",
+                  "聊天历史重构，由存浏览器改成存服务端，并且进行加密存储。",
+              ]
+          },
+          {
+              version: "v1.1.2",
+              date: "2026.05",
+              type: "patch",
+              zhTitle: "附件交互修复",
+              zhChanges: [
+                  "修复未输入正文时误清空已上传附件的问题。",
+                  "优化发送前后的输入区状态，减少附件和文本被误清空的情况。",
+                  "上传图片和查看历史图片时，缩略图与预览体验更稳定。",
+                  "PPT、Word、Excel、PDF 等附件的类型展示更清晰。",
+                  "未填写正文时会禁用发送按钮，减少无效点击。",
+                  "点击预置问题后，输入框和发送按钮状态会正确同步。",
+                  "修复制度问答助手无法正常发起提问的问题，提升问答稳定性。",
+              ]
+          },
+          {
+              version: "v1.1.1",
+              date: "2026.05",
+              type: "patch",
+              zhTitle: "助手入口显示修复",
+              zhChanges: [
+                  "修复部分用户侧边栏不显示制度问答助手入口的问题。",
+              ]
+          },
+          {
+              version: "v1.1.0",
+              date: "2026.05",
+              type: "minor",
+              zhTitle: "附件格式扩展",
+              zhChanges: [
+                  "主 AI 助手新增 Markdown、CSV 和 PPTX 文件上传支持。",
+                  "上传后的 Markdown、CSV 和 PPTX 附件可参与文档文本提取和对话分析。",
+              ]
+          },
+          {
+              version: "v1.0.3",
+              date: "2026.04",
+              type: "patch",
+              zhTitle: "聊天界面交互细节优化",
+              zhChanges: [
+                  "优化侧边栏会话、用户菜单、模型选择和新建会话页的交互细节。",
+                  "优化新建会话页展示，让默认助手和专项智能体的欢迎信息更清晰。",
+              ]
+          },
+          {
+              version: "v1.0.2",
+              date: "2026.04",
+              type: "patch",
+              zhTitle: "聊天界面视觉基线优化",
+              zhChanges: [
+                  "统一聊天主页字体、字号和正文行高。",
+                  "调整侧边栏、顶部栏、消息卡片和输入区的浅色视觉层级。",
+              ]
+          },
+          {
+              version: "v1.0.1",
+              date: "2026.04",
+              type: "patch",
+              zhTitle: "版本入口与变更记录",
+              zhChanges: [
+                  "侧边栏 Logo 区增加版本号入口。",
+                  "点击版本号可查看完整功能变更记录，弹窗支持滚动和关闭。",
+              ]
+          }
+      ];
+
+      function renderReleaseHistory() {
+        const listContainer = document.getElementById("versionModalList");
+        if (!listContainer) return;
+        
+        listContainer.innerHTML = releaseHistory.map((release) => {
+          return `
+            <section class="border-l-2 border-slate-200 pl-4 py-0.5">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="text-sm font-semibold text-slate-900">${escapeHtml(release.version)}</span>
+                <span class="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-slate-500">${escapeHtml(release.type)}</span>
+                <span class="text-xs text-slate-400 font-mono">${escapeHtml(release.date)}</span>
+              </div>
+              <h3 class="mt-1.5 text-xs font-semibold text-slate-800">${escapeHtml(release.zhTitle)}</h3>
+              <ul class="mt-1.5 space-y-1 text-[11px] leading-5 text-slate-600">
+                ${release.zhChanges.map(change => `<li>- ${escapeHtml(change)}</li>`).join("")}
+              </ul>
+            </section>
+          `;
+        }).join("");
+      }
+
+      function openVersionModal() {
+        if (!versionModal) return;
+        renderReleaseHistory();
+        versionModal.classList.remove("hidden");
+      }
+
+      function openSettingsModal() {
+        if (!settingsModal) return;
+        settingsModal.classList.remove("hidden");
       }
 
       function cancelHistoryMenuClose() {
@@ -688,6 +1023,42 @@ assistAiPrototypeRoot.innerHTML = `
         });
         closeMobileNav();
         renderAutomationWorkspace();
+      }
+
+      function showAdminWorkspaceState() {
+        mainLayout.classList.add("is-workspace");
+        mainLayout.classList.remove("is-empty");
+        mainLayout.classList.remove("is-focus-mode");
+        focusModeButton?.classList.remove("is-active");
+        activateNav("");
+        newChatButton.classList.remove("is-active");
+        crumbTitle.textContent = "管理后台";
+        crumb?.classList.remove("is-hidden");
+        closeHistoryMenu();
+        resetComposerUploads();
+        composerInputs.forEach((field) => {
+          field.value = "";
+        });
+        closeMobileNav();
+        renderAdminWorkspace();
+      }
+
+      function showVoiceLabWorkspaceState() {
+        mainLayout.classList.add("is-workspace");
+        mainLayout.classList.remove("is-empty");
+        mainLayout.classList.remove("is-focus-mode");
+        focusModeButton?.classList.remove("is-active");
+        activateNav("");
+        newChatButton.classList.remove("is-active");
+        crumbTitle.textContent = "语音测试";
+        crumb?.classList.remove("is-hidden");
+        closeHistoryMenu();
+        resetComposerUploads();
+        composerInputs.forEach((field) => {
+          field.value = "";
+        });
+        closeMobileNav();
+        renderVoiceLabWorkspace();
       }
 
       function showSkillExploreWorkspaceState() {
@@ -1111,7 +1482,17 @@ assistAiPrototypeRoot.innerHTML = `
         item.addEventListener("click", () => {
           const action = item.dataset.action;
           closeProfileMenu();
-          showFeedback(action === "settings" ? "已打开设置（演示）" : "已退出登录（演示）");
+          if (action === "version") {
+            openVersionModal();
+          } else if (action === "admin") {
+            window.location.href = "./admin.html";
+          } else if (action === "voice-lab") {
+            window.location.href = "./voice-lab.html";
+          } else if (action === "settings") {
+            openSettingsModal();
+          } else if (action === "logout") {
+            showFeedback("已退出登录（演示）");
+          }
         });
       });
 
@@ -1398,6 +1779,10 @@ assistAiPrototypeRoot.innerHTML = `
           showSkillExploreWorkspaceState();
         } else if (initialView === "automation") {
           showAutomationWorkspaceState();
+        } else if (initialView === "admin") {
+          showAdminWorkspaceState();
+        } else if (initialView === "voice-lab") {
+          showVoiceLabWorkspaceState();
         } else if (initialView === "assistant-home") {
           showAssistantHome(initialShell.key, false);
         } else if (initialView === "article") {
