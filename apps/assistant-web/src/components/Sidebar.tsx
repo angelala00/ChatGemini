@@ -48,9 +48,24 @@ interface SidebarProps {
     readonly onToggleSidebar: () => void;
 }
 
-const APP_VERSION = "v1.6.2";
+const APP_VERSION = "v1.6.3";
 
 const releaseHistory = [
+    {
+        version: "v1.6.3",
+        date: "2026.06",
+        type: "patch",
+        zhTitle: "智能体广场顶部间距与触发器对齐",
+        zhChanges: [
+            "统一 React 的 Topbar 与原型的顶栏 padding，对齐主聊天页 Header 间距，解决无边栏/折叠时文字贴左的视觉缺陷。",
+            "修正触发器按钮显示断点，并在 App.tsx 中补齐 onToggleSidebar 传递，确保移动端能正常唤出侧边栏。",
+        ],
+        enTitle: "Explore Agents Padding & Trigger Alignment",
+        enChanges: [
+            "Unified React Topbar and prototype header paddings to match Header.tsx padding, resolving text sticking to the left when sidebar is collapsed.",
+            "Corrected sidebar trigger button display breakpoints and passed down onToggleSidebar in App.tsx to ensure sidebar works on mobile.",
+        ],
+    },
     {
         version: "v1.6.2",
         date: "2026.06",

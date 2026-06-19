@@ -1750,6 +1750,9 @@ const App = () => {
                                             subTitle: pageSubTitle,
                                             samples: pageSamples,
                                             userName: userName,
+                                            onToggleSidebar: () =>
+                                                setSidebarExpand((state) => !state),
+                                            sidebarExpand: sidebarExpand,
                                         }}
                                     />
                                 </div>

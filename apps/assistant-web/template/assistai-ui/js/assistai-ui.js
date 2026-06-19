@@ -68,7 +68,7 @@ assistAiPrototypeRoot.innerHTML = `
                   <path d="m9 6 6 6-6 6"></path>
                 </svg>
               </button>
-              <div class="history-list grid gap-1 pl-6.5 pr-1.5 group-[.is-collapsed]/history:hidden" id="historyList">
+              <div class="history-list grid gap-1 pl-[26px] pr-1.5 group-[.is-collapsed]/history:hidden" id="historyList">
                 <div class="history-entry group/entry relative block">
                   <button class="history-item active w-full min-h-[32px] p-[0_38px_0_12px] flex items-center gap-[11px] text-left rounded-[10px] text-[rgba(72,84,96,0.98)] text-[13px] font-normal transition-all duration-160 bg-white/98 shadow-[inset_0_0_0_1px_rgba(228,233,238,0.98),0_6px_14px_rgba(24,31,41,0.03)]">入职 IT 工具使用指南</button>
                   <button class="history-more absolute top-1/2 right-1.5 -translate-y-1/2 w-6 h-6 grid place-items-center rounded-md text-[rgba(118,129,141,0.88)] opacity-0 pointer-events-none transition-all duration-160 hover:bg-white/90 hover:text-[rgba(72,84,96,0.94)] group-hover/entry:!opacity-100 group-hover/entry:!pointer-events-auto group-focus-within/entry:!opacity-100 group-focus-within/entry:!pointer-events-auto group-[.is-menu-open]/entry:!opacity-100 group-[.is-menu-open]/entry:!pointer-events-auto" aria-label="更多操作">
@@ -174,7 +174,7 @@ assistAiPrototypeRoot.innerHTML = `
             <div class="profile-menu absolute left-[-14px] right-[-14px] bottom-[calc(100%+6px)] p-[10px_14px_8px] hidden [&.is-open]:!grid grid-flow-row gap-0.5 border-0 rounded-none bg-gradient-to-b from-[rgba(246,248,250,0.98)] to-[rgba(241,244,247,0.98)] shadow-none" id="profileMenu" aria-hidden="true">
               <button class="profile-menu-item min-h-[36px] px-2.5 flex items-center justify-between gap-2 rounded-[10px] text-[rgba(56,67,79,0.96)] text-[13px] font-normal transition-all duration-160 hover:bg-[rgba(229,234,239,0.82)]" data-action="version">
                 <span class="text-[#87919d]">当前版本</span>
-                <span class="font-medium text-[#2f3a46]">v1.6.2</span>
+                <span class="font-medium text-[#2f3a46]">v1.6.3</span>
               </button>
               <button class="profile-menu-item min-h-[36px] px-2.5 flex items-center justify-between gap-2 rounded-[10px] text-[rgba(56,67,79,0.96)] text-[13px] font-normal transition-all duration-160 hover:bg-[rgba(229,234,239,0.82)]" data-action="admin">
                 <span class="inline-flex items-center gap-2 text-[#2f3a46]">
@@ -233,8 +233,8 @@ assistAiPrototypeRoot.innerHTML = `
 
         <main class="main min-w-0 min-h-0 bg-[rgba(255,255,255,0.98)]">
           <div class="main-layout group/main h-full grid grid-rows-[62px_minmax(0,1fr)_auto] max-[680px]:grid-rows-[54px_minmax(0,1fr)_auto] min-h-0 transition-all duration-180 [&.is-empty]:grid-rows-[62px_minmax(0,1fr)] max-[680px]:[&.is-empty]:grid-rows-[54px_minmax(0,1fr)] [&.is-workspace]:grid-rows-[62px_minmax(0,1fr)] max-[680px]:[&.is-workspace]:grid-rows-[54px_minmax(0,1fr)]">
-            <header class="topbar flex items-center justify-between gap-4 px-6.5 max-[900px]:px-4 border-b border-[rgba(232,236,240,0.92)] bg-white/78 backdrop-blur-md">
-              <div class="topbar-left inline-flex items-center gap-2.5 min-w-0">
+            <header class="topbar flex items-center justify-between gap-4 px-[26px] max-[900px]:px-4 border-b border-[rgba(232,236,240,0.92)] bg-white/78 backdrop-blur-md">
+              <div class="topbar-left flex items-center gap-2 min-w-0">
                 <button class="top-action sidebar-trigger hidden max-[900px]:inline-grid group-[.is-sidebar-hidden]:!inline-grid w-8 h-8 place-items-center rounded-[9px] text-[var(--text-soft)] bg-white/70 border border-[rgba(233,237,241,0.92)] transition-all duration-160 hover:bg-white/98 hover:text-[var(--text)]" aria-label="打开历史会话">
                   <svg class="icon w-[18px] h-[18px] stroke-currentColor stroke-[1.8] fill-none stroke-linecap-round stroke-linejoin-round" viewBox="0 0 24 24">
                     <path d="M4 7h16"></path>
@@ -242,7 +242,7 @@ assistAiPrototypeRoot.innerHTML = `
                     <path d="M4 17h16"></path>
                   </svg>
                 </button>
-                <div class="crumb inline-flex items-center gap-2 min-w-0 max-w-[280px] text-sm font-normal text-[var(--text)] [&.is-hidden]:hidden">
+                <div class="crumb flex items-center gap-2 min-w-0 text-sm font-normal text-[var(--text)] [&.is-hidden]:hidden">
                   <span class="crumb-title truncate" id="crumbTitle">入职 IT 工具使用指南</span>
                 </div>
               </div>
@@ -359,7 +359,7 @@ assistAiPrototypeRoot.innerHTML = `
                     </div>
                   </div>
                 </div>
-                <div class="footnote mt-0.5 text-center text-[rgba(118,129,141,0.92)] text-[11px] flex-none">v1.6.2 XXX公司</div>
+                <div class="footnote mt-0.5 text-center text-[rgba(118,129,141,0.92)] text-[11px] flex-none">v1.6.3 XXX公司</div>
               </div>
             </div>
           </div>
@@ -373,7 +373,7 @@ assistAiPrototypeRoot.innerHTML = `
           <div class="flex items-center justify-between border-b border-slate-200/60 px-5 py-4">
             <div>
               <h2 class="text-base font-semibold text-slate-900">功能变更记录</h2>
-              <p class="mt-1 text-xs font-normal text-slate-500">当前版本 v1.6.2</p>
+              <p class="mt-1 text-xs font-normal text-slate-500">当前版本 v1.6.3</p>
             </div>
             <button type="button" id="closeVersionModalBtn" class="rounded-md p-2 transition-colors hover:bg-slate-100" aria-label="关闭功能变更记录">
               <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -594,8 +594,18 @@ assistAiPrototypeRoot.innerHTML = `
         });
       });
 
-      const APP_VERSION = "v1.6.2";
+      const APP_VERSION = "v1.6.3";
       const releaseHistory = [
+          {
+              version: "v1.6.3",
+              date: "2026.06",
+              type: "patch",
+              zhTitle: "智能体广场顶部间距与触发器对齐",
+              zhChanges: [
+                  "统一 React 的 Topbar 与原型的顶栏 padding，对齐主聊天页 Header 间距，解决无边栏/折叠时文字贴左的视觉缺陷。",
+                  "修正触发器按钮显示断点，并在 App.tsx 中补齐 onToggleSidebar 传递，确保移动端能正常唤出侧边栏。",
+              ]
+          },
           {
               version: "v1.6.2",
               date: "2026.06",
@@ -978,7 +988,7 @@ assistAiPrototypeRoot.innerHTML = `
         mainLayout.classList.remove("is-focus-mode");
         activateNav("gpts-workspace");
         newChatButton.classList.remove("is-active");
-        crumbTitle.textContent = "智能体广场";
+        crumbTitle.textContent = "探索智能体";
         crumb?.classList.remove("is-hidden");
         closeHistoryMenu();
         resetComposerUploads();
