@@ -15,6 +15,7 @@ import {
     PencilSquareIcon,
     PlusCircleIcon,
     TrashIcon,
+    BookOpenIcon,
 } from "@heroicons/react/24/outline";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -36,6 +37,7 @@ interface SidebarProps {
     readonly gptsFeatureAllowed: boolean;
     readonly voiceLabAllowed: boolean;
     readonly adminAllowed: boolean;
+    readonly libraryAllowed: boolean;
     readonly userName: string;
     readonly limitation?: number;
     readonly sessions: Sessions;
@@ -519,6 +521,7 @@ export const Sidebar = (props: SidebarProps) => {
         gptsFeatureAllowed,
         voiceLabAllowed,
         adminAllowed,
+        libraryAllowed,
         userName,
         limitation,
         sessions,
@@ -761,6 +764,21 @@ export const Sidebar = (props: SidebarProps) => {
                             <img src={appsIcon} className="size-[22px] object-contain" />
                         </span>
                         {t("components.Sidebar.gpts")}
+                    </span>
+                </div>
+            )}
+            {libraryAllowed && (
+                <div
+                    className="-mt-2 flex min-h-[34px] shrink-0 cursor-pointer items-center justify-start rounded-[10px] px-0 py-0 text-left text-[14px] font-normal text-[#2f3a46] transition-all hover:bg-[rgba(229,234,239,0.82)]"
+                    onClick={() => {
+                        navigate("/library")
+                    }}
+                >
+                    <span className="inline-flex items-center gap-1">
+                        <span className="grid size-8 shrink-0 place-items-center">
+                            <BookOpenIcon className="size-[22px] text-[#87919d]" strokeWidth={1.8} />
+                        </span>
+                        {t("components.Sidebar.library")}
                     </span>
                 </div>
             )}

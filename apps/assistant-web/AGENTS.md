@@ -54,3 +54,21 @@
   - `gpts_feature_enabled` 只表示智能体功能总开关。
   - “更多智能体”菜单对谁可见，由结构化的 GPTs 可见性表单维护，而不是依赖 `gpts.manage`。
 - **交互约束**：管理员页应优先提供结构化表单来维护 GPTs 可见范围与人员列表，避免要求管理员直接编辑通用 feature flag JSON。
+
+## 资料库 (Library / File Center)
+
+- **入口与路由管理**：
+  - 路由地址为 `/library`，对应的懒加载组件为 `src/views/Library.tsx`，在 `src/config/router.tsx` 中注册。
+  - 菜单入口显示和访问受鉴权控制，状态由 `App.tsx` 通过请求 `GET /api/library/permission` 获取（`libraryAllowed` 和 `libraryPermissionLoaded`），若未授权则从 `/library` 重定向回主页，同时隐藏 `Sidebar.tsx` 中的资料库菜单。
+- **页面布局**：
+  - 采用 `<Container>` 与 `<Topbar>` 组合，不渲染主对话的 `<Header>` 及底部的 `<InputArea>`。
+  - 布局类在 `App.tsx` 中配置，如果是资料库页面，内容区高度为 `h-screen flex-1`。
+- **主要功能与接口联调**：
+  - **文件资料 Tab**：
+    - 获取列表：`GET /api/library/files`（支持 `keyword` 搜索、`page` 分页和 `sort_by` 排序）。
+    - 文件上传：`POST /api/library/files:upload`（使用 `FormData` 携带文件，成功后刷新列表）。
+    - 文件下载：`GET /api/library/files/{file_id}/download`（通过生成临时的 `<a>` 标签并点击，依赖浏览器携带 Cookie 鉴权）。
+    - 文件删除：`DELETE /api/library/files/{file_id}`（删除前使用 `sendUserConfirm` 工具进行弹窗二次确认，成功后重新拉取列表）。
+    - 来源标签：根据文件的 `purpose` 字段，展示相应的徽章（`session_attachment` ➔ "会话上传"、`library_file` ➔ "资料库上传"、`assistant_knowledge` ➔ "智能体知识"）。
+  - **知识库 Tab**：
+    - 临时以静态 Mock 列表展示经 RAG 处理的知识库卡片（包含分块数、源文件数和索引状态等指标），契合整体 UI/UX。

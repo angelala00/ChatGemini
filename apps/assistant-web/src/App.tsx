@@ -290,6 +290,8 @@ const App = () => {
     const [voiceLabAllowed, setVoiceLabAllowed] = useState(false);
     const [adminAllowed, setAdminAllowed] = useState(false);
     const [adminPermissionLoaded, setAdminPermissionLoaded] = useState(false);
+    const [libraryAllowed, setLibraryAllowed] = useState(false);
+    const [libraryPermissionLoaded, setLibraryPermissionLoaded] = useState(false);
     
     const pathParts = location.pathname.split("/")
     const mod = pathParts[1];
@@ -1210,6 +1212,12 @@ const App = () => {
         },
         currentPath,
     );
+    const isLibraryPage = !!matchPath(
+        {
+            path: `${routes.library.prefix}${routes.library.uri}${routes.library.suffix}`,
+        },
+        currentPath,
+    );
     const isGptsManagePage =
         !!matchPath(
             {
@@ -1252,6 +1260,8 @@ const App = () => {
             setVoiceLabAllowed(false);
             setAdminAllowed(false);
             setAdminPermissionLoaded(false);
+            setLibraryAllowed(false);
+            setLibraryPermissionLoaded(false);
             setServerSessionSummaries([]);
             setLegacySessionRecords({});
             legacySessionRecordsRef.current = {};
@@ -1264,6 +1274,7 @@ const App = () => {
         }
         setGptsPermissionLoaded(false);
         setAdminPermissionLoaded(false);
+        setLibraryPermissionLoaded(false);
         handleRequest('GET', getFullPath('/api/gpts/permission'))
             .then((responseJson) => {
                 setGptsFeatureAllowed(Boolean(responseJson.allowed));
@@ -1292,6 +1303,16 @@ const App = () => {
             })
             .finally(() => {
                 setAdminPermissionLoaded(true);
+            });
+        handleRequest('GET', getFullPath('/api/library/permission'))
+            .then((responseJson) => {
+                setLibraryAllowed(Boolean(responseJson.allowed));
+            })
+            .catch(() => {
+                setLibraryAllowed(false);
+            })
+            .finally(() => {
+                setLibraryPermissionLoaded(true);
             });
     }, [hasLogined]);
 
@@ -1460,6 +1481,24 @@ const App = () => {
         adminPermissionLoaded,
         hasLogined,
         isAdminPage,
+        navigate,
+        routes.index.prefix,
+    ]);
+
+    useEffect(() => {
+        if (
+            hasLogined &&
+            libraryPermissionLoaded &&
+            !libraryAllowed &&
+            isLibraryPage
+        ) {
+            navigate(routes.index.prefix, { replace: true });
+        }
+    }, [
+        libraryAllowed,
+        libraryPermissionLoaded,
+        hasLogined,
+        isLibraryPage,
         navigate,
         routes.index.prefix,
     ]);
@@ -1715,6 +1754,7 @@ const App = () => {
                             gptsFeatureAllowed={gptsFeatureAllowed}
                             voiceLabAllowed={voiceLabAllowed}
                             adminAllowed={adminAllowed}
+                            libraryAllowed={libraryAllowed}
                             currentLocale={currentLocale}
                             onSwitchLocale={handleSwitchLocale}
                             onDeleteSession={handleDeleteSession}
@@ -1728,7 +1768,7 @@ const App = () => {
                         <Container
                             className="col-start-2 flex h-screen min-w-0 flex-col bg-white/95 max-[900px]:col-start-1"
                         >
-                            {!isGptsPage && !isAdminPage && (
+                            {!isGptsPage && !isAdminPage && !isLibraryPage && (
                                 <Header
                                     sidebarExpand={sidebarExpand}
                                     title={pageName}
@@ -1743,7 +1783,7 @@ const App = () => {
                             <div
                                 className={
                                     isNewSessionPage && !isGptsPage
-                                        && !isAdminPage
+                                        && !isAdminPage && !isLibraryPage
                                         ? `flex min-h-0 flex-1 flex-col justify-center gap-3 pb-2 md:gap-4 md:pb-0 ${
                                             isDefaultNewSessionPage
                                                 ? "relative -top-10 md:-top-12"
@@ -1757,6 +1797,7 @@ const App = () => {
                                     className={`relative min-h-0 overflow-y-auto overflow-x-hidden ${
                                         isGptsPage
                                             || isAdminPage
+                                            || isLibraryPage
                                             ? "h-screen flex-1"
                                             : isNewSessionPage
                                                 ? "flex-none overflow-visible"
@@ -1781,7 +1822,7 @@ const App = () => {
                                         }}
                                     />
                                 </div>
-                                {!isGptsPage && !isAdminPage && (
+                                {!isGptsPage && !isAdminPage && !isLibraryPage && (
                                     <InputArea
                                         minHeight={45}
                                         ref={textAreaRef}
