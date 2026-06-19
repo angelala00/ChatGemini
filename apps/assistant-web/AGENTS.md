@@ -26,21 +26,26 @@
 - **覆盖范围**：包含首页、主聊天页、智能体首页/聊天页、智能体广场、我的智能体、创建/编辑智能体、Voice Lab、Trace Inspector，以及管理后台各主要标签页。
 - **实现约束**：该镜像不依赖运行中的接口或前端构建产物，使用共享的 `styles.css` 和 `app.js` 在 `docs` 目录下独立浏览。
 
-## AssistAI 原型模板 (assistai-ui)
+## AssistAI 原型模板 (assistai-ui) 与 React 映射及迁移规范
 
 - **目录位置**：`apps/assistant-web/template/assistai-ui/`
-- **当前结构**：
-  - `assistai-ui.css`：基础布局、聊天壳层和通用组件样式。
-  - `assistai-workspaces.css`：资料库、智能体广场、定时任务、探索技能等 workspace 页面样式。
-  - `assistai-data.js`：集中维护原型所需的 mock 数据。
-  - `assistai-workspaces.js`：集中维护 workspace 类页面的渲染函数。
-  - `assistai-ui.js`：共享的页面骨架、主交互逻辑和各模块装配。
-  - `index.html`、`library.html`、`gpts.html`、`policy.html`：仅保留页面入口配置，通过 `body data-*` 声明初始视图和初始助手。
-- **维护约束**：
-  - 继续保持静态原型可直接本地打开，不要引入必须依赖构建流程的模块组织方式。
-  - 公共布局、交互、文案数据优先修改共享文件，不要再把整套内联 `style` 或 `script` 复制回单页。
-  - 新增 workspace 页面时，优先往 `assistai-workspaces.js` 和 `assistai-workspaces.css` 扩展；新增 mock 数据优先放到 `assistai-data.js`。
-  - 新增原型页面入口时，保持轻量 HTML，只声明 `body data-*` 并按顺序引入共享 CSS/JS。
+- **当前结构 (已全面 Tailwind 化)**：
+  - `js/assistai-data.js`：集中维护原型所需的 mock 数据。
+  - `js/assistai-ui.js`：共享的页面骨架、主交互逻辑和消息模板（已全部重构为 Tailwind 实用类）。
+  - `js/*-workspace.js`：各功能工作空间的渲染逻辑（gpts、library、automation、explore）。
+  - `*.html`：6 个物理入口文件，仅包含最小的 HTML 骨架、Tailwind Play CDN 引入、以及最小化 `<style>` 标签（声明 CSS 主题变量、系统重置和自定义滚动条，不含组件外观样式）。
+- **两边架构与布局对应关系**：
+  - **组件外壳映射**：原型中的 `js/assistai-ui.js` 骨架 ➔ React 的 `Sidebar.tsx` + `Topbar.tsx` 组件。
+  - **视图空间映射**：原型的各个 `js/*-workspace.js` ➔ React `src/views/` 对应的独立视图页面（如 `gpts-workspace.js` ➔ `src/views/Gpts.tsx`）。
+  - **布局层级网格**：两边均采用相同的栅格布局（左侧 `sidebar` 272px，右侧 `main-layout` 三行自适应栅格），断点行为（`max-[900px]:`）高度一致。
+- **两边样式迁移的注意力点 (Tailwind 变量前缀差异)**：
+  - **原型命名空间**：使用无前缀的主题色变量，如 `text-[var(--text)]`、`bg-[var(--bg)]`、`border-[var(--line)]`。
+  - **React 命名空间**：为了防冲突，使用 `--assist-` 前缀，如 `text-[var(--assist-text)]`、`bg-[var(--assist-bg)]`、`border-[var(--assist-line)]`。
+  - **转换规则**：在将样式/HTML 从原型复制进 React 时，**必须全局将 `(--` 替换为 `(--assist-`**，并将 `class` 换为 `className`，其余 Tailwind 实用类名完全通用。
+- **同步与双向修改工作流 (Human-in-the-loop)**：
+  - **先原型后 Web (推荐开发流程)**：新业务特性或视觉打磨优先在 HTML 原型中进行，确认表现完美、适配好 Tailwind 响应式后再迁移代码至 React，保持快速设计迭代。
+  - **先 Web 后原型 (Bug 修复/样式微调)**：如果在 React 生产应用中修复了某个排版 Bug 或微调了阴影/圆角，**必须把对应的 Tailwind 更改同步修改回原型**，防止两端设计分叉。同步时注意将 `--assist-` 前缀改回原型无前缀格式。
+  - **迁移确认约束**：任何往 React 的功能迁移（如未来要实现的“资料库”、“定时任务”），必须经过人为确认对齐元数据接口，且仅复制视图骨架和原子类，状态控制用 React State 重构。
 
 ## 管理员页 GPTs 可见性
 
