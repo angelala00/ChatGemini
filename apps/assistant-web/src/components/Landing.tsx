@@ -5,15 +5,19 @@ interface LandingProps {
     readonly samples: string[];
     readonly isNewSessionPage?: boolean;
     readonly useTemplateTitle?: boolean;
+    readonly heroLogo?: boolean;
     readonly onSelectSample: (prompt: string) => void;
 }
 
 export const Landing = (props: LandingProps) => {
-    const { title, logo, subTitle, samples, isNewSessionPage, useTemplateTitle, onSelectSample } = props;
+    const { title, logo, subTitle, samples, isNewSessionPage, useTemplateTitle, heroLogo, onSelectSample } = props;
+    const useLargeLogo = useTemplateTitle || heroLogo;
     return (
         <div className={`mx-auto flex w-full max-w-[980px] flex-col items-center justify-center px-5 text-center ${
             isNewSessionPage
-                ? "min-h-0 gap-3 py-1 md:gap-4 md:py-2"
+                ? useLargeLogo
+                    ? "min-h-0 gap-4 py-2 md:gap-5 md:py-3"
+                    : "min-h-0 gap-3 py-1 md:gap-4 md:py-2"
                 : "min-h-full gap-[18px] py-6 max-[680px]:py-4"
         }`}>
             <div
@@ -23,14 +27,14 @@ export const Landing = (props: LandingProps) => {
             >
                 <div
                     className={`grid shrink-0 place-items-center animate-ease-in-out animate-wiggle animate-infinite animate-duration-[3000ms] ${
-                        useTemplateTitle ? "size-32 -mb-2 max-[680px]:size-26 max-[680px]:-mb-1.5" : "size-10"
+                        useLargeLogo ? "size-20 -mb-1 max-[680px]:size-16 max-[680px]:-mb-1" : "size-10"
                     }`}
                 >
                     <img
                         src={logo}
                         alt=""
                         className={`object-contain ${
-                            useTemplateTitle ? "size-32 max-[680px]:size-26" : "size-[34px]"
+                            useLargeLogo ? "size-20 max-[680px]:size-16" : "size-[34px]"
                         }`}
                     />
                 </div>

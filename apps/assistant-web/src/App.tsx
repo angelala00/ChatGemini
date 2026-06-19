@@ -1562,11 +1562,11 @@ const App = () => {
                             )
                             : undefined
                         setModels(normalizedModels)
-                        setPageSubTitle(data.desc)
+                        setPageSubTitle(data.sub_title ?? data.desc ?? "")
                         setPageSamples(data.samples ?? [])
                         setPageLogo(data.logo)
-                        setPageTitle(data.title)
-                        setPageName(data.name)
+                        setPageTitle(data.title ?? data.name ?? "")
+                        setPageName(data.name ?? data.title ?? "")
                         // console.log("fileUploadEnabled:" + fileUploadEnabled)
                     })
                 } else {

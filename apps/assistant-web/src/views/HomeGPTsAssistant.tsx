@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { globalConfig } from "../config/global";
 import { RouterComponentProps } from "../config/router";
 import { fillTextAreaValue } from "../helpers/fillTextAreaValue";
-import regulationIcon from "../assets/icons/zhidu_logo.svg";
+const regulationIcon = "/gpts/policy.svg";
 import { normalizeAssetPath } from "../helpers/normalizeAssetPath";
 
 
@@ -25,9 +25,18 @@ const Home = (props: RouterComponentProps) => {
         setRandomSamples(getRandomArr(samples, 6));
     }, [samples, siteTitle, gid]);
 
+    let welcomeTitle = title;
+    if (gid === "regulationassistant") {
+        welcomeTitle = "我是制度问答助手，很高兴见到你！";
+    } else if (!welcomeTitle) {
+        welcomeTitle = "";
+    } else if (!welcomeTitle.includes("高兴见到你")) {
+        welcomeTitle = `我是 ${welcomeTitle}，很高兴见到你！`;
+    }
+
     return (
         <Landing
-            title={title?title:""}
+            title={welcomeTitle}
             logo={logo ? normalizeAssetPath(logo) : regulationIcon}
             subTitle={subTitle?subTitle:""}
             samples={randomSamples}
