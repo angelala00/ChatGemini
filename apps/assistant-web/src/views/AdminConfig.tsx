@@ -104,7 +104,6 @@ interface AdminModelDraft {
     readonly reasoning_default_enabled: boolean;
     readonly reasoning_parser_mode: string;
     readonly reasoning_parameter_format: string;
-    readonly allowed_upload_types_input: string;
     readonly visibility_scope: string;
     readonly visibility_users_input: string;
     readonly metadata_input: string;
@@ -141,7 +140,7 @@ interface GptsVisibilityDraft {
 }
 
 type LoadState = "loading" | "ready" | "error";
-type AdminSectionId = "models" | "gpts" | "permissions" | "flags" | "audit";
+type AdminSectionId = "models" | "permissions" | "flags" | "audit";
 
 const NEW_MODEL_KEY = "__new_model__";
 const NEW_PERMISSION_KEY = "__new_permission__";
@@ -159,7 +158,6 @@ const STRUCTURED_FLAG_KEYS = new Set([
 ]);
 const ADMIN_SECTION_ROUTES: Record<AdminSectionId, string> = {
     models: "/admin/models",
-    gpts: "/admin/gpts",
     permissions: "/admin/permissions",
     flags: "/admin/flags",
     audit: "/admin/audit",
@@ -204,7 +202,6 @@ const createEmptyModelDraft = (): AdminModelDraft => ({
     reasoning_default_enabled: false,
     reasoning_parser_mode: "",
     reasoning_parameter_format: "",
-    allowed_upload_types_input: "",
     visibility_scope: "all",
     visibility_users_input: "",
     metadata_input: "{}",
@@ -222,7 +219,6 @@ const createModelDraftFromItem = (item: AdminModelConfig): AdminModelDraft => ({
     reasoning_default_enabled: item.reasoning_default_enabled,
     reasoning_parser_mode: item.reasoning_parser_mode || "",
     reasoning_parameter_format: item.reasoning_parameter_format || "",
-    allowed_upload_types_input: item.allowed_upload_types.join(", "),
     visibility_scope: item.visibility_scope || "all",
     visibility_users_input: item.visibility_users.join(", "),
     metadata_input: JSON.stringify(item.metadata ?? {}, null, 2),
@@ -502,12 +498,6 @@ const AdminConfig = () => {
                 icon: SparklesIcon,
             },
             {
-                id: "gpts" as const,
-                label: t("views.Admin.gpts_title"),
-                count: gptsOverview?.effective_manage_users.length ?? 0,
-                icon: SparklesIcon,
-            },
-            {
                 id: "permissions" as const,
                 label: t("views.Admin.permissions_title"),
                 count: userPermissions.length,
@@ -529,20 +519,19 @@ const AdminConfig = () => {
         [
             auditLogs.length,
             featureFlags.length,
-            gptsOverview?.effective_manage_users.length,
             models.length,
             t,
             userPermissions.length,
         ],
     );
     const activeSection = useMemo<AdminSectionId>(() => {
-        if (location.pathname.startsWith(ADMIN_SECTION_ROUTES.gpts)) {
-            return "gpts";
-        }
         if (location.pathname.startsWith(ADMIN_SECTION_ROUTES.permissions)) {
             return "permissions";
         }
         if (location.pathname.startsWith(ADMIN_SECTION_ROUTES.flags)) {
+            return "flags";
+        }
+        if (location.pathname.startsWith("/admin/gpts")) {
             return "flags";
         }
         if (location.pathname.startsWith(ADMIN_SECTION_ROUTES.audit)) {
@@ -619,6 +608,27 @@ const AdminConfig = () => {
             JSON.stringify(libraryVisibilityDraft) !==
             JSON.stringify(savedLibraryVisibilityDraft),
         [libraryVisibilityDraft, savedLibraryVisibilityDraft],
+    );
+    const gptsConfigDirty = useMemo(
+        () =>
+            gptsVisibilityDirty ||
+            productFlagsDraft.gpts_feature_enabled !== savedProductFlagsDraft.gpts_feature_enabled,
+        [
+            gptsVisibilityDirty,
+            productFlagsDraft.gpts_feature_enabled,
+            savedProductFlagsDraft.gpts_feature_enabled,
+        ],
+    );
+    const libraryConfigDirty = useMemo(
+        () =>
+            libraryVisibilityDirty ||
+            productFlagsDraft.library_feature_enabled !==
+                savedProductFlagsDraft.library_feature_enabled,
+        [
+            libraryVisibilityDirty,
+            productFlagsDraft.library_feature_enabled,
+            savedProductFlagsDraft.library_feature_enabled,
+        ],
     );
     const structuredConfigDirty =
         assistantDefaultsDirty ||
@@ -799,7 +809,6 @@ const AdminConfig = () => {
             reasoning_default_enabled: modelDraft.reasoning_default_enabled,
             reasoning_parser_mode: modelDraft.reasoning_parser_mode.trim(),
             reasoning_parameter_format: modelDraft.reasoning_parameter_format.trim(),
-            allowed_upload_types: splitCsvValue(modelDraft.allowed_upload_types_input),
             visibility_scope: modelDraft.visibility_scope,
             visibility_users: splitCsvValue(modelDraft.visibility_users_input),
             metadata,
@@ -1278,14 +1287,27 @@ const AdminConfig = () => {
         }
         setBusyKey("library-visibility-save");
         try {
-            const response = await requestJson(
-                "PUT",
-                getFullPath("/api/admin/library-visibility"),
-                {
-                    visible_scope: visibleScope,
-                    visible_users: visibleUsers,
-                },
-            );
+            const [flagResponse, response] = await Promise.all([
+                requestJson(
+                    "PUT",
+                    getFullPath("/api/admin/feature-flags/library_feature_enabled"),
+                    {
+                        config_key: "library_feature_enabled",
+                        config_value: productFlagsDraft.library_feature_enabled,
+                        value_type: "boolean",
+                        description: t("views.Admin.product_flags_library_description"),
+                    },
+                ),
+                requestJson(
+                    "PUT",
+                    getFullPath("/api/admin/library-visibility"),
+                    {
+                        visible_scope: visibleScope,
+                        visible_users: visibleUsers,
+                    },
+                ),
+            ]);
+            syncPermissionsFromResponse(flagResponse);
             syncPermissionsFromResponse(response);
             await loadAdminData();
             await refreshAuditLogs();
@@ -1315,14 +1337,27 @@ const AdminConfig = () => {
         }
         setBusyKey("gpts-visibility-save");
         try {
-            const response = await requestJson(
-                "PUT",
-                getFullPath("/api/admin/gpts-visibility"),
-                {
-                    visible_scope: visibleScope,
-                    visible_users: visibleUsers,
-                },
-            );
+            const [flagResponse, response] = await Promise.all([
+                requestJson(
+                    "PUT",
+                    getFullPath("/api/admin/feature-flags/gpts_feature_enabled"),
+                    {
+                        config_key: "gpts_feature_enabled",
+                        config_value: productFlagsDraft.gpts_feature_enabled,
+                        value_type: "boolean",
+                        description: t("views.Admin.product_flags_gpts_description"),
+                    },
+                ),
+                requestJson(
+                    "PUT",
+                    getFullPath("/api/admin/gpts-visibility"),
+                    {
+                        visible_scope: visibleScope,
+                        visible_users: visibleUsers,
+                    },
+                ),
+            ]);
+            syncPermissionsFromResponse(flagResponse);
             syncPermissionsFromResponse(response);
             await loadAdminData();
             await refreshAuditLogs();
@@ -1638,57 +1673,6 @@ const AdminConfig = () => {
                                         </label>
                                         <label className="grid gap-2">
                                             <span className={formLabelClass}>
-                                                {t("views.Admin.form_visibility_scope")}
-                                            </span>
-                                            <select
-                                                className={inputClass}
-                                                value={modelDraft.visibility_scope}
-                                                onChange={(event) =>
-                                                    setModelDraft((state) => ({
-                                                        ...state,
-                                                        visibility_scope: event.target.value,
-                                                    }))
-                                                }
-                                            >
-                                                <option value="all">all</option>
-                                                <option value="whitelist">whitelist</option>
-                                                <option value="hidden">hidden</option>
-                                            </select>
-                                        </label>
-                                        <label className="grid gap-2">
-                                            <span className={formLabelClass}>
-                                                {t("views.Admin.form_allowed_upload_types")}
-                                            </span>
-                                            <input
-                                                className={inputClass}
-                                                value={modelDraft.allowed_upload_types_input}
-                                                placeholder="document, image"
-                                                onChange={(event) =>
-                                                    setModelDraft((state) => ({
-                                                        ...state,
-                                                        allowed_upload_types_input: event.target.value,
-                                                    }))
-                                                }
-                                            />
-                                        </label>
-                                        <label className="grid gap-2 xl:col-span-2">
-                                            <span className={formLabelClass}>
-                                                {t("views.Admin.form_visibility_users")}
-                                            </span>
-                                            <input
-                                                className={inputClass}
-                                                value={modelDraft.visibility_users_input}
-                                                placeholder="user1@example.com, user2@example.com"
-                                                onChange={(event) =>
-                                                    setModelDraft((state) => ({
-                                                        ...state,
-                                                        visibility_users_input: event.target.value,
-                                                    }))
-                                                }
-                                            />
-                                        </label>
-                                        <label className="grid gap-2">
-                                            <span className={formLabelClass}>
                                                 {t("views.Admin.form_reasoning_parser")}
                                             </span>
                                             <input
@@ -1758,6 +1742,53 @@ const AdminConfig = () => {
                                                 <span>{label}</span>
                                             </label>
                                         ))}
+                                    </div>
+                                    <div className="mt-4 rounded-2xl border border-dashed border-[rgba(214,223,229,0.98)] bg-[rgba(247,249,251,0.9)] p-4">
+                                        <div className="mb-3">
+                                            <p className="text-sm font-medium text-[#2f3a46]">
+                                                {t("views.Admin.form_visibility_scope")}
+                                            </p>
+                                            <p className="mt-1 text-xs text-[#8a95a0]">
+                                                Transitional configuration for model-level visibility.
+                                            </p>
+                                        </div>
+                                        <div className="grid gap-3 xl:grid-cols-3">
+                                            <label className="grid gap-2">
+                                                <span className={formLabelClass}>
+                                                    {t("views.Admin.form_visibility_scope")}
+                                                </span>
+                                                <select
+                                                    className={inputClass}
+                                                    value={modelDraft.visibility_scope}
+                                                    onChange={(event) =>
+                                                        setModelDraft((state) => ({
+                                                            ...state,
+                                                            visibility_scope: event.target.value,
+                                                        }))
+                                                    }
+                                                >
+                                                    <option value="all">all</option>
+                                                    <option value="whitelist">whitelist</option>
+                                                    <option value="hidden">hidden</option>
+                                                </select>
+                                            </label>
+                                            <label className="grid gap-2 xl:col-span-2">
+                                                <span className={formLabelClass}>
+                                                    {t("views.Admin.form_visibility_users")}
+                                                </span>
+                                                <input
+                                                    className={inputClass}
+                                                    value={modelDraft.visibility_users_input}
+                                                    placeholder="user1@example.com, user2@example.com"
+                                                    onChange={(event) =>
+                                                        setModelDraft((state) => ({
+                                                            ...state,
+                                                            visibility_users_input: event.target.value,
+                                                        }))
+                                                    }
+                                                />
+                                            </label>
+                                        </div>
                                     </div>
                                     <div className="mt-4 flex flex-wrap gap-2.5">
                                         <button
@@ -1872,16 +1903,6 @@ const AdminConfig = () => {
                                                     {model.visibility_scope}
                                                 </dd>
                                             </div>
-                                            <div className="rounded-2xl bg-white/85 px-3 py-2.5">
-                                                <dt className="text-xs uppercase tracking-[0.12em] text-[#8a95a0]">
-                                                    {t("views.Admin.upload_types_label")}
-                                                </dt>
-                                                <dd className="mt-2 font-medium text-[#2f3a46]">
-                                                    {model.allowed_upload_types.length
-                                                        ? model.allowed_upload_types.join(", ")
-                                                        : "--"}
-                                                </dd>
-                                            </div>
                                         </dl>
                                         {model.visibility_users.length > 0 && (
                                             <div className="mt-3 rounded-2xl bg-[rgba(243,247,249,0.96)] px-3 py-2.5">
@@ -1905,7 +1926,7 @@ const AdminConfig = () => {
                         </section>
                         )}
 
-                        {activeSection === "gpts" && (
+                        {activeSection === "flags" && (
                             <section
                                 id="admin-section-gpts"
                                 className="scroll-mt-28 rounded-[22px] border border-[rgba(223,231,236,0.96)] bg-white/95 px-5 py-5 shadow-[0_14px_30px_rgba(23,28,38,0.045)]"
@@ -1921,69 +1942,12 @@ const AdminConfig = () => {
 
                                 {gptsOverview ? (
                                     <>
-                                        <div className="mt-4 grid gap-3 lg:grid-cols-3">
-                                            <article className="rounded-[20px] border border-[rgba(213,223,229,0.98)] bg-[rgba(248,251,252,0.98)] px-4 py-4">
-                                                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8a95]">
-                                                    {t("views.Admin.gpts_feature_status")}
-                                                </p>
-                                                <div className="mt-3 flex items-center gap-2">
-                                                    {gptsOverview.feature_enabled ? (
-                                                        <CheckCircleIcon className="size-5 text-[#2f8f6a]" />
-                                                    ) : (
-                                                        <XCircleIcon className="size-5 text-[#a34f4f]" />
-                                                    )}
-                                                    <span className="text-lg font-semibold text-[#25313c]">
-                                                        {gptsOverview.feature_enabled
-                                                            ? t("views.Admin.gpts_status_enabled")
-                                                            : t("views.Admin.gpts_status_disabled")}
-                                                    </span>
-                                                </div>
-                                                <p className="mt-2 text-sm leading-6 text-[#66717d]">
-                                                    {t("views.Admin.gpts_feature_status_hint")}
-                                                </p>
-                                            </article>
-                                            <article className="rounded-[20px] border border-[rgba(213,223,229,0.98)] bg-[rgba(248,251,252,0.98)] px-4 py-4">
-                                                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8a95]">
-                                                    {t("views.Admin.gpts_visible_scope")}
-                                                </p>
-                                                <div className="mt-3 text-lg font-semibold text-[#25313c]">
-                                                    {gptsOverview.visible_scope === "all"
-                                                        ? t("views.Admin.gpts_scope_all")
-                                                        : t("views.Admin.gpts_scope_whitelist", {
-                                                              count: gptsOverview.whitelist_users.length,
-                                                          })}
-                                                </div>
-                                                <p className="mt-2 text-sm leading-6 text-[#66717d]">
-                                                    {t("views.Admin.gpts_visible_scope_hint")}
-                                                </p>
-                                            </article>
-                                            <article className="rounded-[20px] border border-[rgba(213,223,229,0.98)] bg-[rgba(248,251,252,0.98)] px-4 py-4">
-                                                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8a95]">
-                                                    {t("views.Admin.gpts_current_user")}
-                                                </p>
-                                                <div className="mt-3 flex flex-wrap gap-2">
-                                                    <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${supportToneClass(gptsOverview.current_user_allowed)}`}>
-                                                        {t("views.Admin.gpts_current_visible")}:{" "}
-                                                        {gptsOverview.current_user_allowed
-                                                            ? t("views.Admin.enabled")
-                                                            : t("views.Admin.disabled")}
-                                                    </span>
-                                                    <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${supportToneClass(gptsOverview.current_user_manage_allowed)}`}>
-                                                        {t("views.Admin.gpts_current_manage")}:{" "}
-                                                        {gptsOverview.current_user_manage_allowed
-                                                            ? t("views.Admin.enabled")
-                                                            : t("views.Admin.disabled")}
-                                                    </span>
-                                                </div>
-                                            </article>
-                                        </div>
-
                                         <div className="mt-4 rounded-[20px] border border-[rgba(213,223,229,0.98)] bg-[rgba(249,250,245,0.96)] p-4 shadow-sm">
                                             <div className="flex items-center justify-between gap-3 border-b border-[rgba(231,237,242,0.95)] pb-3">
                                                 <h3 className="text-base font-semibold text-[#25313c]">
                                                     {t("views.Admin.gpts_visibility_title")}
                                                 </h3>
-                                                {gptsVisibilityDirty && (
+                                                {gptsConfigDirty && (
                                                     <span className="rounded-full border border-[rgba(251,214,163,0.98)] bg-[rgba(255,248,236,0.98)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8a5a17]">
                                                         {t("views.Admin.unsaved_changes_short")}
                                                     </span>
@@ -1992,11 +1956,75 @@ const AdminConfig = () => {
                                             <p className="mt-2 text-sm leading-6 text-[#55626e]">
                                                 {t("views.Admin.gpts_visibility_subtitle")}
                                             </p>
+                                            <div className="mt-3 flex flex-wrap gap-2">
+                                                <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${supportToneClass(gptsOverview.feature_enabled)}`}>
+                                                    {t("views.Admin.gpts_feature_status")}:{" "}
+                                                    {gptsOverview.feature_enabled
+                                                        ? t("views.Admin.gpts_status_enabled")
+                                                        : t("views.Admin.gpts_status_disabled")}
+                                                </span>
+                                                <span className="rounded-full border border-[rgba(213,223,229,0.98)] bg-white/85 px-2.5 py-1 text-xs font-semibold text-[#5e6b77]">
+                                                    {t("views.Admin.gpts_visible_scope")}:{" "}
+                                                    {gptsOverview.visible_scope === "all"
+                                                        ? t("views.Admin.gpts_scope_all")
+                                                        : t("views.Admin.gpts_scope_whitelist", {
+                                                              count: gptsOverview.whitelist_users.length,
+                                                          })}
+                                                </span>
+                                                <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${supportToneClass(gptsOverview.current_user_allowed)}`}>
+                                                    {t("views.Admin.gpts_current_visible")}:{" "}
+                                                    {gptsOverview.current_user_allowed
+                                                        ? t("views.Admin.enabled")
+                                                        : t("views.Admin.disabled")}
+                                                </span>
+                                                <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${supportToneClass(gptsOverview.current_user_manage_allowed)}`}>
+                                                    {t("views.Admin.gpts_current_manage")}:{" "}
+                                                    {gptsOverview.current_user_manage_allowed
+                                                        ? t("views.Admin.enabled")
+                                                        : t("views.Admin.disabled")}
+                                                </span>
+                                            </div>
                                             {!canManageFlags && (
                                                 <p className="mt-3 text-sm text-[#8a95a0]">
                                                     {t("views.Admin.flags_read_only_hint")}
                                                 </p>
                                             )}
+                                            <div className="mt-4 flex items-start gap-4 rounded-2xl border border-[rgba(213,223,229,0.98)] bg-white/80 px-4 py-3">
+                                                {canManageFlags && (
+                                                    <button
+                                                        type="button"
+                                                        className={`mt-1 relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                                            productFlagsDraft.gpts_feature_enabled
+                                                                ? "bg-[#279ab3]"
+                                                                : "bg-[rgba(223,231,236,0.96)]"
+                                                        }`}
+                                                        onClick={() => {
+                                                            setProductFlagsDraft({
+                                                                ...productFlagsDraft,
+                                                                gpts_feature_enabled:
+                                                                    !productFlagsDraft.gpts_feature_enabled,
+                                                            });
+                                                        }}
+                                                    >
+                                                        <span
+                                                            aria-hidden="true"
+                                                            className={`pointer-events-none inline-block size-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                                                productFlagsDraft.gpts_feature_enabled
+                                                                    ? "translate-x-4"
+                                                                    : "translate-x-0"
+                                                            }`}
+                                                        />
+                                                    </button>
+                                                )}
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-sm font-medium text-[#25313c]">
+                                                        {t("views.Admin.product_flags_gpts_label")}
+                                                    </p>
+                                                    <p className="mt-1 text-xs text-[#8a95a0]">
+                                                        {t("views.Admin.product_flags_gpts_hint")}
+                                                    </p>
+                                                </div>
+                                            </div>
                                             <div className="mt-4 grid gap-3 md:grid-cols-2">
                                                 <label className="flex items-start gap-3 rounded-2xl border border-[rgba(213,223,229,0.98)] bg-white/85 px-4 py-3">
                                                     <input
@@ -2073,7 +2101,7 @@ const AdminConfig = () => {
                                                     disabled={
                                                         !canManageFlags ||
                                                         busyKey === "gpts-visibility-save" ||
-                                                        !gptsVisibilityDirty
+                                                        !gptsConfigDirty
                                                     }
                                                 >
                                                     {busyKey === "gpts-visibility-save"
@@ -2083,63 +2111,15 @@ const AdminConfig = () => {
                                                 <button
                                                     type="button"
                                                     className={`${buttonClass} border border-[rgba(214,223,229,0.98)] bg-white text-[#2f3a46] hover:bg-[rgba(245,248,250,0.96)] disabled:opacity-30 disabled:cursor-not-allowed`}
-                                                    onClick={() => setGptsVisibilityDraft(savedGptsVisibilityDraft)}
-                                                    disabled={!canManageFlags || !gptsVisibilityDirty}
+                                                    onClick={() => {
+                                                        setGptsVisibilityDraft(savedGptsVisibilityDraft);
+                                                        setProductFlagsDraft(savedProductFlagsDraft);
+                                                    }}
+                                                    disabled={!canManageFlags || !gptsConfigDirty}
                                                 >
                                                     {t("views.Admin.reset")}
                                                 </button>
                                             </div>
-                                        </div>
-
-                                        <div className="mt-4 grid gap-3 lg:grid-cols-3">
-                                            <article className="rounded-[20px] border border-[rgba(213,223,229,0.98)] bg-[rgba(248,251,252,0.98)] px-4 py-4">
-                                                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8a95]">
-                                                    {t("views.Admin.library_feature_status")}
-                                                </p>
-                                                <div className="mt-3 flex items-center gap-2">
-                                                    {libraryOverview?.feature_enabled ? (
-                                                        <CheckCircleIcon className="size-5 text-[#2f8f6a]" />
-                                                    ) : (
-                                                        <XCircleIcon className="size-5 text-[#a34f4f]" />
-                                                    )}
-                                                    <span className="text-lg font-semibold text-[#25313c]">
-                                                        {libraryOverview?.feature_enabled
-                                                            ? t("views.Admin.gpts_status_enabled")
-                                                            : t("views.Admin.gpts_status_disabled")}
-                                                    </span>
-                                                </div>
-                                                <p className="mt-2 text-sm leading-6 text-[#66717d]">
-                                                    {t("views.Admin.library_feature_status_hint")}
-                                                </p>
-                                            </article>
-                                            <article className="rounded-[20px] border border-[rgba(213,223,229,0.98)] bg-[rgba(248,251,252,0.98)] px-4 py-4">
-                                                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8a95]">
-                                                    {t("views.Admin.library_visible_scope")}
-                                                </p>
-                                                <div className="mt-3 text-lg font-semibold text-[#25313c]">
-                                                    {libraryOverview?.visible_scope === "restricted"
-                                                        ? t("views.Admin.library_scope_whitelist", {
-                                                              count: libraryOverview?.whitelist_users.length ?? 0,
-                                                          })
-                                                        : t("views.Admin.library_scope_all")}
-                                                </div>
-                                                <p className="mt-2 text-sm leading-6 text-[#66717d]">
-                                                    {t("views.Admin.library_visible_scope_hint")}
-                                                </p>
-                                            </article>
-                                            <article className="rounded-[20px] border border-[rgba(213,223,229,0.98)] bg-[rgba(248,251,252,0.98)] px-4 py-4">
-                                                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#7d8a95]">
-                                                    {t("views.Admin.library_current_user")}
-                                                </p>
-                                                <div className="mt-3 flex flex-wrap gap-2">
-                                                    <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${supportToneClass(Boolean(libraryOverview?.current_user_allowed))}`}>
-                                                        {t("views.Admin.library_current_visible")}:{" "}
-                                                        {libraryOverview?.current_user_allowed
-                                                            ? t("views.Admin.enabled")
-                                                            : t("views.Admin.disabled")}
-                                                    </span>
-                                                </div>
-                                            </article>
                                         </div>
 
                                         <div className="mt-4 rounded-[20px] border border-[rgba(213,223,229,0.98)] bg-[rgba(249,250,245,0.96)] p-4 shadow-sm">
@@ -2147,7 +2127,7 @@ const AdminConfig = () => {
                                                 <h3 className="text-base font-semibold text-[#25313c]">
                                                     {t("views.Admin.library_visibility_title")}
                                                 </h3>
-                                                {libraryVisibilityDirty && (
+                                                {libraryConfigDirty && (
                                                     <span className="rounded-full border border-[rgba(251,214,163,0.98)] bg-[rgba(255,248,236,0.98)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8a5a17]">
                                                         {t("views.Admin.unsaved_changes_short")}
                                                     </span>
@@ -2156,11 +2136,69 @@ const AdminConfig = () => {
                                             <p className="mt-2 text-sm leading-6 text-[#55626e]">
                                                 {t("views.Admin.library_visibility_subtitle")}
                                             </p>
+                                            <div className="mt-3 flex flex-wrap gap-2">
+                                                <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${supportToneClass(Boolean(libraryOverview?.feature_enabled))}`}>
+                                                    {t("views.Admin.library_feature_status")}:{" "}
+                                                    {libraryOverview?.feature_enabled
+                                                        ? t("views.Admin.gpts_status_enabled")
+                                                        : t("views.Admin.gpts_status_disabled")}
+                                                </span>
+                                                <span className="rounded-full border border-[rgba(213,223,229,0.98)] bg-white/85 px-2.5 py-1 text-xs font-semibold text-[#5e6b77]">
+                                                    {t("views.Admin.library_visible_scope")}:{" "}
+                                                    {libraryOverview?.visible_scope === "restricted"
+                                                        ? t("views.Admin.library_scope_whitelist", {
+                                                              count: libraryOverview?.whitelist_users.length ?? 0,
+                                                          })
+                                                        : t("views.Admin.library_scope_all")}
+                                                </span>
+                                                <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${supportToneClass(Boolean(libraryOverview?.current_user_allowed))}`}>
+                                                    {t("views.Admin.library_current_visible")}:{" "}
+                                                    {libraryOverview?.current_user_allowed
+                                                        ? t("views.Admin.enabled")
+                                                        : t("views.Admin.disabled")}
+                                                </span>
+                                            </div>
                                             {!canManageFlags && (
                                                 <p className="mt-3 text-sm text-[#8a95a0]">
                                                     {t("views.Admin.flags_read_only_hint")}
                                                 </p>
                                             )}
+                                            <div className="mt-4 flex items-start gap-4 rounded-2xl border border-[rgba(213,223,229,0.98)] bg-white/80 px-4 py-3">
+                                                {canManageFlags && (
+                                                    <button
+                                                        type="button"
+                                                        className={`mt-1 relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                                            productFlagsDraft.library_feature_enabled
+                                                                ? "bg-[#279ab3]"
+                                                                : "bg-[rgba(223,231,236,0.96)]"
+                                                        }`}
+                                                        onClick={() => {
+                                                            setProductFlagsDraft({
+                                                                ...productFlagsDraft,
+                                                                library_feature_enabled:
+                                                                    !productFlagsDraft.library_feature_enabled,
+                                                            });
+                                                        }}
+                                                    >
+                                                        <span
+                                                            aria-hidden="true"
+                                                            className={`pointer-events-none inline-block size-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                                                productFlagsDraft.library_feature_enabled
+                                                                    ? "translate-x-4"
+                                                                    : "translate-x-0"
+                                                            }`}
+                                                        />
+                                                    </button>
+                                                )}
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-sm font-medium text-[#25313c]">
+                                                        {t("views.Admin.product_flags_library_label")}
+                                                    </p>
+                                                    <p className="mt-1 text-xs text-[#8a95a0]">
+                                                        {t("views.Admin.product_flags_library_hint")}
+                                                    </p>
+                                                </div>
+                                            </div>
                                             <div className="mt-4 grid gap-3 md:grid-cols-2">
                                                 <label className="flex items-start gap-3 rounded-2xl border border-[rgba(213,223,229,0.98)] bg-white/85 px-4 py-3">
                                                     <input
@@ -2237,7 +2275,7 @@ const AdminConfig = () => {
                                                     disabled={
                                                         !canManageFlags ||
                                                         busyKey === "library-visibility-save" ||
-                                                        !libraryVisibilityDirty
+                                                        !libraryConfigDirty
                                                     }
                                                 >
                                                     {busyKey === "library-visibility-save"
@@ -2247,8 +2285,11 @@ const AdminConfig = () => {
                                                 <button
                                                     type="button"
                                                     className={`${buttonClass} border border-[rgba(214,223,229,0.98)] bg-white text-[#2f3a46] hover:bg-[rgba(245,248,250,0.96)] disabled:opacity-30 disabled:cursor-not-allowed`}
-                                                    onClick={() => setLibraryVisibilityDraft(savedLibraryVisibilityDraft)}
-                                                    disabled={!canManageFlags || !libraryVisibilityDirty}
+                                                    onClick={() => {
+                                                        setLibraryVisibilityDraft(savedLibraryVisibilityDraft);
+                                                        setProductFlagsDraft(savedProductFlagsDraft);
+                                                    }}
+                                                    disabled={!canManageFlags || !libraryConfigDirty}
                                                 >
                                                     {t("views.Admin.reset")}
                                                 </button>
@@ -2586,114 +2627,6 @@ const AdminConfig = () => {
                                             </div>
                                         </div>
 
-                                        {/* Product Flags Card */}
-                                        <div className="rounded-[20px] border border-[rgba(213,223,229,0.98)] bg-[rgba(249,250,245,0.96)] p-4 shadow-sm">
-                                            <div className="flex items-center justify-between gap-3 border-b border-[rgba(231,237,242,0.95)] pb-3">
-                                                <h3 className="text-base font-semibold text-[#25313c]">
-                                                    {t("views.Admin.product_flags_title")}
-                                                </h3>
-                                                {productFlagsDirty && (
-                                                    <span className="rounded-full border border-[rgba(251,214,163,0.98)] bg-[rgba(255,248,236,0.98)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8a5a17]">
-                                                        {t("views.Admin.unsaved_changes_short")}
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <p className="mt-2 text-xs text-[#8a95a0]">
-                                                {t("views.Admin.product_flags_subtitle")}
-                                            </p>
-                                            <div className="mt-4 space-y-4">
-                                                <div className="flex items-start gap-4 rounded-2xl border border-[rgba(213,223,229,0.98)] bg-white/80 px-4 py-3">
-                                                    {canManageFlags && (
-                                                        <button
-                                                            type="button"
-                                                            className={`mt-1 relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                                                                productFlagsDraft.gpts_feature_enabled
-                                                                    ? "bg-[#279ab3]"
-                                                                    : "bg-[rgba(223,231,236,0.96)]"
-                                                            }`}
-                                                            onClick={() => {
-                                                                setProductFlagsDraft({
-                                                                    ...productFlagsDraft,
-                                                                    gpts_feature_enabled:
-                                                                        !productFlagsDraft.gpts_feature_enabled,
-                                                                });
-                                                            }}
-                                                        >
-                                                            <span
-                                                                aria-hidden="true"
-                                                                className={`pointer-events-none inline-block size-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                                                                    productFlagsDraft.gpts_feature_enabled
-                                                                        ? "translate-x-4"
-                                                                        : "translate-x-0"
-                                                                }`}
-                                                            />
-                                                        </button>
-                                                    )}
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className="text-sm font-medium text-[#25313c]">
-                                                            {t("views.Admin.product_flags_gpts_label")}
-                                                        </p>
-                                                        <p className="mt-1 text-xs text-[#8a95a0]">
-                                                            {t("views.Admin.product_flags_gpts_hint")}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-start gap-4 rounded-2xl border border-[rgba(213,223,229,0.98)] bg-white/80 px-4 py-3">
-                                                    {canManageFlags && (
-                                                        <button
-                                                            type="button"
-                                                            className={`mt-1 relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                                                                productFlagsDraft.library_feature_enabled
-                                                                    ? "bg-[#279ab3]"
-                                                                    : "bg-[rgba(223,231,236,0.96)]"
-                                                            }`}
-                                                            onClick={() => {
-                                                                setProductFlagsDraft({
-                                                                    ...productFlagsDraft,
-                                                                    library_feature_enabled:
-                                                                        !productFlagsDraft.library_feature_enabled,
-                                                                });
-                                                            }}
-                                                        >
-                                                            <span
-                                                                aria-hidden="true"
-                                                                className={`pointer-events-none inline-block size-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                                                                    productFlagsDraft.library_feature_enabled
-                                                                        ? "translate-x-4"
-                                                                        : "translate-x-0"
-                                                                }`}
-                                                            />
-                                                        </button>
-                                                    )}
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className="text-sm font-medium text-[#25313c]">
-                                                            {t("views.Admin.product_flags_library_label")}
-                                                        </p>
-                                                        <p className="mt-1 text-xs text-[#8a95a0]">
-                                                            {t("views.Admin.product_flags_library_hint")}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                                <div className="flex flex-wrap gap-2.5">
-                                                    <button
-                                                        type="button"
-                                                        className={`${buttonClass} bg-[#279ab3] text-white hover:bg-[#1e7f95] disabled:bg-[#a3ccd4] disabled:cursor-not-allowed`}
-                                                        onClick={saveProductFlags}
-                                                        disabled={!canManageFlags || busyKey === "product-flags-save" || !productFlagsDirty}
-                                                    >
-                                                        {busyKey === "product-flags-save" ? t("views.Admin.saving") : t("views.Admin.save")}
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        className={`${buttonClass} border border-[rgba(214,223,229,0.98)] bg-white text-[#2f3a46] hover:bg-[rgba(245,248,250,0.96)] disabled:opacity-30 disabled:cursor-not-allowed`}
-                                                        onClick={() => setProductFlagsDraft(savedProductFlagsDraft)}
-                                                        disabled={!canManageFlags || !productFlagsDirty}
-                                                    >
-                                                        {t("views.Admin.reset")}
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
                                     </div>
 
                                     {/* Generic Flags list starts here */}

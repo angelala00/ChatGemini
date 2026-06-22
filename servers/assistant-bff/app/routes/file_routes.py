@@ -27,7 +27,6 @@ from app.storage.business_store import (
     find_owned_file_mapping_by_content,
     get_file_mapping,
     insert_file_mapping,
-    list_admin_model_configs,
     list_file_mappings,
     release_file_upload_slot,
     reserve_file_upload_slot,
@@ -114,47 +113,17 @@ def _intersect_upload_rules(first: dict[str, bool], second: dict[str, bool]) -> 
     }
 
 
-def _get_gptassistant_upload_rule(model_id: str) -> dict[str, bool] | None:
+def _get_session_attachment_upload_rule(gid: str) -> dict[str, bool] | None:
     refresh_gpts()
-    assistant_config = gpts.get("gptassistant", {})
+    from app.routes.gpts_routes import apply_runtime_gpt_defaults
+
+    assistant_config = apply_runtime_gpt_defaults(
+        gid,
+        gpts.get(gid, gpts.get("gptassistant", {})),
+    )
     if not assistant_config.get("file_upload_enabled", False):
         return {"documents": False, "images": False}
-    global_rule = _upload_rule_from_types(assistant_config.get("upload_file_types"))
-
-    base_model = next(
-        (
-            item
-            for item in assistant_config.get("models", [])
-            if isinstance(item, dict) and item.get("id") == model_id
-        ),
-        None,
-    )
-    admin_model = next(
-        (
-            item
-            for item in list_admin_model_configs()
-            if isinstance(item, dict) and item.get("model_id") == model_id
-        ),
-        None,
-    )
-    if admin_model is not None and not admin_model.get("enabled", False):
-        return None
-    if admin_model is not None and isinstance(admin_model.get("allowed_upload_types"), list):
-        return _intersect_upload_rules(
-            global_rule,
-            _upload_rule_from_types(admin_model["allowed_upload_types"]),
-        )
-    if base_model is not None and isinstance(base_model.get("upload_file_types"), list):
-        return _intersect_upload_rules(
-            global_rule,
-            _upload_rule_from_types(base_model["upload_file_types"]),
-        )
-    if base_model is not None or admin_model is not None:
-        return global_rule
-    if model_id in MODEL_UPLOAD_RULES:
-        compatibility_rule = MODEL_UPLOAD_RULES[model_id]
-        return _intersect_upload_rules(global_rule, compatibility_rule)
-    return None
+    return _upload_rule_from_types(assistant_config.get("upload_file_types"))
 
 
 def _get_gptassistant_upload_limits():
@@ -206,8 +175,15 @@ def get_upload_request_max_bytes() -> int:
 
 
 # 判断文件扩展名是否允许
-def _get_allowed_extensions_by_model(model_id: str):
-    model_rule = _get_gptassistant_upload_rule(model_id)
+def _get_allowed_extensions(model_id: str, gid: str, purpose: str):
+    if purpose == FILE_PURPOSE_SESSION_ATTACHMENT:
+        model_rule = _get_session_attachment_upload_rule(gid)
+    elif purpose in {FILE_PURPOSE_ASSISTANT_KNOWLEDGE, FILE_PURPOSE_LIBRARY_FILE}:
+        model_rule = {"documents": True, "images": False}
+    elif model_id in MODEL_UPLOAD_RULES:
+        model_rule = MODEL_UPLOAD_RULES[model_id]
+    else:
+        model_rule = None
     if model_rule is None:
         return set(), {}
     allowed_extensions = set()
@@ -218,11 +194,11 @@ def _get_allowed_extensions_by_model(model_id: str):
     return allowed_extensions, model_rule
 
 
-def allowed_file(filename, model_id: str):
+def allowed_file(filename, model_id: str, gid: str, purpose: str):
     if "." not in filename:
         return False, {}
     extension = filename.rsplit(".", 1)[1].lower()
-    allowed_extensions, model_rule = _get_allowed_extensions_by_model(model_id)
+    allowed_extensions, model_rule = _get_allowed_extensions(model_id, gid, purpose)
     return extension in allowed_extensions, model_rule
 
 
@@ -638,9 +614,9 @@ async def _upload_file_core(
     else:
         file_auth_provider = current_provider
 
-    is_allowed, model_rule = allowed_file(file.filename, model_id)
+    is_allowed, model_rule = allowed_file(file.filename, model_id, gid, purpose)
     if not is_allowed:
-        allowed_extensions, _ = _get_allowed_extensions_by_model(model_id)
+        allowed_extensions, _ = _get_allowed_extensions(model_id, gid, purpose)
         allowed_types = []
         if model_rule.get("documents"):
             allowed_types.append("documents")
@@ -659,7 +635,7 @@ async def _upload_file_core(
         )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"File type not allowed for model '{model_id}'. Allowed types: {', '.join(allowed_types)}"
+            detail=f"File type not allowed for the current upload policy. Allowed types: {', '.join(allowed_types)}"
         )
 
     object_meta: dict[str, object] | None = None

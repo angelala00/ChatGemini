@@ -45,6 +45,7 @@ GPT_PROVIDER_SCOPE_GLOBAL = "global"
 REGULATION_GPT_ID = "regulationassistant"
 GPTASSISTANT_GPT_ID = "gptassistant"
 AGENT_RUNTIME_V3_HANDLER_KEY = "agent_runtime_v3"
+ALLOWED_AGENT_UPLOAD_TYPES = {"document", "image"}
 AGENT_RUNTIME_V3_CONFIG_FIELDS = {
     "enabled_capabilities",
     "runtime_limits",
@@ -463,9 +464,6 @@ def apply_admin_model_config_overrides(
             compat = dict(merged.get("compat") or {})
             compat["reasoning_parameter_format"] = reasoning_parameter_format
             merged["compat"] = compat
-        allowed_upload_types = admin_config.get("allowed_upload_types")
-        if isinstance(allowed_upload_types, list):
-            merged["upload_file_types"] = allowed_upload_types
         metadata = admin_config.get("metadata")
         if (
             isinstance(metadata, dict)
@@ -520,6 +518,12 @@ def apply_runtime_gpt_defaults(
     config: dict,
 ) -> dict:
     next_config = dict(config)
+    resolved_upload_types = _resolve_default_upload_file_types(next_config)
+    next_config["upload_file_types"] = resolved_upload_types
+    if "file_upload_enabled" in next_config:
+        next_config["file_upload_enabled"] = bool(next_config.get("file_upload_enabled"))
+    else:
+        next_config["file_upload_enabled"] = bool(resolved_upload_types)
     if "default_reasoning" in next_config:
         next_config["default_reasoning"] = bool(next_config.get("default_reasoning"))
     if "supports_reasoning" in next_config:
@@ -539,6 +543,38 @@ def _assistant_model_catalog(config: dict) -> list[dict]:
     models = config.get("models")
     base_models = models if isinstance(models, list) and models else _base_builtin_model_catalog()
     return apply_admin_model_config_overrides(GPTASSISTANT_GPT_ID, base_models)
+
+
+def _normalize_upload_file_types(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    items: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            continue
+        normalized = item.strip().lower()
+        if normalized and normalized in ALLOWED_AGENT_UPLOAD_TYPES and normalized not in items:
+            items.append(normalized)
+    return items
+
+
+def _resolve_default_upload_file_types(config: dict) -> list[str]:
+    explicit_types = _normalize_upload_file_types(config.get("upload_file_types"))
+    if explicit_types:
+        return explicit_types
+    if not config.get("file_upload_enabled", False):
+        return []
+
+    derived_types: list[str] = []
+    models = config.get("models")
+    if isinstance(models, list):
+        for item in models:
+            if not isinstance(item, dict):
+                continue
+            for upload_type in _normalize_upload_file_types(item.get("upload_file_types")):
+                if upload_type not in derived_types:
+                    derived_types.append(upload_type)
+    return derived_types or ["document", "image"]
 
 
 def _normalize_visible_model_ids(value: object) -> list[str]:
@@ -585,6 +621,29 @@ def normalize_visible_models(body: dict, base_config: dict | None = None) -> Non
         )
     if not preferred_model and visible_ids:
         body["default_model"] = visible_ids[0]
+
+
+def normalize_upload_file_types(body: dict, base_config: dict | None = None) -> None:
+    submitted = body.get("upload_file_types")
+    if submitted is None:
+        if base_config is not None:
+            body["upload_file_types"] = _resolve_default_upload_file_types(base_config)
+        else:
+            body["upload_file_types"] = ["document", "image"]
+        return
+    if not isinstance(submitted, list):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "upload_file_types must be a list")
+    invalid_items = [
+        item
+        for item in submitted
+        if not isinstance(item, str) or item.strip().lower() not in ALLOWED_AGENT_UPLOAD_TYPES
+    ]
+    if invalid_items:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"invalid upload_file_types: {', '.join(str(item) for item in invalid_items)}",
+        )
+    body["upload_file_types"] = _normalize_upload_file_types(submitted)
 
 
 def get_user_identity(user: dict) -> tuple[str, str]:
@@ -867,6 +926,7 @@ async def create_gpt(request: Request, user: dict = Depends(get_current_user)):
     body["owner"] = owner or user["sub"]
     body["admins"] = admins
     body["viewers"] = viewers
+    normalize_upload_file_types(body)
     normalize_preferred_model(body)
     normalize_visible_models(body)
     body["models"] = _assistant_model_catalog(body)
@@ -938,6 +998,7 @@ async def update_gpt(gid: str, request: Request, user: dict = Depends(get_curren
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "samples must be list of strings")
     if len(samples) > MAX_SAMPLES:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "samples limit exceeded")
+    normalize_upload_file_types(body, existing_config)
     normalize_preferred_model(body)
     normalize_visible_models(body, existing_config)
     body["models"] = _assistant_model_catalog(body)

@@ -52,9 +52,26 @@ interface SidebarProps {
     readonly onSwitchTheme: (theme: "light" | "dark" | "system") => void;
 }
 
-const APP_VERSION = "v2.0.0";
+const APP_VERSION = "v2.1.0";
 
 const releaseHistory = [
+    {
+        version: "v2.1.0",
+        date: "2026.06",
+        type: "minor",
+        zhTitle: "智能体级上传类型与模型图片能力拆分",
+        zhChanges: [
+            "智能体创建与编辑页新增允许上传类型配置，上传策略不再绑定到后台模型配置。",
+            "模型配置继续保留是否支持原生图片输入，用于决定是否直接传图或走附件读取/图片提取回退链路。",
+            "聊天上传校验改为优先读取智能体配置，知识文件与资料库上传继续保持文档类型约束。",
+        ],
+        enTitle: "Agent-level Upload Types and Model Image Capability Split",
+        enChanges: [
+            "Agent creation and editing now configure allowed upload types, and upload policy is no longer bound to admin model settings.",
+            "Model config still owns native image input support to decide whether images are sent directly or handled through attachment/OCR fallback paths.",
+            "Chat upload validation now reads agent policy first, while knowledge and library uploads remain document-only.",
+        ],
+    },
     {
         version: "v2.0.0",
         date: "2026.06",

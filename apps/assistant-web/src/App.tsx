@@ -268,6 +268,7 @@ const App = () => {
 
 
     const [fileUploadEnabled, setFileUploadEnabled] = useState(false);
+    const [modelUploadTypes, setModelUploadTypes] = useState<UploadCategory[] | undefined>(undefined);
     const [models, setModels] = useState<ModelOption[] | undefined>(undefined);
     const [serverDefaultModel, setServerDefaultModel] = useState("");
     const [defaultModel, setDefaultModel] = useState("");
@@ -546,7 +547,7 @@ const App = () => {
     const reasoningAvailable = !!resolvedModelOption?.supportsReasoning;
     //const reasoningAvailable = false
     const effectiveReasoningEnabled = reasoningAvailable && selectedReasoningEnabled;
-    const resolvedUploadCategories = resolvedModelOption?.uploadFileTypes;
+    const resolvedUploadCategories = modelUploadTypes;
     function encodeBase64(text: string) {
         try {
             // return btoa(text);
@@ -1522,6 +1523,13 @@ const App = () => {
                 if (response.ok) {
                     response.json().then(data => {
                         setFileUploadEnabled(data.file_upload_enabled)
+                        setModelUploadTypes(
+                            Array.isArray(data.upload_file_types)
+                                ? data.upload_file_types.filter((type: unknown): type is UploadCategory =>
+                                    type === "document" || type === "image",
+                                )
+                                : undefined,
+                        )
                         setServerDefaultModel(
                             typeof data.default_model === "string"
                                 ? data.default_model
@@ -1532,25 +1540,14 @@ const App = () => {
                                 ? data.default_reasoning
                                 : null,
                         )
-                        const defaultUploadTypes: UploadCategory[] | undefined = Array.isArray(data.upload_file_types)
-                            ? data.upload_file_types.filter((type: unknown): type is UploadCategory =>
-                                type === "document" || type === "image",
-                            )
-                            : undefined
                         const normalizedModels: ModelOption[] | undefined = Array.isArray(data.models)
                             ? data.models.reduce(
                                 (acc: ModelOption[], item: any) => {
                                     if (item && typeof item.id === "string" && typeof item.name === "string") {
-                                        const uploadTypes: UploadCategory[] | undefined = Array.isArray(item.upload_file_types)
-                                            ? item.upload_file_types.filter((type: unknown): type is UploadCategory =>
-                                                type === "document" || type === "image",
-                                            )
-                                            : defaultUploadTypes
                                         acc.push({
                                             id: item.id,
                                             name: item.name,
                                             description: typeof item.description === "string" ? item.description : "",
-                                            uploadFileTypes: uploadTypes,
                                             supportsReasoning: typeof item.supports_reasoning === "boolean"
                                                 ? item.supports_reasoning
                                                 : undefined,

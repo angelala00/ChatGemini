@@ -75,6 +75,8 @@
 - **制度助手执行器**：数据库仅保存可序列化的 `handler_key=kernel_regulation`；后端聊天路由通过执行器 registry 将其解析为 `chat_with_kernel_regulation`，不从数据库保存或读取 Python 函数。
 - **制度目录一致性**：`document_catalog.json` 可保留人工维护的目录描述，但制度助手读取目录时会用当前 `file_mapping` 中的 `assistant_knowledge` 文件校准条目，移除已删除文件并补入新增文件，确保后续正文读取使用真实文件名。
 - **统一模型配置语义**：`admin_model_configs` 是全局模型目录的权威来源，未登记或已禁用的模型不会进入任何智能体的模型清单；各智能体再通过自身配置中的 `visible_model_ids` 与 `default_model` 控制实际可见范围和默认模型，`gptassistant` 不再依赖后台 feature flag 保存这些默认值。
+- **上传策略归属**：聊天附件允许上传的类型由智能体配置 `upload_file_types` 决定，属于智能体交互策略；后台模型配置不再作为上传类型策略源。
+- **图片能力归属**：模型是否支持原生图片输入继续由 `supports_native_image_input` 表达；支持时直接把图片作为 `ImageContent` 送入模型，不支持时通过附件读取工具或 OCR/VL 提取结果回退到文本链路。
 - **智能体入口可见性**：`gpts_feature_enabled` 只控制 GPTs 总开关；“更多智能体”入口对谁可见由管理员配置中的 `gpts_visible_scope` 与 `gpts_visible_users` 决定。运行时优先读取 DB 配置，未配置时才兼容回退到 `GPTS_WHITE_LIST`。
 - **资料库入口可见性**：个人资料库入口使用独立的 `library_feature_enabled`、`library_visible_scope`、`library_visible_users` 配置；不要复用 GPTs 白名单语义。
 - **可见性策略抽象**：GPTs 与资料库入口这类“开关 + scope + users (+ fallback)”规则，统一收敛到 `app/admin/visibility_policy.py`，新增同类型入口时优先复用，不要在路由里重复手写。

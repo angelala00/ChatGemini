@@ -16,6 +16,7 @@ import { Container } from "../components/Container";
 import { Topbar } from "../components/Topbar";
 import { getFullPath } from "../helpers/getDomainAndPath";
 import { handleRequest } from "../helpers/handleRequest";
+import { UploadCategory } from "../types/models";
 
 interface KnowledgeFile {
     readonly file_id: string;
@@ -156,6 +157,7 @@ const CreateGpt = ({ onToggleSidebar, sidebarExpand }: CreateGptProps) => {
     const [modelsLoaded, setModelsLoaded] = useState(false);
     const [availableCapabilities, setAvailableCapabilities] = useState<AvailableCapability[]>([]);
     const [enabledCapabilityIds, setEnabledCapabilityIds] = useState<string[]>([]);
+    const [uploadFileTypes, setUploadFileTypes] = useState<UploadCategory[]>(["document", "image"]);
     const [capabilitiesLoaded, setCapabilitiesLoaded] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const [message, setMessage] = useState("");
@@ -213,6 +215,14 @@ const CreateGpt = ({ onToggleSidebar, sidebarExpand }: CreateGptProps) => {
                     setVisibleModelIds(normalizeModelIds(data.visible_model_ids, nextModels));
                 } else if (Array.isArray(nextModels)) {
                     setVisibleModelIds(nextModels.map((item: AvailableModel) => item.id).filter(Boolean));
+                }
+                if (Array.isArray(data.upload_file_types)) {
+                    setUploadFileTypes(
+                        data.upload_file_types.filter(
+                            (item: unknown): item is UploadCategory =>
+                                item === "document" || item === "image",
+                        ),
+                    );
                 }
                 const sampleData = data.samples ?? [];
                 setSamples(sampleData.length ? [...sampleData, ""] : [""]);
@@ -340,6 +350,7 @@ const CreateGpt = ({ onToggleSidebar, sidebarExpand }: CreateGptProps) => {
             system_prompt: systemPrompt,
             default_model: nextPreferredModel,
             visible_model_ids: normalizedVisibleModelIds,
+            upload_file_types: uploadFileTypes,
             enabled_capabilities: enabledCapabilityIds.filter((id) =>
                 availableCapabilities.some((capability) => capability.id === id),
             ),
@@ -448,6 +459,14 @@ const CreateGpt = ({ onToggleSidebar, sidebarExpand }: CreateGptProps) => {
             current.includes(capabilityId)
                 ? current.filter((item) => item !== capabilityId)
                 : [...current, capabilityId],
+        );
+    };
+
+    const toggleUploadType = (uploadType: UploadCategory) => {
+        setUploadFileTypes((current) =>
+            current.includes(uploadType)
+                ? current.filter((item) => item !== uploadType)
+                : [...current, uploadType],
         );
     };
 
@@ -730,6 +749,37 @@ const CreateGpt = ({ onToggleSidebar, sidebarExpand }: CreateGptProps) => {
                                     </p>
                                 )
                             )}
+                            <div className="mt-5 border-t border-[var(--assist-line)] pt-5">
+                                <div className="mb-2">
+                                    <h3 className="text-sm font-semibold">
+                                        {t("views.CreateGpt.upload_types_label")}
+                                    </h3>
+                                    <p className="mt-1 text-xs text-[var(--assist-text-faint)]">
+                                        {t("views.CreateGpt.upload_types_description")}
+                                    </p>
+                                </div>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                    {(["document", "image"] as UploadCategory[]).map((type) => {
+                                        const selected = uploadFileTypes.includes(type);
+                                        return (
+                                            <button
+                                                key={type}
+                                                type="button"
+                                                onClick={() => toggleUploadType(type)}
+                                                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                                                    selected
+                                                        ? "border-[var(--assist-accent)] bg-[var(--assist-accent-soft)] text-[var(--assist-accent-strong)]"
+                                                        : "border-[var(--assist-line)] bg-white text-[var(--assist-text-faint)] hover:border-[var(--assist-line-strong)] hover:text-[var(--assist-text)]"
+                                                }`}
+                                            >
+                                                {type === "document"
+                                                    ? t("views.CreateGpt.upload_type_document")
+                                                    : t("views.CreateGpt.upload_type_image")}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
                         </section>
 
                         <section className="rounded-[24px] border border-[var(--assist-line)] bg-[rgba(252,253,254,0.92)] p-5 shadow-[var(--assist-shadow-sm)]">
