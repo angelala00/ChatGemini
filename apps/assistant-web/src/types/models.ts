@@ -6,4 +6,5 @@ export interface ModelOption {
     description: string;
     uploadFileTypes?: UploadCategory[];
     supportsReasoning?: boolean;
+    reasoningDefaultEnabled?: boolean;
 }

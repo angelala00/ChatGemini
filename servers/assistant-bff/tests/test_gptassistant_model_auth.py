@@ -1110,6 +1110,69 @@ class GPTSPinnedAccessTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(models, [])
 
+    def test_reasoning_resolution_falls_back_to_model_default(self):
+        reasoning_enabled = chat_routes._resolve_reasoning_enabled(
+            None,
+            {"system_prompt": "You are helpful."},
+            {
+                "id": "qwen-3.6",
+                "model_name": "qwen-3.6",
+                "supports_reasoning": True,
+                "reasoning_default_enabled": False,
+            },
+            "custom-gpt",
+        )
+
+        self.assertFalse(reasoning_enabled)
+
+    def test_reasoning_resolution_prefers_assistant_default_over_model_default(self):
+        reasoning_enabled = chat_routes._resolve_reasoning_enabled(
+            None,
+            {
+                "system_prompt": "You are helpful.",
+                "default_reasoning": False,
+            },
+            {
+                "id": "qwen-3.6",
+                "model_name": "qwen-3.6",
+                "supports_reasoning": True,
+                "reasoning_default_enabled": True,
+            },
+            "custom-gpt",
+        )
+
+        self.assertFalse(reasoning_enabled)
+
+    def test_reasoning_resolution_is_blocked_by_model_or_assistant_support(self):
+        blocked_by_model = chat_routes._resolve_reasoning_enabled(
+            True,
+            {"system_prompt": "You are helpful."},
+            {
+                "id": "plain-model",
+                "model_name": "plain-model",
+                "supports_reasoning": False,
+                "reasoning_default_enabled": True,
+            },
+            "custom-gpt",
+        )
+        blocked_by_assistant = chat_routes._resolve_reasoning_enabled(
+            True,
+            {
+                "system_prompt": "You are helpful.",
+                "supports_reasoning": False,
+            },
+            {
+                "id": "qwen-3.6",
+                "model_name": "qwen-3.6",
+                "supports_reasoning": True,
+                "reasoning_default_enabled": True,
+            },
+            "custom-gpt",
+        )
+
+        self.assertFalse(blocked_by_model)
+        self.assertFalse(blocked_by_assistant)
+
     async def test_gptassistant_default_reasoning_comes_from_gpt_config(self):
         assistant_config = {
             "system_prompt": "You are helpful.",

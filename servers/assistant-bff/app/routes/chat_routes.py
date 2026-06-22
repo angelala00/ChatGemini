@@ -6,7 +6,7 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 from app.auth.auth_routes import GLOBAL_AUTH_PROVIDER, get_current_auth_provider, get_current_user
 from app.storage.business_store import (
@@ -42,6 +42,10 @@ from app.chat_service import (
 )
 from app.chat_kernel_service import chat_with_kernel_gptassistant
 from app.chat_kernel_service import KERNEL_HISTORY_PREFIX
+from app.agent_runtime_v3_service import (
+    chat_with_agent_runtime_v3,
+    history_key as agent_runtime_v3_history_key,
+)
 from app.chat_kernel_regulation_service import (
     KERNEL_HISTORY_PREFIX as REGULATION_KERNEL_HISTORY_PREFIX,
     chat_with_kernel_regulation,
@@ -51,8 +55,10 @@ from app.metrics.events import create_usage_event
 from app.tracing import create_chat_trace
 
 REGULATION_HANDLER_KEY = "kernel_regulation"
+AGENT_RUNTIME_V3_HANDLER_KEY = "agent_runtime_v3"
 CHAT_HANDLER_REGISTRY = {
     REGULATION_HANDLER_KEY: chat_with_kernel_regulation,
+    AGENT_RUNTIME_V3_HANDLER_KEY: chat_with_agent_runtime_v3,
 }
 
 
@@ -105,6 +111,17 @@ def _merge_tool_file_ids(
             file_ids.append(file_id)
     normalized = list(dict.fromkeys(file_ids))
     return ",".join(normalized) or None
+
+
+def _assistant_knowledge_file_ids(gid: str, user: dict) -> Optional[str]:
+    current_provider = get_current_auth_provider(user)
+    file_ids = [
+        file_id
+        for file_id, entry in list_file_mappings(gid).items()
+        if entry.get("purpose") == "assistant_knowledge"
+        and entry.get("authProvider") in {current_provider, GLOBAL_AUTH_PROVIDER}
+    ]
+    return ",".join(dict.fromkeys(file_ids)) or None
 
 
 def _get_handler_key(assistant_config: dict) -> str:
@@ -245,6 +262,7 @@ class QueryRequest(BaseModel):
     model: str = None
     base_model: str = None
     reasoning_enabled: Optional[bool] = None
+    confirmed_action_tokens: list[str] = Field(default_factory=list)
 
 
 class SessionTitleUpdateRequest(BaseModel):
@@ -295,6 +313,8 @@ def _runtime_history_key(conversation_id: str, gid: str) -> str:
     if gid == "gptassistant":
         return f"{KERNEL_HISTORY_PREFIX}{conversation_id}"
     assistant_config = gpts.get(gid, {})
+    if _get_handler_key(assistant_config) == AGENT_RUNTIME_V3_HANDLER_KEY:
+        return agent_runtime_v3_history_key(gid, conversation_id)
     if _is_regulation_assistant(gid, assistant_config):
         return f"{REGULATION_KERNEL_HISTORY_PREFIX}{conversation_id}"
     if gpts.get(gid, {}).get("owner"):
@@ -662,6 +682,46 @@ def _resolve_default_reasoning(assistant_config: dict, gid: str) -> bool:
     return bool(runtime_config.get("default_reasoning", True))
 
 
+def _resolve_assistant_reasoning_support(assistant_config: dict, gid: str) -> bool:
+    runtime_config = apply_runtime_gpt_defaults(gid, assistant_config)
+    if "supports_reasoning" not in runtime_config:
+        return True
+    return bool(runtime_config.get("supports_reasoning"))
+
+
+def _resolve_assistant_default_reasoning(
+    assistant_config: dict,
+    gid: str,
+) -> Optional[bool]:
+    runtime_config = apply_runtime_gpt_defaults(gid, assistant_config)
+    if "default_reasoning" not in runtime_config:
+        return None
+    return bool(runtime_config.get("default_reasoning"))
+
+
+def _resolve_reasoning_enabled(
+    request_reasoning_enabled: Optional[bool],
+    assistant_config: dict,
+    selected_model_config: dict,
+    gid: str,
+) -> bool:
+    if not selected_model_config.get("supports_reasoning", False):
+        return False
+    if not _resolve_assistant_reasoning_support(assistant_config, gid):
+        return False
+    if request_reasoning_enabled is not None:
+        return bool(request_reasoning_enabled)
+
+    assistant_default = _resolve_assistant_default_reasoning(assistant_config, gid)
+    if assistant_default is not None:
+        return assistant_default
+
+    model_default = selected_model_config.get("reasoning_default_enabled")
+    if isinstance(model_default, bool):
+        return model_default
+    return False
+
+
 @router.post("/chat")
 async def chat_with_gpt_assistant(request: QueryRequest, user: dict = Depends(get_current_user)):
     gpt_logger.info(f"path=chat_with_gpt user={user['email']} at={time.strftime('%Y-%m-%d %H:%M:%S')}")
@@ -691,13 +751,12 @@ async def chat_with_gpt_assistant(request: QueryRequest, user: dict = Depends(ge
     if not selected_model_config:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "no available models")
     model_name = selected_model_config.get("model_name") or selected_model_config.get("id")
-    reasoning_enabled = (
-        bool(request.reasoning_enabled)
-        if request.reasoning_enabled is not None
-        else _resolve_default_reasoning(assistant_config, "gptassistant")
+    reasoning_enabled = _resolve_reasoning_enabled(
+        request.reasoning_enabled,
+        assistant_config,
+        selected_model_config,
+        "gptassistant",
     )
-    if not selected_model_config.get("supports_reasoning", False):
-        reasoning_enabled = False
     upload_count = _count_file_ids(request.file_ids)
     tracker = create_usage_event(
         user_id=user.get("sub", "unknown"),
@@ -802,13 +861,12 @@ async def chat_with_gpt_assistant_v2(request: QueryRequest, user: dict = Depends
     if not selected_model_config:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "no available models")
 
-    reasoning_enabled = (
-        bool(request.reasoning_enabled)
-        if request.reasoning_enabled is not None
-        else _resolve_default_reasoning(assistant_config, "gptassistant")
+    reasoning_enabled = _resolve_reasoning_enabled(
+        request.reasoning_enabled,
+        assistant_config,
+        selected_model_config,
+        "gptassistant",
     )
-    if not selected_model_config.get("supports_reasoning", False):
-        reasoning_enabled = False
 
     model_name = selected_model_config.get("model_name") or selected_model_config.get("id")
     upload_count = _count_file_ids(request.file_ids)
@@ -905,13 +963,12 @@ async def chat_with_gpts(request: QueryRequest, gid: str, user: dict = Depends(g
         if not selected_model_config:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "no available models")
 
-        reasoning_enabled = (
-            bool(request.reasoning_enabled)
-            if request.reasoning_enabled is not None
-            else bool(assistant_config.get("default_reasoning", False))
+        reasoning_enabled = _resolve_reasoning_enabled(
+            request.reasoning_enabled,
+            assistant_config,
+            selected_model_config,
+            gid,
         )
-        if not selected_model_config.get("supports_reasoning", False):
-            reasoning_enabled = False
 
         tracker = create_usage_event(
             user_id=user.get("sub", "unknown"),
@@ -972,7 +1029,69 @@ async def chat_with_gpts(request: QueryRequest, gid: str, user: dict = Depends(g
             _stream_with_session_client_history(generator, cid, gid),
             media_type="text/event-stream",
         )
-    if not assistant_config.get("owner"):
+    if _get_handler_key(assistant_config) == AGENT_RUNTIME_V3_HANDLER_KEY:
+        requested_model = request.base_model or request.model
+        preferred_model = assistant_config.get("default_model")
+        selected_model_config = await _get_gid_model_config(
+            "gptassistant",
+            requested_model,
+            user_email=user["email"],
+            user_id=user.get("sub"),
+            fallback_model=preferred_model,
+        )
+        if not selected_model_config:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "no available models")
+        reasoning_enabled = _resolve_reasoning_enabled(
+            request.reasoning_enabled,
+            assistant_config,
+            selected_model_config,
+            gid,
+        )
+        model_name = selected_model_config.get("model_name") or selected_model_config.get("id")
+        tracker = create_usage_event(
+            user_id=user.get("sub", "unknown"),
+            user_email=user.get("email"),
+            conversation_id=cid,
+            gid=gid,
+            requested_model=requested_model or preferred_model or model_name,
+            upload_count=_count_file_ids(request.file_ids),
+        )
+        trace_recorder = create_chat_trace(
+            user_id=user.get("sub", "unknown"),
+            user_email=user.get("email"),
+            conversation_id=cid,
+            gid=gid,
+            route=f"/api/{gid}/chat-messages",
+            requested_model=requested_model or preferred_model or model_name,
+            selected_model=model_name,
+            reasoning_enabled=reasoning_enabled,
+            query=request.query,
+            system_prompt=assistant_config["system_prompt"],
+            file_ids=request.file_ids,
+            request_payload=_dump_model(request),
+        )
+        generator = chat_with_agent_runtime_v3(
+            request.query,
+            cid,
+            assistant_config,
+            selected_model_config,
+            gid,
+            user,
+            attachment_file_ids=request.file_ids,
+            knowledge_file_ids=_assistant_knowledge_file_ids(gid, user),
+            confirmed_action_tokens=request.confirmed_action_tokens,
+            reasoning_enabled=reasoning_enabled,
+            usage_tracker=tracker,
+            trace_recorder=trace_recorder,
+        )
+        return StreamingResponse(
+            _stream_with_session_client_history(generator, cid, gid),
+            media_type="text/event-stream",
+        )
+    # Keep the legacy engine only for older builtin assistants that still rely on
+    # historical chat_function wiring. New custom agents use v3 above; existing
+    # custom configurations continue through their original compatibility path.
+    if gid in BUILTIN_GIDS and not assistant_config.get("owner"):
         system_prompt = assistant_config["system_prompt"]
         model_name = assistant_config.get("model_name", MODEL_NAME_THINKING)
         user_prompt = request.query

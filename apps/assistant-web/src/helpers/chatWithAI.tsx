@@ -117,6 +117,9 @@ const renderFriendlyToolCallMessage = (toolCall: any) => {
 const renderFriendlyToolResultMessage = (event: any) => {
     const toolName = event.tool_name ?? "";
     if (event.is_error) {
+        if (event.details?.error?.code === "CONFIRMATION_REQUIRED") {
+            return `工具 ${toolName || "unknown_tool"} 需要你确认后才能执行。`;
+        }
         return `工具调用失败：${toolName || "unknown_tool"}。`;
     }
     if (FRIENDLY_ATTACHMENT_LIST_TOOLS.has(toolName)) {
@@ -297,23 +300,34 @@ const handleKernelEvent = (
     }
 };
 
+interface PendingCapabilityConfirmation {
+    readonly token: string;
+    readonly capabilityId: string;
+    readonly risk: string;
+    readonly conversationId: string;
+}
+
 const read = async (
     reader: any,
     decoder: TextDecoder,
     onChatMessage: (message: string, end: boolean, conversationId: string) => void,
-) => {
+): Promise<PendingCapabilityConfirmation | null> => {
     let buffer = "";
     const kernelState = { toolStepOpen: false };
+    let pendingConfirmation: PendingCapabilityConfirmation | null = null;
     try {
         while (true) {
             const result = await reader?.read();
             if (!result || result.done) {
+                if (pendingConfirmation) {
+                    return pendingConfirmation;
+                }
                 if (kernelState.toolStepOpen) {
                     onChatMessage("</think>\n\n", false, "");
                     kernelState.toolStepOpen = false;
                 }
                 onChatMessage("", true, "");
-                return;
+                return null;
             }
             buffer += decoder.decode(result.value, { stream: true });
             const lines = buffer.split("\n");
@@ -329,6 +343,34 @@ const read = async (
                     continue;
                 }
                 if (isKernelEvent(payload)) {
+                    if (
+                        payload.event === "tool_result" &&
+                        payload.details?.error?.code === "CONFIRMATION_REQUIRED" &&
+                        typeof payload.details?.error?.details?.confirmation_token === "string"
+                    ) {
+                        pendingConfirmation = {
+                            token: payload.details.error.details.confirmation_token,
+                            capabilityId: payload.details.error.details.capability_id ?? payload.tool_name ?? "",
+                            risk: payload.details.error.details.risk ?? "high",
+                            conversationId: payload.conversation_id ?? "",
+                        };
+                    }
+                    if (payload.event === "response_complete" && pendingConfirmation) {
+                        continue;
+                    }
+                    if (
+                        pendingConfirmation &&
+                        [
+                            "thinking_start",
+                            "thinking_delta",
+                            "thinking_end",
+                            "text_start",
+                            "text_delta",
+                            "text_end",
+                        ].includes(payload.event)
+                    ) {
+                        continue;
+                    }
                     handleKernelEvent(payload, onChatMessage, kernelState);
                 } else if (isLegacyEvent(payload)) {
                     handleLegacyEvent(payload, onChatMessage);
@@ -338,7 +380,7 @@ const read = async (
     } catch (err: any) {
         if (err.name === "AbortError") {
             console.log("user aborted");
-            return;
+            return null;
         }
         throw err;
     }
@@ -352,7 +394,7 @@ export const chatWithAI = (
     gid: string,
     onChatMessage: (message: string, end: boolean, conversationId: string) => void,
     selectedModel: string,
-    reasoningEnabled: boolean,
+    reasoningEnabled?: boolean,
 ) => {
     const controller = new AbortController();
     const TypeWriterEffectThreshold = 30;
@@ -368,39 +410,52 @@ export const chatWithAI = (
             // } else {
             //     // console.log("没有上传文件")
             // }
-            const data = {
-                inputs: {},
-                file_ids: inlineData?.data,
-                query: prompts,
-                user: "user-abc-0987654321",
-                response_mode: "streaming",
-                conversation_id: conversationId,
-                base_model: selectedModel,
-                reasoning_enabled: reasoningEnabled,
-            };
-
-            let streamCb = function(chatResponse: any) {
-                const reader = chatResponse.body?.getReader();
-                const decoder = new TextDecoder("utf-8");
-                read(reader, decoder, onChatMessage);
-            }
             // console.log("gid:"+gid)
             let path = useGptAssistantV2() ? "/api/chat-v2" : "/api/chat"
             if (gid && gid !== "gptassistant") {
                 path = "/api/" + gid + "/chat-messages"
             }
-            let chatResponse;
-            try {
-                chatResponse = await handleStreamingRequest('POST', getFullPath(path), JSON.stringify(data), {
-                    'Content-Type': 'application/json'
-                },streamCb, controller.signal);
-                // 处理响应数据
-                // console.log('请求成功:', chatResponse);
-            } catch (error) {
-                // 处理其他错误
-                console.error('请求失败:', error);
-                throw new Error(`请求失败：error`);
-            }
+            const sendRequest = async (confirmedActionTokens: string[]): Promise<void> => {
+                const data = {
+                    inputs: {},
+                    file_ids: inlineData?.data,
+                    query: prompts,
+                    user: "user-abc-0987654321",
+                    response_mode: "streaming",
+                    conversation_id: conversationId,
+                    base_model: selectedModel,
+                    confirmed_action_tokens: confirmedActionTokens,
+                    ...(typeof reasoningEnabled === "boolean"
+                        ? { reasoning_enabled: reasoningEnabled }
+                        : {}),
+                };
+                let readPromise: Promise<PendingCapabilityConfirmation | null> = Promise.resolve(null);
+                try {
+                    await handleStreamingRequest('POST', getFullPath(path), JSON.stringify(data), {
+                        'Content-Type': 'application/json'
+                    }, (chatResponse: any) => {
+                        const reader = chatResponse.body?.getReader();
+                        const decoder = new TextDecoder("utf-8");
+                        readPromise = read(reader, decoder, onChatMessage);
+                    }, controller.signal);
+                    const pendingConfirmation = await readPromise;
+                    if (!pendingConfirmation) {
+                        return;
+                    }
+                    const accepted = window.confirm(
+                        `智能体请求执行高风险能力 ${pendingConfirmation.capabilityId}，是否确认继续？`,
+                    );
+                    if (!accepted) {
+                        onChatMessage("", true, pendingConfirmation.conversationId);
+                        return;
+                    }
+                    await sendRequest([...confirmedActionTokens, pendingConfirmation.token]);
+                } catch (error) {
+                    console.error('请求失败:', error);
+                    throw new Error(`请求失败：error`);
+                }
+            };
+            await sendRequest([]);
             // const reader = chatResponse.body?.getReader();
             // const decoder = new TextDecoder('utf-8');
             // let buffer = ''

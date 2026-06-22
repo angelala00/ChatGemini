@@ -272,7 +272,7 @@ const App = () => {
     const [serverDefaultModel, setServerDefaultModel] = useState("");
     const [defaultModel, setDefaultModel] = useState("");
     const [selectedModel, setSelectedModel] = useState("");
-    const [serverDefaultReasoning, setServerDefaultReasoning] = useState(true);
+    const [serverDefaultReasoning, setServerDefaultReasoning] = useState<boolean | null>(null);
     const [selectedReasoningEnabled, setSelectedReasoningEnabled] = useState(true);
     const [pendingManualModel, setPendingManualModel] = useState<string | null>(
         null,
@@ -1530,7 +1530,7 @@ const App = () => {
                         setServerDefaultReasoning(
                             typeof data.default_reasoning === "boolean"
                                 ? data.default_reasoning
-                                : true,
+                                : null,
                         )
                         const defaultUploadTypes: UploadCategory[] | undefined = Array.isArray(data.upload_file_types)
                             ? data.upload_file_types.filter((type: unknown): type is UploadCategory =>
@@ -1554,6 +1554,10 @@ const App = () => {
                                             supportsReasoning: typeof item.supports_reasoning === "boolean"
                                                 ? item.supports_reasoning
                                                 : undefined,
+                                            reasoningDefaultEnabled:
+                                                typeof item.reasoning_default_enabled === "boolean"
+                                                    ? item.reasoning_default_enabled
+                                                    : undefined,
                                         })
                                     }
                                     return acc
@@ -1634,8 +1638,18 @@ const App = () => {
             return;
         }
 
-        setSelectedReasoningEnabled(serverDefaultReasoning);
-    }, [id, serverDefaultReasoning, sessionExtensions]);
+        if (typeof serverDefaultReasoning === "boolean") {
+            setSelectedReasoningEnabled(serverDefaultReasoning);
+            return;
+        }
+
+        const resolvedReasoningDefault = resolvedModelOption?.reasoningDefaultEnabled;
+        setSelectedReasoningEnabled(
+            typeof resolvedReasoningDefault === "boolean"
+                ? resolvedReasoningDefault
+                : false,
+        );
+    }, [id, resolvedModelOption, serverDefaultReasoning, sessionExtensions]);
 
     useEffect(() => {
         // console.log("====="+hasLogined)

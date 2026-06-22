@@ -138,10 +138,6 @@ const Chat = (props: RouterComponentProps) => {
             if (sessionExtension && sessionExtension["selectedModel"]) {
                 selectedModel = sessionExtension["selectedModel"]
             }
-            const reasoningEnabled =
-                typeof sessionExtension?.reasoningEnabled === "boolean"
-                    ? sessionExtension.reasoningEnabled
-                    : true;
             const {start, abort} = chatWithAI(
                 _sessions[id].slice(0, index - 1),
                 _sessions[id][index - 1].parts,
@@ -152,7 +148,7 @@ const Chat = (props: RouterComponentProps) => {
                 gid,
                 handler,
                 selectedModel,
-                reasoningEnabled,
+                sessionExtension?.reasoningEnabled,
             );
             onAbortUpdate(abort)
             void start()

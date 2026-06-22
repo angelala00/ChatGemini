@@ -109,10 +109,6 @@ const GptAssistantChat = (props: RouterComponentProps) => {
             const conversationId =
                 sessionExtension?.conversationId || (id in mappings ? mappings[id] : "");
             const selectedModel = sessionExtension?.selectedModel ?? "";
-            const reasoningEnabled =
-                typeof sessionExtension?.reasoningEnabled === "boolean"
-                    ? sessionExtension.reasoningEnabled
-                    : true;
             const { start, abort } = chatWithAI(
                 nextSessions[id].slice(0, index - 1),
                 nextSessions[id][index - 1].parts,
@@ -122,7 +118,7 @@ const GptAssistantChat = (props: RouterComponentProps) => {
                 "gptassistant",
                 handler,
                 selectedModel,
-                reasoningEnabled,
+                sessionExtension?.reasoningEnabled,
             );
             onAbortUpdate?.(abort);
             void start();

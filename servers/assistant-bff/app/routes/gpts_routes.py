@@ -2,6 +2,11 @@ import time
 import uuid
 from typing import Tuple, Optional
 from fastapi import APIRouter, Request, Depends, HTTPException, status
+from app.agent_runtime_v3 import (
+    DEFAULT_AGENT_CAPABILITY_IDS,
+    AgentDefinition,
+    list_agent_capabilities,
+)
 from app.admin.access_control import (
     is_gpts_feature_visible_to_user,
     resolve_user_permissions,
@@ -39,8 +44,50 @@ GPT_PROVIDER_SCOPE_PROVIDER = "provider"
 GPT_PROVIDER_SCOPE_GLOBAL = "global"
 REGULATION_GPT_ID = "regulationassistant"
 GPTASSISTANT_GPT_ID = "gptassistant"
+AGENT_RUNTIME_V3_HANDLER_KEY = "agent_runtime_v3"
+AGENT_RUNTIME_V3_CONFIG_FIELDS = {
+    "enabled_capabilities",
+    "runtime_limits",
+    "context_policy",
+}
 
 GPTS_WHITE_LIST = model_config.GPTS_WHITE_LIST
+
+
+def _validate_agent_runtime_v3_config(gid: str, config: dict) -> None:
+    if not AGENT_RUNTIME_V3_CONFIG_FIELDS.intersection(config):
+        return
+    try:
+        definition = AgentDefinition.from_config(gid, config)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    available_ids = {item["id"] for item in list_agent_capabilities()}
+    unknown_ids = sorted(set(definition.enabled_capability_ids).difference(available_ids))
+    if unknown_ids:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"unknown enabled_capabilities: {', '.join(unknown_ids)}",
+        )
+
+
+def _apply_new_agent_runtime_defaults(config: dict) -> None:
+    config["assistant_kind"] = "custom"
+    config["handler_key"] = AGENT_RUNTIME_V3_HANDLER_KEY
+    config.setdefault("enabled_capabilities", list(DEFAULT_AGENT_CAPABILITY_IDS))
+    config.setdefault(
+        "runtime_limits",
+        {"max_steps": 4, "max_capability_calls": 8},
+    )
+    config.setdefault(
+        "context_policy",
+        {
+            "include_history": True,
+            "include_history_summary": True,
+            "allow_attachments": True,
+            "allow_knowledge": True,
+            "max_history_messages": 20,
+        },
+    )
 
 
 def is_gpts_feature_allowed(user: dict) -> bool:
@@ -473,7 +520,10 @@ def apply_runtime_gpt_defaults(
     config: dict,
 ) -> dict:
     next_config = dict(config)
-    next_config["default_reasoning"] = bool(next_config.get("default_reasoning", True))
+    if "default_reasoning" in next_config:
+        next_config["default_reasoning"] = bool(next_config.get("default_reasoning"))
+    if "supports_reasoning" in next_config:
+        next_config["supports_reasoning"] = bool(next_config.get("supports_reasoning"))
     return next_config
 
 
@@ -565,6 +615,16 @@ async def get_available_gpt_models(
 ):
     ensure_gpts_manage_allowed(user)
     return await resolve_available_gpt_models(user, gid=gid)
+
+
+@router.get("/gpts/capabilities")
+async def get_available_gpt_capabilities(user: dict = Depends(get_current_user)):
+    ensure_gpts_manage_allowed(user)
+    return {
+        "items": list_agent_capabilities(),
+        "default_enabled": list(DEFAULT_AGENT_CAPABILITY_IDS),
+        "runtime_version": "v3",
+    }
 
 
 @router.get("/gpts")
@@ -790,6 +850,7 @@ async def create_gpt(request: Request, user: dict = Depends(get_current_user)):
         gid = uuid.uuid4().hex
     body["gid"] = gid
     body["owner"] = user['sub']
+    _apply_new_agent_runtime_defaults(body)
     current_provider = get_current_auth_provider(user)
     provider_scope = _normalize_provider_scope(body.get("provider_scope") or GPT_PROVIDER_SCOPE_PROVIDER)
     body["provider_scope"] = provider_scope
@@ -809,6 +870,7 @@ async def create_gpt(request: Request, user: dict = Depends(get_current_user)):
     normalize_preferred_model(body)
     normalize_visible_models(body)
     body["models"] = _assistant_model_catalog(body)
+    _validate_agent_runtime_v3_config(gid, body)
     insert_custom_gpt(gid, body)
     refresh_gpts()
     return {"gid": gid}
@@ -879,6 +941,7 @@ async def update_gpt(gid: str, request: Request, user: dict = Depends(get_curren
     normalize_preferred_model(body)
     normalize_visible_models(body, existing_config)
     body["models"] = _assistant_model_catalog(body)
+    _validate_agent_runtime_v3_config(gid, body)
     update_custom_gpt(gid, body)
     refresh_gpts()
     return {"gid": gid}
