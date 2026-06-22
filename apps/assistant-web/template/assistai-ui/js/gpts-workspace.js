@@ -196,14 +196,23 @@
                     <svg class="icon icon-sm text-[var(--accent)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"></path></svg>
                     能力 (Capabilities)
                   </h3>
-                  <div class="capabilities-grid grid grid-cols-2">
+                  <p class="mb-3 text-xs leading-5 text-[var(--text-soft)]">新建智能体默认使用 Agent Runtime v3，可按需启用以下只读能力。</p>
+                  <div class="capabilities-grid grid grid-cols-2 gap-2 max-[600px]:grid-cols-1">
                     <div class="cap-item" style="padding: 8px 12px;">
-                      <input type="checkbox" id="cap-web" checked>
-                      <label for="cap-web" style="font-size: 13px;">联网搜索</label>
+                      <input type="checkbox" id="cap-document-list" checked>
+                      <label for="cap-document-list" style="font-size: 13px;">列出会话文件</label>
                     </div>
                     <div class="cap-item" style="padding: 8px 12px;">
-                      <input type="checkbox" id="cap-code" checked>
-                      <label for="cap-code" style="font-size: 13px;">代码解释器</label>
+                      <input type="checkbox" id="cap-document-read" checked>
+                      <label for="cap-document-read" style="font-size: 13px;">读取会话文件</label>
+                    </div>
+                    <div class="cap-item" style="padding: 8px 12px;">
+                      <input type="checkbox" id="cap-knowledge-list" checked>
+                      <label for="cap-knowledge-list" style="font-size: 13px;">列出知识文件</label>
+                    </div>
+                    <div class="cap-item" style="padding: 8px 12px;">
+                      <input type="checkbox" id="cap-knowledge-read" checked>
+                      <label for="cap-knowledge-read" style="font-size: 13px;">读取知识文件</label>
                     </div>
                   </div>
                 </div>

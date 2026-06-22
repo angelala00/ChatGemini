@@ -52,9 +52,26 @@ interface SidebarProps {
     readonly onSwitchTheme: (theme: "light" | "dark" | "system") => void;
 }
 
-const APP_VERSION = "v1.7.0";
+const APP_VERSION = "v2.0.0";
 
 const releaseHistory = [
+    {
+        version: "v2.0.0",
+        date: "2026.06",
+        type: "major",
+        zhTitle: "Agent Runtime v3 与能力配置",
+        zhChanges: [
+            "新创建的智能体默认使用 Agent Runtime v3，支持统一的上下文装配、能力调用、运行状态和治理策略。",
+            "创建与编辑智能体时可以选择会话附件和智能体知识读取能力，未选择的工具不会提供给模型。",
+            "高风险能力增加服务端签名确认令牌，确认与用户及调用参数绑定，并支持安全重试。",
+        ],
+        enTitle: "Agent Runtime v3 and Capability Configuration",
+        enChanges: [
+            "New agents now use Agent Runtime v3 with unified context assembly, capability execution, run state, and governance.",
+            "Agent creation and editing can select chat attachment and agent knowledge tools; unselected tools are never exposed to the model.",
+            "High-risk capabilities use server-signed confirmation tokens bound to the user and action arguments for safe retries.",
+        ],
+    },
     {
         version: "v1.7.0",
         date: "2026.06",

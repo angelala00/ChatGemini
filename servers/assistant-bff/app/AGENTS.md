@@ -3,6 +3,25 @@
 ## 1. 核心对话流 (Core Chat Flow)
 项目采用了 `chat_with_kernel_gptassistant` 作为主导的编排逻辑，其核心流程如下：
 
+### Agent Runtime v3（新建智能体默认执行器）
+- `app/agent_runtime_v3` 已提供独立的通用同步运行循环，负责模型流调用、能力执行结果回填、最大步骤限制及完成/失败状态收敛。
+- Runtime 只产生与传输无关的 `RuntimeEvent`；SSE、WebSocket 或其他输出格式应通过 `RuntimeEventAdapter` 转换，不得写入核心循环。
+- 模型流与能力执行器通过 `ModelStreamer`、`CapabilityExecutor` 注入；`CapabilityRegistry` 负责 Tool 的注册、启停和按 Agent 能力 ID 选择，`ToolExecutor` 负责本轮 schema 校验、Registry 查找、执行及 `ToolResultMessage` 归一化。
+- Capability 使用稳定的 `capability_id` 供 Agent 配置引用，模型仍使用 `ToolDefinition.name` 发起调用；Registry 同时保证两种标识唯一，避免配置标识与模型协议耦合。
+- `agent_runtime_v3/builtin_tools` 已将附件工具和制度工具注册到同一 Registry。附件适配器从 `ExecutionContext.metadata.available_file_ids` 获取本轮文件授权边界；制度工具的定义和领域执行逻辑已从聊天服务抽到 `app/regulation_tools.py`，旧制度引擎与 v3 共用该实现。
+- `ContextAssembler` 统一按“平台规则、Agent 指令、历史摘要、附件说明、知识说明”的顺序构建系统上下文，并组合历史、当前用户消息和按 capability ID 选择的 Tool 定义；装配结果可直接转换为 `RuntimeRequest`。
+- Context Assembler 不读取数据库、不加载文件也不做身份授权；调用方必须传入已经授权的数据。`ResourceContext` 分别保存会话附件与 Agent 知识作用域，兼容字段 `available_file_ids` 只映射会话附件，禁止通过普通 metadata 覆盖资源授权边界。
+- `AgentDefinition` 直接解析现有 `agents.config` JSON 中的 `enabled_capabilities`、`runtime_limits` 和 `context_policy`，缺失字段使用兼容默认值，不需要新增数据库列；创建和更新 Agent 时仅在提交这些 v3 字段后执行格式校验，非法配置返回 HTTP 400。
+- `AgentDefinitionResolver` 对“Agent 已启用能力”与当前 `CapabilityAccessContext` 的权限和策略授权取交集，并记录被拒绝能力及原因。解析后的 Context Policy 会实际控制历史、摘要、附件和知识是否进入 Context，Runtime Limits 会直接进入 `RuntimeRequest`。
+- v3 同步执行通过 `RunRecord -> RunStepRecord -> ActionCallRecord` 保存状态、输入参数、结果摘要、错误和耗时；默认使用有界 `InMemoryRunStore`，容量满时只淘汰最早的终态 Run，不删除运行中记录。Store 返回深拷贝快照，调用方不能修改内部状态。
+- `RuntimeEventStream.cancel()` 会取消后台驱动任务并把 Run 标记为 `cancelled`；重复 `run_id` 会拒绝新执行且不覆盖原记录。`RunTracker` 可挂载日志、组合 Observer 或 `TraceRunObserver`，观测事件不记录 Action 参数，且观测失败不能中断 Runtime。
+- v3 能力治理采用解析与执行双重授权：Agent Resolver 先按配置、权限和策略筛选，ToolExecutor 再使用受控 metadata 复核；Tool schema 校验、每能力超时、Run 最大调用次数和硬上限均在后端执行，不能由模型绕过。
+- `CapabilityDescriptor.risk` 为 `write` 或 `high`（或显式 `requires_confirmation`）时，ToolExecutor 要求与 capability ID 及规范化参数绑定的 SHA-256 确认指纹；未确认时返回结构化 `CONFIRMATION_REQUIRED`，不会执行处理器。确认结果的前端展示和安全重试仍属于待完成产品链路。
+- Tool 和 Run 失败统一携带稳定错误码、用户安全消息和 `retryable`；原始处理器异常不会返回模型或前端。Action 参数仅保留在有界内存 Run Store，不进入日志 Observer。
+- `GET /api/gpts/capabilities` 提供允许页面配置的能力目录；新建 Agent 强制写入 `handler_key=agent_runtime_v3` 及安全默认配置，已有 Agent 和系统助手不自动迁移。聊天路由按 handler 分派到 `agent_runtime_v3_service.py`，继续使用现有结构化流式协议。
+- v3 为会话附件提供 `document_list/document_read_text`，为智能体知识提供独立 `knowledge_list/knowledge_read_text`；两类文件 ID 和授权策略分离。v3 历史键为 `agent_runtime_v3:{gid}:{conversation_id}`，不同 Agent 不共享历史。
+- 高风险确认令牌使用 `AGENT_CONFIRMATION_SECRET`；多节点部署必须配置相同值。未配置时回退到 `SESSION_HISTORY_ENCRYPTION_KEY`，本地两者均为空时仅使用进程级临时密钥。
+
 ### 1.1 执行序列
 1. **加载与裁剪历史**：从数据库读取会话历史，执行裁剪逻辑以适配模型窗口。
 2. **构建用户消息**：
@@ -65,3 +84,4 @@
 - **智能体 ACL**：`agents.config` 承载 `owner`、`admins`、`viewers`，其中 `owner` 是唯一可转让所有者，`admins` 可编辑并管理知识文件，`viewers` 仅可见。系统内置 `regulationassistant` 与 `gptassistant` 在启动时会从 `GPTS_WHITE_LIST` 派生默认所有者和管理员列表；编辑页允许当前所有者转让 owner，并维护管理员/可见用户名单。
 - **旧表迁移策略**：启动时会将旧 `custom_gpts` 中尚未存在于 `agents` 的记录补迁到 `agents`，但不会反向覆盖 `agents` 中已存在的新配置，保证滚动升级期间旧节点继续读旧表、新节点只读新表。
 - **主助手迁移**：`gptassistant` 现在和制度助手、普通自定义智能体共用“我的智能体”编辑入口；管理员在该页维护主助手的提示词、默认模型、可见模型和知识文件，后台“主助手默认配置”仅保留迁移提示，不再作为实际配置源。
+- **智能体聊天引擎收敛**：用户创建的普通自定义智能体统一走 `chat_with_kernel_gptassistant`；仅少数历史内置且未声明 owner 的助手继续保留旧 `chat_service` 分支兼容。

@@ -55,6 +55,13 @@
   - “更多智能体”菜单对谁可见，由结构化的 GPTs 可见性表单维护，而不是依赖 `gpts.manage`。
 - **交互约束**：管理员页应优先提供结构化表单来维护 GPTs 可见范围与人员列表，避免要求管理员直接编辑通用 feature flag JSON。
 
+## 智能体能力配置与 Runtime v3
+
+- 创建/编辑页通过 `GET /api/gpts/capabilities` 加载平台允许配置的能力，并将勾选结果保存为 `enabled_capabilities`；页面不向普通用户暴露底层引擎版本。
+- 新创建的智能体由后端固定使用 `agent_runtime_v3`，已有智能体仍按其 `handler_key` 运行。未选择的能力不会进入模型工具列表。
+- 当前页面可配置会话附件查看/读取和智能体知识查看/读取四个只读能力。知识与会话附件在后端使用独立工具和授权作用域。
+- 流式客户端识别工具结果中的 `CONFIRMATION_REQUIRED`，向用户确认后通过 `confirmed_action_tokens` 重试；令牌由服务端签名并绑定用户及调用参数，客户端不得自行生成确认凭据。
+
 ## 资料库 (Library / File Center)
 
 - **入口与路由管理**：

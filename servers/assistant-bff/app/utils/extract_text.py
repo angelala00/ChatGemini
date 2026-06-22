@@ -93,7 +93,7 @@ async def extract_text_from_file(
     #     raise Exception(f"UnSupport file type:{file_type}")
 
     if is_image_file(file_path):
-        from app.chat_service import _ask_once_stream
+        from app.chat_with_model import _ask_once_stream
 
         gpt_logger.info(
             "image_text_extract_start path=%s model=%s",
@@ -105,8 +105,8 @@ async def extract_text_from_file(
         text_content = ""
         try:
             async for event in _ask_once_stream(messages, None, MODEL_NAME_VL):
-                if event.get("type") == "text.delta":
-                    text_content += event.get("data")["text"]
+                if event.get("type") == "content.delta":
+                    text_content += str(event.get("text") or "")
             gpt_logger.info(
                 "image_text_extract_complete path=%s model=%s elapsed_ms=%.1f text_len=%s",
                 file_path,

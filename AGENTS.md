@@ -23,6 +23,7 @@
 - `changelog.md`: project timeline notes.
 
 ## Build, Test, and Development Commands
+- Root deployment supports an optional positional environment name. With no scope flags it deploys every backend and frontend; use `--backends`, `--frontends`, repeatable `--backend <name>`, or repeatable `--frontend <name>` for scoped deployments. Scope flags may be combined.
 - Web client (Vite dev server):
   ```bash
   cd apps/assistant-web

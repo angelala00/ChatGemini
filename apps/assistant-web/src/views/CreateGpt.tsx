@@ -10,6 +10,7 @@ import {
     SparklesIcon,
     TrashIcon,
     UsersIcon,
+    WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
 import { Container } from "../components/Container";
 import { Topbar } from "../components/Topbar";
@@ -26,6 +27,16 @@ interface AvailableModel {
     readonly id: string;
     readonly name: string;
     readonly description?: string;
+}
+
+interface AvailableCapability {
+    readonly id: string;
+    readonly name: string;
+    readonly description?: string;
+    readonly category: string;
+    readonly risk: "read" | "write" | "high";
+    readonly requires_confirmation: boolean;
+    readonly default_enabled: boolean;
 }
 
 const normalizeModelIds = (ids: string[], models: AvailableModel[]) => {
@@ -143,6 +154,9 @@ const CreateGpt = ({ onToggleSidebar, sidebarExpand }: CreateGptProps) => {
     const [visibleModelIds, setVisibleModelIds] = useState<string[]>([]);
     const [preferredModel, setPreferredModel] = useState("");
     const [modelsLoaded, setModelsLoaded] = useState(false);
+    const [availableCapabilities, setAvailableCapabilities] = useState<AvailableCapability[]>([]);
+    const [enabledCapabilityIds, setEnabledCapabilityIds] = useState<string[]>([]);
+    const [capabilitiesLoaded, setCapabilitiesLoaded] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const [message, setMessage] = useState("");
     const navigate = useNavigate();
@@ -212,11 +226,40 @@ const CreateGpt = ({ onToggleSidebar, sidebarExpand }: CreateGptProps) => {
                 setAdminUsers(Array.isArray(data.admins) ? data.admins : []);
                 setViewerUsers(Array.isArray(data.viewers) ? data.viewers : []);
                 setCanTransferOwner(Boolean(data.can_transfer_owner));
+                setEnabledCapabilityIds(
+                    Array.isArray(data.enabled_capabilities)
+                        ? data.enabled_capabilities.filter((item: unknown): item is string => typeof item === "string")
+                        : [],
+                );
             })
             .catch(() => {});
         handleRequest("GET", getFullPath(`/api/gpts/${gid}/knowledge-files`))
             .then((data) => setKnowledgeFiles(Array.isArray(data) ? data : []))
             .catch(() => setKnowledgeFiles([]));
+    }, [gid]);
+
+    useEffect(() => {
+        handleRequest("GET", getFullPath("/api/gpts/capabilities"))
+            .then((data) => {
+                const items: AvailableCapability[] = Array.isArray(data.items)
+                    ? data.items.filter(
+                          (item: unknown): item is AvailableCapability =>
+                              !!item &&
+                              typeof item === "object" &&
+                              typeof (item as AvailableCapability).id === "string" &&
+                              typeof (item as AvailableCapability).name === "string",
+                      )
+                    : [];
+                setAvailableCapabilities(items);
+                if (!gid) {
+                    const defaults = Array.isArray(data.default_enabled)
+                        ? data.default_enabled.filter((item: unknown): item is string => typeof item === "string")
+                        : items.filter((item) => item.default_enabled).map((item) => item.id);
+                    setEnabledCapabilityIds(defaults);
+                }
+            })
+            .catch(() => setAvailableCapabilities([]))
+            .finally(() => setCapabilitiesLoaded(true));
     }, [gid]);
 
     useEffect(() => {
@@ -297,6 +340,9 @@ const CreateGpt = ({ onToggleSidebar, sidebarExpand }: CreateGptProps) => {
             system_prompt: systemPrompt,
             default_model: nextPreferredModel,
             visible_model_ids: normalizedVisibleModelIds,
+            enabled_capabilities: enabledCapabilityIds.filter((id) =>
+                availableCapabilities.some((capability) => capability.id === id),
+            ),
         };
         const sanitizedSamples = samples.map((sample) => sample.trim()).filter(Boolean);
         if (sanitizedSamples.length > 0) {
@@ -350,7 +396,7 @@ const CreateGpt = ({ onToggleSidebar, sidebarExpand }: CreateGptProps) => {
         <button
             type="submit"
             form="create-gpt-form"
-            disabled={isSubmitting || !preferredModel}
+            disabled={isSubmitting || !preferredModel || !capabilitiesLoaded}
             className="inline-flex h-9 items-center gap-2 rounded-[10px] border border-transparent bg-[var(--assist-accent-strong)] px-4 text-[13px] font-semibold text-white shadow-[0_6px_16px_rgba(39,154,179,0.16)] transition duration-160 ease-out hover:-translate-y-0.5 hover:bg-[var(--assist-accent)] disabled:cursor-not-allowed disabled:opacity-50"
         >
             {isSubmitting ? t("views.CreateGpt.submitting") : (gid ? t("common.save") : t("common.create"))}
@@ -395,6 +441,24 @@ const CreateGpt = ({ onToggleSidebar, sidebarExpand }: CreateGptProps) => {
             }
             return [...normalizedCurrent, modelId];
         });
+    };
+
+    const toggleCapability = (capabilityId: string) => {
+        setEnabledCapabilityIds((current) =>
+            current.includes(capabilityId)
+                ? current.filter((item) => item !== capabilityId)
+                : [...current, capabilityId],
+        );
+    };
+
+    const capabilityLabel = (capability: AvailableCapability) => {
+        const labels: Record<string, string> = {
+            "attachment.document_list": t("views.CreateGpt.capability_attachment_list"),
+            "attachment.document_read_text": t("views.CreateGpt.capability_attachment_read"),
+            "knowledge.knowledge_list": t("views.CreateGpt.capability_knowledge_list"),
+            "knowledge.knowledge_read_text": t("views.CreateGpt.capability_knowledge_read"),
+        };
+        return labels[capability.id] || capability.name;
     };
 
     return (
@@ -513,6 +577,61 @@ const CreateGpt = ({ onToggleSidebar, sidebarExpand }: CreateGptProps) => {
                                     ))}
                                 </div>
                             </div>
+                        </section>
+
+                        <section className="rounded-[24px] border border-[var(--assist-line)] bg-[rgba(252,253,254,0.92)] p-5 shadow-[var(--assist-shadow-sm)] sm:p-6">
+                            <div className="flex items-center gap-3">
+                                <div className="grid size-10 place-items-center rounded-[13px] bg-[var(--assist-accent-soft)] text-[var(--assist-accent-strong)]">
+                                    <WrenchScrewdriverIcon className="size-5" />
+                                </div>
+                                <div>
+                                    <h2 className="text-sm font-semibold">
+                                        {t("views.CreateGpt.capabilities_title")}
+                                    </h2>
+                                    <p className="mt-0.5 text-xs text-[var(--assist-text-faint)]">
+                                        {t("views.CreateGpt.capabilities_description")}
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                                {availableCapabilities.map((capability) => {
+                                    const selected = enabledCapabilityIds.includes(capability.id);
+                                    return (
+                                        <button
+                                            key={capability.id}
+                                            type="button"
+                                            aria-pressed={selected}
+                                            onClick={() => toggleCapability(capability.id)}
+                                            className={`flex min-h-24 items-start gap-3 rounded-[16px] border p-4 text-left transition ${
+                                                selected
+                                                    ? "border-[var(--assist-accent)] bg-[var(--assist-accent-soft)]"
+                                                    : "border-[var(--assist-line)] bg-white hover:border-[var(--assist-line-strong)]"
+                                            }`}
+                                        >
+                                            <span className={`mt-0.5 grid size-5 shrink-0 place-items-center rounded-md border ${
+                                                selected
+                                                    ? "border-[var(--assist-accent-strong)] bg-[var(--assist-accent-strong)] text-white"
+                                                    : "border-[var(--assist-line-strong)] text-transparent"
+                                            }`}>
+                                                <CheckIcon className="size-3.5" />
+                                            </span>
+                                            <span>
+                                                <span className="block text-sm font-semibold text-[var(--assist-text)]">
+                                                    {capabilityLabel(capability)}
+                                                </span>
+                                                <span className="mt-1 block text-xs leading-5 text-[var(--assist-text-faint)]">
+                                                    {capability.description}
+                                                </span>
+                                            </span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            {capabilitiesLoaded && availableCapabilities.length === 0 && (
+                                <p className="mt-4 text-xs text-[var(--assist-text-faint)]">
+                                    {t("views.CreateGpt.capabilities_empty")}
+                                </p>
+                            )}
                         </section>
 
                         <section className="rounded-[24px] border border-[var(--assist-line)] bg-[rgba(252,253,254,0.92)] p-5 shadow-[var(--assist-shadow-sm)]">
