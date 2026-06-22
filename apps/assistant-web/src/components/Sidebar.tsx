@@ -52,9 +52,84 @@ interface SidebarProps {
     readonly onSwitchTheme: (theme: "light" | "dark" | "system") => void;
 }
 
-const APP_VERSION = "v2.1.0";
+const APP_VERSION = "v2.1.5";
 
 const releaseHistory = [
+    {
+        version: "v2.1.5",
+        date: "2026.06",
+        type: "patch",
+        zhTitle: "智能体资料使用反馈",
+        zhChanges: [
+            "智能体聊天回答下方新增轻量资料使用反馈，可提示本轮已参考上传文件或知识库。",
+            "当资料读取失败时，会在回答附近显示弱提示，避免资料调用失败后完全静默。",
+        ],
+        enTitle: "Agent Resource Usage Feedback",
+        enChanges: [
+            "Agent chat responses now show lightweight feedback indicating whether uploaded files or the knowledge base were referenced in the current turn.",
+            "When resource reads fail, the UI now shows a subtle warning near the answer instead of failing silently.",
+        ],
+    },
+    {
+        version: "v2.1.4",
+        date: "2026.06",
+        type: "patch",
+        zhTitle: "智能体能力改为父级选择与子项说明",
+        zhChanges: [
+            "创建和编辑智能体页保留两个父级能力开关，子能力改为只读说明展示，不再允许单独勾选。",
+            "父级开关继续映射到底层 capability 组合，既保证产品抽象一致，也让用户能看清包含的具体工具。",
+        ],
+        enTitle: "Parent Capability Selection with Read-only Children",
+        enChanges: [
+            "Agent creation and editing keep the two parent capability toggles while turning child capabilities into read-only explanatory items.",
+            "Parent toggles still map to the underlying capability sets, preserving the product abstraction while showing the concrete included tools.",
+        ],
+    },
+    {
+        version: "v2.1.3",
+        date: "2026.06",
+        type: "patch",
+        zhTitle: "智能体能力分组补充子能力联动",
+        zhChanges: [
+            "创建和编辑智能体页在两个资料来源开关下补充展示具体子能力，既保留产品级表达，也让高级用户看清底层工具组成。",
+            "父级开关支持全选和部分选中态，读取子能力依赖对应的查看子能力，避免出现不自然的组合。",
+        ],
+        enTitle: "Grouped Capabilities with Child Toggles",
+        enChanges: [
+            "Agent creation and editing now show concrete child capabilities under each resource toggle, keeping product-level wording while exposing the underlying tools clearly.",
+            "Parent toggles now support full and partial selection states, and read capabilities depend on the corresponding list capability to avoid awkward combinations.",
+        ],
+    },
+    {
+        version: "v2.1.2",
+        date: "2026.06",
+        type: "patch",
+        zhTitle: "智能体能力配置收敛为资料来源开关",
+        zhChanges: [
+            "创建和编辑智能体页将会话附件与知识库能力收敛为两个产品级开关，减少用户理解 list/read 底层动作的负担。",
+            "前端仍兼容映射到底层 capability id 提交，后端运行时和权限模型无需变更。",
+        ],
+        enTitle: "Capability Setup Simplified to Resource Toggles",
+        enChanges: [
+            "Agent creation and editing now collapse attachment and knowledge access into two product-level toggles, avoiding direct exposure of list/read internals.",
+            "The frontend still maps those toggles back to the underlying capability IDs, so no runtime or permission changes are required on the backend.",
+        ],
+    },
+    {
+        version: "v2.1.1",
+        date: "2026.06",
+        type: "patch",
+        zhTitle: "智能体能力说明国际化补全",
+        zhChanges: [
+            "创建和编辑智能体页中的四个可用能力说明改为走前端中英文语言包，不再直接显示后端英文描述。",
+            "已知能力优先展示本地化文案，未知能力仍兼容回退到后端返回描述。",
+        ],
+        enTitle: "Localized Agent Capability Descriptions",
+        enChanges: [
+            "The four capability descriptions in agent creation and editing now use frontend locale strings instead of raw backend English text.",
+            "Known capabilities prefer localized copy, while unknown capabilities still fall back to the backend description.",
+        ],
+    },
     {
         version: "v2.1.0",
         date: "2026.06",

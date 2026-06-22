@@ -27,6 +27,8 @@ import { useChatReadingScroll } from "../hooks/useChatReadingScroll";
 import { ArrowDownIcon } from "@heroicons/react/24/solid";
 import { buildAttachmentPostscriptHtml } from "../helpers/buildAttachmentPostscriptHtml";
 import { HistoryAttachmentStrip } from "../components/HistoryAttachmentStrip";
+import { renderResourceUsageFooter } from "../helpers/renderResourceUsageFooter";
+import { SessionHistory } from "../store/sessions";
 
 
 const GptAssistantChat = (props: RouterComponentProps) => {
@@ -80,7 +82,12 @@ const GptAssistantChat = (props: RouterComponentProps) => {
             };
             dispatch(updateAI({ ...ai, busy: true }));
             dispatch(updateSessions(nextSessions));
-            const handler = (message: string, end: boolean, convId: string) => {
+            const handler = (
+                message: string,
+                end: boolean,
+                convId: string,
+                resourceUsage?: SessionHistory["resourceUsage"],
+            ) => {
                 if (convId !== "") {
                     dispatch(updateMappings({ ...mappings, [id]: convId }));
                 }
@@ -91,6 +98,7 @@ const GptAssistantChat = (props: RouterComponentProps) => {
                     nextSessions[id][index].parts !== refreshPlaceholder
                         ? nextSessions[id][index].parts
                         : "";
+                const previousResourceUsage = nextSessions[id][index].resourceUsage;
                 nextSessions = {
                     ...nextSessions,
                     [id]: [
@@ -99,6 +107,7 @@ const GptAssistantChat = (props: RouterComponentProps) => {
                             role: "model",
                             parts: `${prevParts}${message}`,
                             timestamp: Date.now(),
+                            resourceUsage: resourceUsage || previousResourceUsage,
                         },
                     ],
                 };
@@ -273,7 +282,7 @@ const GptAssistantChat = (props: RouterComponentProps) => {
     return (
         <Container className="relative mx-auto w-full max-w-[882px] px-4 pb-2 pt-6 md:px-[26px] md:pb-1 md:pt-4">
             <ImageView>
-                {chat.map(({ role, parts, attachment }, index) => {
+                {chat.map(({ role, parts, attachment, resourceUsage }, index) => {
                     const previousRole =
                         index > 0
                             ? (chat[index - 1].role as SessionRole)
@@ -320,6 +329,7 @@ const GptAssistantChat = (props: RouterComponentProps) => {
                             onExport={handleExport}
                             postscript={isUser ? "" : attachmentPostscriptHtml}
                             header={attachmentHeader}
+                            footer={!isUser ? renderResourceUsageFooter(resourceUsage, t) : undefined}
                         >
                             <Markdown
                                 variant={

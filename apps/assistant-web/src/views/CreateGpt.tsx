@@ -40,6 +40,31 @@ interface AvailableCapability {
     readonly default_enabled: boolean;
 }
 
+interface CapabilityGroupConfig {
+    readonly key: "attachments" | "knowledge";
+    readonly capabilityIds: readonly string[];
+    readonly titleKey: string;
+    readonly descriptionKey: string;
+    readonly childCapabilityIds: readonly string[];
+}
+
+const CAPABILITY_GROUPS: readonly CapabilityGroupConfig[] = [
+    {
+        key: "attachments",
+        capabilityIds: ["attachment.document_list", "attachment.document_read_text"],
+        titleKey: "views.CreateGpt.capability_group_attachments",
+        descriptionKey: "views.CreateGpt.capability_group_attachments_description",
+        childCapabilityIds: ["attachment.document_list", "attachment.document_read_text"],
+    },
+    {
+        key: "knowledge",
+        capabilityIds: ["knowledge.knowledge_list", "knowledge.knowledge_read_text"],
+        titleKey: "views.CreateGpt.capability_group_knowledge",
+        descriptionKey: "views.CreateGpt.capability_group_knowledge_description",
+        childCapabilityIds: ["knowledge.knowledge_list", "knowledge.knowledge_read_text"],
+    },
+];
+
 const normalizeModelIds = (ids: string[], models: AvailableModel[]) => {
     const validIds = new Set(models.map((item) => item.id));
     const nextIds: string[] = [];
@@ -124,6 +149,10 @@ const TagInput = ({ label, placeholder, values, onChange }: TagInputProps) => {
 
 const fieldClassName =
     "mt-2 w-full rounded-[14px] border border-[var(--assist-line)] bg-[rgba(252,253,254,0.88)] px-3.5 py-2.5 text-sm text-[var(--assist-text)] shadow-[var(--assist-shadow-sm)] outline-none transition placeholder:text-[var(--assist-text-faint)] focus:border-[var(--assist-accent)] focus:ring-2 focus:ring-[var(--assist-accent)]/15";
+
+const GROUPED_CAPABILITY_IDS = new Set(
+    CAPABILITY_GROUPS.flatMap((group) => [...group.capabilityIds]),
+);
 
 const formatFileSize = (size?: number) => {
     if (!size || size < 1) return "";
@@ -462,6 +491,19 @@ const CreateGpt = ({ onToggleSidebar, sidebarExpand }: CreateGptProps) => {
         );
     };
 
+    const toggleCapabilityGroup = (groupCapabilityIds: readonly string[]) => {
+        setEnabledCapabilityIds((current) => {
+            const hasAny = groupCapabilityIds.some((capabilityId) => current.includes(capabilityId));
+            if (hasAny) {
+                return current.filter((item) => !groupCapabilityIds.includes(item));
+            }
+            return [
+                ...current.filter((item, index, list) => list.indexOf(item) === index),
+                ...groupCapabilityIds.filter((capabilityId) => !current.includes(capabilityId)),
+            ];
+        });
+    };
+
     const toggleUploadType = (uploadType: UploadCategory) => {
         setUploadFileTypes((current) =>
             current.includes(uploadType)
@@ -479,6 +521,27 @@ const CreateGpt = ({ onToggleSidebar, sidebarExpand }: CreateGptProps) => {
         };
         return labels[capability.id] || capability.name;
     };
+
+    const capabilityDescription = (capability: AvailableCapability) => {
+        const descriptions: Record<string, string> = {
+            "attachment.document_list": t("views.CreateGpt.capability_attachment_list_description"),
+            "attachment.document_read_text": t("views.CreateGpt.capability_attachment_read_description"),
+            "knowledge.knowledge_list": t("views.CreateGpt.capability_knowledge_list_description"),
+            "knowledge.knowledge_read_text": t("views.CreateGpt.capability_knowledge_read_description"),
+        };
+        return descriptions[capability.id] || capability.description;
+    };
+
+    const groupedCapabilities = CAPABILITY_GROUPS.map((group) => ({
+        ...group,
+        availableIds: group.capabilityIds.filter((capabilityId) =>
+            availableCapabilities.some((capability) => capability.id === capabilityId),
+        ),
+    })).filter((group) => group.availableIds.length > 0);
+
+    const standaloneCapabilities = availableCapabilities.filter(
+        (capability) => !GROUPED_CAPABILITY_IDS.has(capability.id),
+    );
 
     return (
         <Container className="min-h-full w-full flex-1 overflow-y-auto bg-[var(--assist-bg)] text-[var(--assist-text)]">
@@ -613,7 +676,77 @@ const CreateGpt = ({ onToggleSidebar, sidebarExpand }: CreateGptProps) => {
                                 </div>
                             </div>
                             <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                                {availableCapabilities.map((capability) => {
+                                {groupedCapabilities.map((group) => {
+                                    const selected = group.availableIds.some((capabilityId) =>
+                                        enabledCapabilityIds.includes(capabilityId),
+                                    );
+                                    return (
+                                        <div
+                                            key={group.key}
+                                            className={`rounded-[16px] border p-4 transition ${
+                                                selected
+                                                    ? "border-[var(--assist-accent)] bg-[var(--assist-accent-soft)]"
+                                                    : "border-[var(--assist-line)] bg-white hover:border-[var(--assist-line-strong)]"
+                                            }`}
+                                        >
+                                            <button
+                                                type="button"
+                                                aria-pressed={selected}
+                                                onClick={() => toggleCapabilityGroup(group.availableIds)}
+                                                className="flex min-h-24 w-full items-start gap-3 text-left"
+                                            >
+                                                <span className={`mt-0.5 grid size-5 shrink-0 place-items-center rounded-md border ${
+                                                    selected
+                                                        ? "border-[var(--assist-accent-strong)] bg-[var(--assist-accent-strong)] text-white"
+                                                        : "border-[var(--assist-line-strong)] text-transparent"
+                                                }`}>
+                                                    <CheckIcon className="size-3.5" />
+                                                </span>
+                                                <span>
+                                                    <span className="block text-sm font-semibold text-[var(--assist-text)]">
+                                                        {t(group.titleKey)}
+                                                    </span>
+                                                    <span className="mt-1 block text-xs leading-5 text-[var(--assist-text-faint)]">
+                                                        {t(group.descriptionKey)}
+                                                    </span>
+                                                </span>
+                                            </button>
+                                            <div className="mt-4 space-y-2 border-t border-[var(--assist-line)] pt-3">
+                                                {group.childCapabilityIds
+                                                    .filter((capabilityId) =>
+                                                        availableCapabilities.some((capability) => capability.id === capabilityId),
+                                                    )
+                                                    .map((capabilityId) => {
+                                                        const capability = availableCapabilities.find(
+                                                            (item) => item.id === capabilityId,
+                                                        );
+                                                        if (!capability) {
+                                                            return null;
+                                                        }
+                                                        return (
+                                                            <div
+                                                                key={capability.id}
+                                                                className="flex w-full items-start gap-3 rounded-[12px] px-2 py-2 text-left"
+                                                            >
+                                                                <span className="mt-0.5 inline-flex min-w-[64px] items-center justify-center rounded-full border border-[var(--assist-line)] bg-white px-2.5 py-1 text-[11px] font-semibold text-[var(--assist-text-faint)]">
+                                                                    {t("views.CreateGpt.capability_included_badge")}
+                                                                </span>
+                                                                <span>
+                                                                    <span className="block text-xs font-semibold text-[var(--assist-text)]">
+                                                                        {capabilityLabel(capability)}
+                                                                    </span>
+                                                                    <span className="mt-1 block text-xs leading-5 text-[var(--assist-text-faint)]">
+                                                                        {capabilityDescription(capability)}
+                                                                    </span>
+                                                                </span>
+                                                            </div>
+                                                        );
+                                                    })}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                                {standaloneCapabilities.map((capability) => {
                                     const selected = enabledCapabilityIds.includes(capability.id);
                                     return (
                                         <button
@@ -639,14 +772,14 @@ const CreateGpt = ({ onToggleSidebar, sidebarExpand }: CreateGptProps) => {
                                                     {capabilityLabel(capability)}
                                                 </span>
                                                 <span className="mt-1 block text-xs leading-5 text-[var(--assist-text-faint)]">
-                                                    {capability.description}
+                                                    {capabilityDescription(capability)}
                                                 </span>
                                             </span>
                                         </button>
                                     );
                                 })}
                             </div>
-                            {capabilitiesLoaded && availableCapabilities.length === 0 && (
+                            {capabilitiesLoaded && groupedCapabilities.length + standaloneCapabilities.length === 0 && (
                                 <p className="mt-4 text-xs text-[var(--assist-text-faint)]">
                                     {t("views.CreateGpt.capabilities_empty")}
                                 </p>

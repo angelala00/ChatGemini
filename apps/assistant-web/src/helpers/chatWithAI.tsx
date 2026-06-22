@@ -7,6 +7,7 @@ import { getDecodeBase64 } from "./getDecodeBase64";
 import { handleStreamingRequest } from "./handleRequest";
 import { getFullPath } from "../helpers/getDomainAndPath";
 import { globalConfig } from "../config/global";
+import type { SessionResourceUsage } from "../store/sessions";
 
 
 const unicodeToChar = (text: string) => {
@@ -93,6 +94,58 @@ const FRIENDLY_ATTACHMENT_IMAGE_TOOLS = new Set([
     "attachment_load_images",
 ]);
 
+const KNOWLEDGE_LIST_TOOLS = new Set(["knowledge_list"]);
+const KNOWLEDGE_READ_TOOLS = new Set(["knowledge_read_text"]);
+
+const ATTACHMENT_USAGE_TOOLS = new Set([
+    ...FRIENDLY_ATTACHMENT_TEXT_TOOLS,
+    ...FRIENDLY_ATTACHMENT_IMAGE_TOOLS,
+]);
+
+const KNOWN_RESOURCE_TOOLS = new Set([
+    ...FRIENDLY_ATTACHMENT_LIST_TOOLS,
+    ...FRIENDLY_ATTACHMENT_TEXT_TOOLS,
+    ...FRIENDLY_ATTACHMENT_IMAGE_TOOLS,
+    ...KNOWLEDGE_LIST_TOOLS,
+    ...KNOWLEDGE_READ_TOOLS,
+]);
+
+const mergeResourceUsage = (
+    current: SessionResourceUsage,
+    incoming: SessionResourceUsage,
+): SessionResourceUsage => ({
+    usedAttachments: current.usedAttachments || incoming.usedAttachments,
+    usedKnowledge: current.usedKnowledge || incoming.usedKnowledge,
+    failedAttachments: current.failedAttachments || incoming.failedAttachments,
+    failedKnowledge: current.failedKnowledge || incoming.failedKnowledge,
+});
+
+const deriveResourceUsageFromToolResult = (event: any): SessionResourceUsage | null => {
+    const toolName = event?.tool_name ?? "";
+    if (!KNOWN_RESOURCE_TOOLS.has(toolName)) {
+        return null;
+    }
+    const isError = !!event?.is_error;
+    const errorCode = event?.details?.error?.code;
+    if (errorCode === "CONFIRMATION_REQUIRED") {
+        return null;
+    }
+
+    if (ATTACHMENT_USAGE_TOOLS.has(toolName)) {
+        return isError ? { failedAttachments: true } : { usedAttachments: true };
+    }
+    if (KNOWLEDGE_READ_TOOLS.has(toolName)) {
+        return isError ? { failedKnowledge: true } : { usedKnowledge: true };
+    }
+    if (FRIENDLY_ATTACHMENT_LIST_TOOLS.has(toolName)) {
+        return isError ? { failedAttachments: true } : null;
+    }
+    if (KNOWLEDGE_LIST_TOOLS.has(toolName)) {
+        return isError ? { failedKnowledge: true } : null;
+    }
+    return null;
+};
+
 const renderFriendlyToolCallMessage = (toolCall: any) => {
     const toolName = toolCall?.name ?? "";
     if (FRIENDLY_ATTACHMENT_LIST_TOOLS.has(toolName)) {
@@ -150,8 +203,14 @@ const renderFriendlyPreprocessMessage = (event: any) => {
 
 const handleKernelEvent = (
     event: any,
-    onChatMessage: (message: string, end: boolean, conversationId: string) => void,
+    onChatMessage: (
+        message: string,
+        end: boolean,
+        conversationId: string,
+        resourceUsage?: SessionResourceUsage,
+    ) => void,
     state: { toolStepOpen: boolean },
+    resourceUsageState: { current: SessionResourceUsage },
 ) => {
     const conversationId = event.conversation_id ?? "";
     if (event.event === "thinking_start") {
@@ -253,6 +312,13 @@ const handleKernelEvent = (
         return;
     }
     if (event.event === "tool_result") {
+        const derivedResourceUsage = deriveResourceUsageFromToolResult(event);
+        if (derivedResourceUsage) {
+            resourceUsageState.current = mergeResourceUsage(
+                resourceUsageState.current,
+                derivedResourceUsage,
+            );
+        }
         if (!showGptAssistantDebugEvents()) {
             if (!state.toolStepOpen) {
                 state.toolStepOpen = true;
@@ -262,6 +328,7 @@ const handleKernelEvent = (
                 `<step><summary>工具调用结果</summary>${renderFriendlyToolResultMessage(event)}</step>\n</think>\n\n`,
                 false,
                 conversationId,
+                resourceUsageState.current,
             );
             state.toolStepOpen = false;
             return;
@@ -272,7 +339,12 @@ const handleKernelEvent = (
         const renderedDetails = event.details
             ? JSON.stringify(event.details, null, 2)
             : "{}";
-        onChatMessage(`${statusLabel}：${toolName}\n结果详情：\n\`\`\`json\n${renderedDetails}\n\`\`\`\n</think>\n\n`, false, conversationId);
+        onChatMessage(
+            `${statusLabel}：${toolName}\n结果详情：\n\`\`\`json\n${renderedDetails}\n\`\`\`\n</think>\n\n`,
+            false,
+            conversationId,
+            resourceUsageState.current,
+        );
         return;
     }
     if (event.event === "text_delta") {
@@ -288,7 +360,7 @@ const handleKernelEvent = (
             onChatMessage("</think>\n\n", false, conversationId);
             state.toolStepOpen = false;
         }
-        onChatMessage("", true, conversationId);
+        onChatMessage("", true, conversationId, resourceUsageState.current);
         return;
     }
     if (event.event === "error") {
@@ -296,7 +368,12 @@ const handleKernelEvent = (
             onChatMessage("</think>\n\n", false, conversationId);
             state.toolStepOpen = false;
         }
-        onChatMessage(getChatV2ErrorMessage(event), true, conversationId);
+        onChatMessage(
+            getChatV2ErrorMessage(event),
+            true,
+            conversationId,
+            resourceUsageState.current,
+        );
     }
 };
 
@@ -310,10 +387,16 @@ interface PendingCapabilityConfirmation {
 const read = async (
     reader: any,
     decoder: TextDecoder,
-    onChatMessage: (message: string, end: boolean, conversationId: string) => void,
+    onChatMessage: (
+        message: string,
+        end: boolean,
+        conversationId: string,
+        resourceUsage?: SessionResourceUsage,
+    ) => void,
 ): Promise<PendingCapabilityConfirmation | null> => {
     let buffer = "";
     const kernelState = { toolStepOpen: false };
+    const resourceUsageState = { current: {} as SessionResourceUsage };
     let pendingConfirmation: PendingCapabilityConfirmation | null = null;
     try {
         while (true) {
@@ -371,7 +454,12 @@ const read = async (
                     ) {
                         continue;
                     }
-                    handleKernelEvent(payload, onChatMessage, kernelState);
+                    handleKernelEvent(
+                        payload,
+                        onChatMessage,
+                        kernelState,
+                        resourceUsageState,
+                    );
                 } else if (isLegacyEvent(payload)) {
                     handleLegacyEvent(payload, onChatMessage);
                 }
@@ -392,7 +480,12 @@ export const chatWithAI = (
     stream: boolean,
     conversationId: string,
     gid: string,
-    onChatMessage: (message: string, end: boolean, conversationId: string) => void,
+    onChatMessage: (
+        message: string,
+        end: boolean,
+        conversationId: string,
+        resourceUsage?: SessionResourceUsage,
+    ) => void,
     selectedModel: string,
     reasoningEnabled?: boolean,
 ) => {

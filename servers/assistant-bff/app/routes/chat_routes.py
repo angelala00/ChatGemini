@@ -280,6 +280,7 @@ class LegacySessionMessagePayload(BaseModel):
     timestamp: int | None = None
     title: str | None = None
     attachment: LegacyAttachmentPayload | None = None
+    resourceUsage: dict[str, bool] | None = None
 
 
 class LocalSessionImportItem(BaseModel):
@@ -334,6 +335,24 @@ def _load_runtime_history(conversation_id: str, gid: str) -> list:
 
 def _runtime_history_to_client_history(history: list, gid: str) -> list[dict]:
     client_history: list[dict] = []
+    pending_resource_usage = {
+        "usedAttachments": False,
+        "usedKnowledge": False,
+        "failedAttachments": False,
+        "failedKnowledge": False,
+    }
+
+    def _has_pending_resource_usage() -> bool:
+        return any(pending_resource_usage.values())
+
+    def _consume_pending_resource_usage() -> dict[str, bool] | None:
+        if not _has_pending_resource_usage():
+            return None
+        current = dict(pending_resource_usage)
+        for key in pending_resource_usage:
+            pending_resource_usage[key] = False
+        return current
+
     for item in history:
         role = str(_message_field(item, "role") or "")
         if role == "system":
@@ -357,6 +376,33 @@ def _runtime_history_to_client_history(history: list, gid: str) -> list[dict]:
                     "timestamp": int(_message_field(item, "timestamp") or 0),
                 }
             )
+            continue
+        if role == "tool_result":
+            tool_name = str(_message_field(item, "tool_name") or "")
+            is_error = bool(_message_field(item, "is_error"))
+            details = _message_field(item, "details") or {}
+            error_code = ""
+            if isinstance(details, dict):
+                error = details.get("error") or {}
+                if isinstance(error, dict):
+                    error_code = str(error.get("code") or "")
+            if error_code == "CONFIRMATION_REQUIRED":
+                continue
+            if tool_name in {
+                "document_read_text",
+                "resource_read_text",
+                "attachment_extract_text",
+                "document_load_images",
+                "resource_load_images",
+                "attachment_load_images",
+            }:
+                pending_resource_usage["failedAttachments" if is_error else "usedAttachments"] = True
+            elif tool_name == "knowledge_read_text":
+                pending_resource_usage["failedKnowledge" if is_error else "usedKnowledge"] = True
+            elif tool_name in {"document_list", "resource_list", "attachment_list"} and is_error:
+                pending_resource_usage["failedAttachments"] = True
+            elif tool_name == "knowledge_list" and is_error:
+                pending_resource_usage["failedKnowledge"] = True
             continue
         if role == "assistant":
             content = _message_field(item, "content", "")
@@ -382,6 +428,7 @@ def _runtime_history_to_client_history(history: list, gid: str) -> list[dict]:
                     "role": "model",
                     "parts": rendered,
                     "timestamp": int(_message_field(item, "timestamp") or 0),
+                    "resourceUsage": _consume_pending_resource_usage(),
                 }
             )
     return client_history

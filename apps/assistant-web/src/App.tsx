@@ -13,6 +13,7 @@ import { onUpdate as updateAI } from "./store/ai";
 import { matchPath, useNavigate, useLocation } from "react-router-dom";
 import { saveMdToHtml } from "./helpers/saveMdToHtml";
 import { initialSessions, onUpdate as updateSessions } from "./store/sessions";
+import type { SessionResourceUsage } from "./store/sessions";
 import { initialMappings, onUpdate as updateMappings } from "./store/mappings";
 import { initialSessionExtensions, onUpdate as updateSessionExtensions } from "./store/sessionsExtension";
 import { chatWithAI } from "./helpers/chatWithAI";
@@ -56,6 +57,7 @@ interface LegacySessionMessage {
     readonly timestamp: number;
     readonly title?: string;
     readonly attachment?: GenerativeContentBlob;
+    readonly resourceUsage?: SessionResourceUsage;
 }
 
 interface LegacySessionRecord {
@@ -745,6 +747,20 @@ const App = () => {
                                                     : "",
                                         }
                                       : undefined,
+                              resourceUsage:
+                                  entry.resourceUsage &&
+                                  typeof entry.resourceUsage === "object"
+                                      ? {
+                                            usedAttachments:
+                                                entry.resourceUsage.usedAttachments === true,
+                                            usedKnowledge:
+                                                entry.resourceUsage.usedKnowledge === true,
+                                            failedAttachments:
+                                                entry.resourceUsage.failedAttachments === true,
+                                            failedKnowledge:
+                                                entry.resourceUsage.failedKnowledge === true,
+                                        }
+                                      : undefined,
                           }))
                     : [];
                 return {
@@ -1092,7 +1108,12 @@ const App = () => {
         } else {
             navigate(`/chat/${id}`);
         }
-        const handler = (message: string, end: boolean, convId : string) => {
+        const handler = (
+            message: string,
+            end: boolean,
+            convId : string,
+            resourceUsage?: SessionResourceUsage,
+        ) => {
 	        // console.log("onChatMessage, message=" + message + ", end=" +  end + ", convId=" + convId + ", id=" + id + ", gid=" + gid);
             if (convId !== "") {
                 if (!mappings[id] && !sessionExtensions[id]?.conversationId) {
@@ -1152,6 +1173,8 @@ const App = () => {
             if (prevParts === modelPlaceholder) {
                 prevParts = "";
             }
+            const previousResourceUsage =
+                _sessions[id][_sessions[id].length - 1].resourceUsage;
             _sessions = {
                 ..._sessions,
                 [id]: [
@@ -1160,6 +1183,7 @@ const App = () => {
                         role: "model",
                         parts: `${prevParts}${message}`,
                         timestamp: Date.now(),
+                        resourceUsage: resourceUsage || previousResourceUsage,
                     },
                 ],
             };

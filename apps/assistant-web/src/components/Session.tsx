@@ -35,6 +35,7 @@ interface SessionProps {
     readonly previousRole?: SessionRole;
     readonly nextRole?: SessionRole;
     readonly header?: ReactNode;
+    readonly footer?: ReactNode;
     readonly children: ReactNode;
     readonly editState: { index: number; state: SessionEditState };
     readonly onDelete: (index: number) => void;
@@ -58,6 +59,7 @@ export const Session = (props: SessionProps) => {
         previousRole,
         nextRole,
         header,
+        footer,
         children,
         onEdit,
         onDelete,
@@ -222,6 +224,7 @@ export const Session = (props: SessionProps) => {
                 ) : (
                     <>{children}</>
                 )}
+                {isModel && footer}
                 {isModel && (
                     <div className="-ml-1 mt-1.5 flex h-8 items-center gap-1">
                         {actionsContent}
