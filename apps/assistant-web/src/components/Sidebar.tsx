@@ -52,285 +52,32 @@ interface SidebarProps {
     readonly onSwitchTheme: (theme: "light" | "dark" | "system") => void;
 }
 
-const APP_VERSION = "v2.1.5";
+const APP_VERSION = "v1.3.0";
 
 const releaseHistory = [
-    {
-        version: "v2.1.5",
-        date: "2026.06",
-        type: "patch",
-        zhTitle: "智能体资料使用反馈",
-        zhChanges: [
-            "智能体聊天回答下方新增轻量资料使用反馈，可提示本轮已参考上传文件或知识库。",
-            "当资料读取失败时，会在回答附近显示弱提示，避免资料调用失败后完全静默。",
-        ],
-        enTitle: "Agent Resource Usage Feedback",
-        enChanges: [
-            "Agent chat responses now show lightweight feedback indicating whether uploaded files or the knowledge base were referenced in the current turn.",
-            "When resource reads fail, the UI now shows a subtle warning near the answer instead of failing silently.",
-        ],
-    },
-    {
-        version: "v2.1.4",
-        date: "2026.06",
-        type: "patch",
-        zhTitle: "智能体能力改为父级选择与子项说明",
-        zhChanges: [
-            "创建和编辑智能体页保留两个父级能力开关，子能力改为只读说明展示，不再允许单独勾选。",
-            "父级开关继续映射到底层 capability 组合，既保证产品抽象一致，也让用户能看清包含的具体工具。",
-        ],
-        enTitle: "Parent Capability Selection with Read-only Children",
-        enChanges: [
-            "Agent creation and editing keep the two parent capability toggles while turning child capabilities into read-only explanatory items.",
-            "Parent toggles still map to the underlying capability sets, preserving the product abstraction while showing the concrete included tools.",
-        ],
-    },
-    {
-        version: "v2.1.3",
-        date: "2026.06",
-        type: "patch",
-        zhTitle: "智能体能力分组补充子能力联动",
-        zhChanges: [
-            "创建和编辑智能体页在两个资料来源开关下补充展示具体子能力，既保留产品级表达，也让高级用户看清底层工具组成。",
-            "父级开关支持全选和部分选中态，读取子能力依赖对应的查看子能力，避免出现不自然的组合。",
-        ],
-        enTitle: "Grouped Capabilities with Child Toggles",
-        enChanges: [
-            "Agent creation and editing now show concrete child capabilities under each resource toggle, keeping product-level wording while exposing the underlying tools clearly.",
-            "Parent toggles now support full and partial selection states, and read capabilities depend on the corresponding list capability to avoid awkward combinations.",
-        ],
-    },
-    {
-        version: "v2.1.2",
-        date: "2026.06",
-        type: "patch",
-        zhTitle: "智能体能力配置收敛为资料来源开关",
-        zhChanges: [
-            "创建和编辑智能体页将会话附件与知识库能力收敛为两个产品级开关，减少用户理解 list/read 底层动作的负担。",
-            "前端仍兼容映射到底层 capability id 提交，后端运行时和权限模型无需变更。",
-        ],
-        enTitle: "Capability Setup Simplified to Resource Toggles",
-        enChanges: [
-            "Agent creation and editing now collapse attachment and knowledge access into two product-level toggles, avoiding direct exposure of list/read internals.",
-            "The frontend still maps those toggles back to the underlying capability IDs, so no runtime or permission changes are required on the backend.",
-        ],
-    },
-    {
-        version: "v2.1.1",
-        date: "2026.06",
-        type: "patch",
-        zhTitle: "智能体能力说明国际化补全",
-        zhChanges: [
-            "创建和编辑智能体页中的四个可用能力说明改为走前端中英文语言包，不再直接显示后端英文描述。",
-            "已知能力优先展示本地化文案，未知能力仍兼容回退到后端返回描述。",
-        ],
-        enTitle: "Localized Agent Capability Descriptions",
-        enChanges: [
-            "The four capability descriptions in agent creation and editing now use frontend locale strings instead of raw backend English text.",
-            "Known capabilities prefer localized copy, while unknown capabilities still fall back to the backend description.",
-        ],
-    },
-    {
-        version: "v2.1.0",
-        date: "2026.06",
-        type: "minor",
-        zhTitle: "智能体级上传类型与模型图片能力拆分",
-        zhChanges: [
-            "智能体创建与编辑页新增允许上传类型配置，上传策略不再绑定到后台模型配置。",
-            "模型配置继续保留是否支持原生图片输入，用于决定是否直接传图或走附件读取/图片提取回退链路。",
-            "聊天上传校验改为优先读取智能体配置，知识文件与资料库上传继续保持文档类型约束。",
-        ],
-        enTitle: "Agent-level Upload Types and Model Image Capability Split",
-        enChanges: [
-            "Agent creation and editing now configure allowed upload types, and upload policy is no longer bound to admin model settings.",
-            "Model config still owns native image input support to decide whether images are sent directly or handled through attachment/OCR fallback paths.",
-            "Chat upload validation now reads agent policy first, while knowledge and library uploads remain document-only.",
-        ],
-    },
-    {
-        version: "v2.0.0",
-        date: "2026.06",
-        type: "major",
-        zhTitle: "Agent Runtime v3 与能力配置",
-        zhChanges: [
-            "新创建的智能体默认使用 Agent Runtime v3，支持统一的上下文装配、能力调用、运行状态和治理策略。",
-            "创建与编辑智能体时可以选择会话附件和智能体知识读取能力，未选择的工具不会提供给模型。",
-            "高风险能力增加服务端签名确认令牌，确认与用户及调用参数绑定，并支持安全重试。",
-        ],
-        enTitle: "Agent Runtime v3 and Capability Configuration",
-        enChanges: [
-            "New agents now use Agent Runtime v3 with unified context assembly, capability execution, run state, and governance.",
-            "Agent creation and editing can select chat attachment and agent knowledge tools; unselected tools are never exposed to the model.",
-            "High-risk capabilities use server-signed confirmation tokens bound to the user and action arguments for safe retries.",
-        ],
-    },
-    {
-        version: "v1.7.0",
-        date: "2026.06",
-        type: "minor",
-        zhTitle: "全站深色与浅色模式支持",
-        zhChanges: [
-            "新增系统设置主题切换，支持浅色模式、深色模式及系统偏好自动同步。",
-            "深度重构侧边栏、主聊天区、智能体广场、我的智能体及智能体创建等所有工作区的深色适配。",
-            "完美适配管理员配置界面与数据看板的浅色/深色主题，优化大量细节与图表对比度。",
-        ],
-        enTitle: "Global Light & Dark Themes Support",
-        enChanges: [
-            "Added theme selector in system settings supporting Light, Dark, and System Auto Sync modes.",
-            "Refactored dark mode styling overrides for sidebar, chat panel, explore agents, my agents, and agent creation workspaces.",
-            "Fully adapted admin config console and dashboard console visual themes, optimizing details and chart contrasts.",
-        ],
-    },
-    {
-        version: "v1.6.3",
-        date: "2026.06",
-        type: "patch",
-        zhTitle: "智能体广场顶部间距与触发器对齐",
-        zhChanges: [
-            "统一 React 的 Topbar 与原型的顶栏 padding，对齐主聊天页 Header 间距，解决无边栏/折叠时文字贴左的视觉缺陷。",
-            "修正触发器按钮显示断点，并在 App.tsx 中补齐 onToggleSidebar 传递，确保移动端能正常唤出侧边栏。",
-        ],
-        enTitle: "Explore Agents Padding & Trigger Alignment",
-        enChanges: [
-            "Unified React Topbar and prototype header paddings to match Header.tsx padding, resolving text sticking to the left when sidebar is collapsed.",
-            "Corrected sidebar trigger button display breakpoints and passed down onToggleSidebar in App.tsx to ensure sidebar works on mobile.",
-        ],
-    },
-    {
-        version: "v1.6.2",
-        date: "2026.06",
-        type: "patch",
-        zhTitle: "智能体广场页顶部样式对齐",
-        zhChanges: [
-            "将更多智能体页面顶部区从独立圆角卡片调整为与原型 topbar 一致的轻薄半透明顶栏风格。",
-            "同步统一该区域的字体节奏、边线层级和青灰配色，使其更贴近 AssistAI 原型。",
-        ],
-        enTitle: "Explore Agents Header Alignment",
-        enChanges: [
-            "Adjusted the Explore Agents header from a standalone rounded card to the slimmer translucent topbar style used in the prototype.",
-            "Aligned typography, border hierarchy, and the teal-gray color treatment of the header area with the AssistAI reference.",
-        ],
-    },
-    {
-        version: "v1.6.0",
-        date: "2026.06",
-        type: "minor",
-        zhTitle: "主助手迁入我的智能体",
-        zhChanges: [
-            "主助手 AI 助手迁移为可管理的系统智能体，可在“我的智能体”中直接编辑提示词、默认模型、可见模型和知识文件。",
-            "制度助手、主助手和普通自定义智能体统一采用 owner/admin/viewer 权限与同一套编辑界面。",
-            "管理后台不再维护主助手默认模型与可见模型，相关配置入口改为迁移提示。",
-        ],
-        enTitle: "Main Assistant Moved into My Agents",
-        enChanges: [
-            "The main AI Assistant is now a manageable system agent that can be edited in My Agents, including prompt, default model, visible models, and knowledge files.",
-            "The regulation assistant, main assistant, and custom agents now share the same owner/admin/viewer ACL model and editing surface.",
-            "The admin console no longer serves as the source of truth for the main assistant model defaults and visibility settings.",
-        ],
-    },
-    {
-        version: "v1.5.0",
-        date: "2026.06",
-        type: "minor",
-        zhTitle: "智能体与附件端内隔离",
-        zhChanges: [
-            "默认按登录端隔离智能体可见性和普通附件归属，避免不同入口之间的文件互通。",
-            "支持审核后的全局智能体跨端可见，知识文件随智能体作用域统一管理。",
-        ],
-        enTitle: "Agent and Attachment Provider Scoping",
-        enChanges: [
-            "Scopes agent visibility and ordinary attachments to the current login provider by default.",
-            "Supports approved global agents across providers, with knowledge files following the agent scope.",
-        ],
-    },
-    {
-        version: "v1.4.0",
-        date: "2026.06",
-        type: "minor",
-        zhTitle: "附件内容去重",
-        zhChanges: [
-            "同一用户重复上传相同文件时复用已有存储对象，减少 MinIO 空间占用。",
-            "会话附件与智能体知识文件共享安全引用计数语义，最后一个引用删除后才清理对象。",
-        ],
-        enTitle: "Attachment Content Deduplication",
-        enChanges: [
-            "Reuses stored objects when the same user uploads identical file content.",
-            "Deletes shared attachment objects only after their final session or agent-knowledge reference is removed.",
-        ],
-    },
-    {
-        version: "v1.3.4",
-        date: "2026.06",
-        type: "patch",
-        zhTitle: "聊天流式兼容修复",
-        zhChanges: [
-            "修复部分智能体在生产环境中已收到流式响应但页面空白的问题。",
-            "前端聊天流解析改为同时兼容旧版 message 流和新版 kernel 事件流。",
-        ],
-        enTitle: "Streaming Compatibility Fix",
-        enChanges: [
-            "Fixed an issue where some agents showed a blank reply even though streamed responses were arriving.",
-            "Updated the frontend chat parser to support both legacy message streams and newer kernel event streams.",
-        ],
-    },
-    {
-        version: "v1.3.3",
-        date: "2026.06",
-        type: "patch",
-        zhTitle: "智能体术语统一",
-        zhChanges: [
-            "将创建、探索、管理等页面中的 GPT 和专项助手统一命名为智能体。",
-            "保留主聊天入口的 AI 助手称呼，并保持内部配置名不变。",
-        ],
-        enTitle: "Unified Agent Terminology",
-        enChanges: [
-            "Renamed user-facing GPT and specialized assistant concepts to agents.",
-            "Kept AI Assistant for the main chat entry and preserved internal configuration names.",
-        ],
-    },
-    {
-        version: "v1.3.2",
-        date: "2026.06",
-        type: "patch",
-        zhTitle: "智能体首选模型",
-        zhChanges: [
-            "创建和编辑智能体时可从当前可用模型中选择首选模型。",
-            "首选模型下线或不可见时，智能体会自动降级到全局默认模型，避免聊天中断。",
-        ],
-        enTitle: "Preferred Models for Agents",
-        enChanges: [
-            "Added preferred model selection when creating or editing agents.",
-            "Agents now fall back to the global default when their preferred model is retired or unavailable.",
-        ],
-    },
-    {
-        version: "v1.3.1",
-        date: "2026.06",
-        type: "patch",
-        zhTitle: "智能体页面视觉统一",
-        zhChanges: [
-            "重新设计更多智能体和创建智能体页面，使其与主聊天助手保持统一的视觉语言。",
-            "优化智能体探索卡片、配置表单、知识文件和权限区域的层级与交互。",
-        ],
-        enTitle: "Unified Agent Page Design",
-        enChanges: [
-            "Redesigned the Explore Agents and Create Agent pages to match the main chat assistant.",
-            "Refined agent cards, configuration forms, knowledge files, and visibility controls.",
-        ],
-    },
     {
         version: "v1.3.0",
         date: "2026.06",
         type: "minor",
-        zhTitle: "智能体长期知识文件",
+        zhTitle: "智能体平台上线与管理功能升级",
         zhChanges: [
-            "创建和编辑智能体时支持维护智能体全局长期知识文件。",
-            "智能体会在需要资料时通过文档工具按需读取知识文件，不会默认把全部正文放入上下文。",
+            "概念统一：将原 GPTs 和专项助手统一更名为“智能体”，产品结构和使用心智更清晰。",
+            "页面重构：全新设计“智能体广场”和“创建智能体”页面，支持配置每个智能体的专属提示词、欢迎语和首选模型；当首选模型下线时会自动降级，避免聊天中断。",
+            "长期知识库：创建智能体时支持维护长期知识库文件，智能体会根据需要按需调用，不再默认堆积大量上下文。",
+            "隔离与安全：默认按登录端隔离智能体可见性和会话附件，支持全局智能体跨端可见。",
+            "资料使用反馈：在回答下方新增轻量标识，告知当前回答参考了哪些文件或知识库；文件读取失败时也会给出明确弱提示，不再静默。",
+            "优化产品体验：进一步打磨了深浅色主题、页面布局、移动端适配和关键交互细节，让浏览、创建和管理智能体更顺手。",
+            "执行引擎升级：新创建的智能体默认启用新一代执行引擎，支持对 Agent 运行状态、超时预算和有界内存的全面追踪，复杂任务执行更稳定。",
         ],
-        enTitle: "Long-term Agent Knowledge Files",
+        enTitle: "Agent Platform Launch and Management Upgrade",
         enChanges: [
-            "Added management of agent-level long-term knowledge files when creating or editing agents.",
-            "Agents now read knowledge files on demand through document tools instead of injecting all file content by default.",
+            "Unified GPTs and specialized assistants under the single name Agents, making the product structure easier to understand.",
+            "Redesigned the Explore Agents and Create Agent pages, with per-agent prompts, welcome messages, and preferred model settings plus automatic fallback when a model is retired.",
+            "Added long-term knowledge files for agents, which are retrieved on demand instead of being injected into context by default.",
+            "Scoped agent visibility and session attachments to the login provider by default, while still allowing approved global agents across providers.",
+            "Added lightweight resource usage feedback below answers so users can see which files or knowledge sources were referenced, with subtle warnings when reads fail.",
+            "Further polished theming, layout, mobile responsiveness, and key interactions to make browsing, creating, and managing agents feel smoother.",
+            "Newly created agents now use the next-generation execution engine with runtime state tracking, timeout budgets, and bounded memory controls for more stable complex runs.",
         ],
     },
     {
