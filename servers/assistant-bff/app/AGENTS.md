@@ -40,6 +40,7 @@
 - **编排层**：`servers/assistant-bff/app/chat_kernel_service.py`
 - **附件预处理**：`servers/assistant-bff/app/attachments/service.py`
 - **附件工具集**：`servers/assistant-bff/app/attachments/tools.py`
+- **附件与文件路由依赖约束**：`app.attachments.*` 允许复用 `app.routes.file_routes` 的文件能力，但应通过运行时/惰性导入访问，避免在模块初始化阶段与 `chat_routes`、`chat_kernel_service`、`file_routes` 形成循环导入。
 - **内核网关**：`servers/assistant-bff/app/llm_kernel/providers/openai_compat.py`
 
 ## 2. 安全与隔离策略 (Security & Isolation)

@@ -4,14 +4,47 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from app.llm_kernel import ImageContent, TextContent, ToolDefinition
-from app.routes.file_routes import (
-    _get_gptassistant_upload_limits,
-    describe_file_mapping_entry,
-    extract_text_from_file_ids,
-    load_file_mapping,
-)
 
 from .service import _encode_image_content, resolve_attachment_selection
+
+
+def _file_routes():
+    from app.routes import file_routes
+
+    return file_routes
+
+
+def _get_gptassistant_upload_limits():
+    return _file_routes()._get_gptassistant_upload_limits()
+
+
+def describe_file_mapping_entry(file_id: str, entry: dict | None) -> dict:
+    return _file_routes().describe_file_mapping_entry(file_id, entry)
+
+
+async def extract_text_from_file_ids(
+    file_ids: str,
+    max_chars: int | None = None,
+    *,
+    page: int | None = None,
+    page_from: int | None = None,
+    page_to: int | None = None,
+    sheet_name: str | None = None,
+    sheet_index: int | None = None,
+):
+    return await _file_routes().extract_text_from_file_ids(
+        file_ids,
+        max_chars=max_chars,
+        page=page,
+        page_from=page_from,
+        page_to=page_to,
+        sheet_name=sheet_name,
+        sheet_index=sheet_index,
+    )
+
+
+def load_file_mapping():
+    return _file_routes().load_file_mapping()
 
 
 @dataclass(slots=True)

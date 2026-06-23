@@ -5,13 +5,29 @@ from typing import Optional
 
 from app.llm_kernel import ImageContent, TextContent, UserMessage
 from app.logger import gpt_logger
-from app.routes.file_routes import (
-    get_file_paths,
-    load_file_mapping,
-    safe_display_filename,
-    split_file_ids_by_type,
-)
 from app.utils.image_utils import detect_image_mime_type
+
+
+def _file_routes():
+    from app.routes import file_routes
+
+    return file_routes
+
+
+def get_file_paths(file_ids: Optional[str]):
+    return _file_routes().get_file_paths(file_ids)
+
+
+def load_file_mapping():
+    return _file_routes().load_file_mapping()
+
+
+def safe_display_filename(filename: object, max_chars: int = 200) -> str:
+    return _file_routes().safe_display_filename(filename, max_chars=max_chars)
+
+
+def split_file_ids_by_type(file_ids: Optional[str]):
+    return _file_routes().split_file_ids_by_type(file_ids)
 
 @dataclass(frozen=True)
 class AttachmentSelection:

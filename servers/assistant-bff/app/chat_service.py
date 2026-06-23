@@ -6,9 +6,6 @@ from .chat_base import client, match_history, save_match_history
 import uuid
 from typing import AsyncGenerator, Dict, Any, List, Optional
 import traceback
-from app.routes.file_routes import extract_text_from_file_ids
-from app.routes.file_routes import get_file_paths
-from app.routes.file_routes import split_file_ids_by_type
 from app.utils.model_tool import convert_image_message, is_image_only
 from app.utils.model_tool import (
     MODEL_NAME_VL,
@@ -27,6 +24,12 @@ LEGACY_REASONING_MODELS = {
     MODEL_NAME_THINKING,
 }
 LEGACY_MULTIMODAL_MODELS = {MODEL_NAME_VL}
+
+
+def _file_routes():
+    from app.routes import file_routes
+
+    return file_routes
 
 
 def _is_reasoning_model(model_name: str | None):
@@ -63,7 +66,7 @@ async def chat_with_react_as_function_call(
     if not messages or messages[0]["role"] != "system":
         messages.insert(0, {"role": "system", "content": system_prompt})
     if file_ids:
-        file_paths = get_file_paths(file_ids)
+        file_paths = _file_routes().get_file_paths(file_ids)
         messages.append({"role": "user", "content": convert_image_message(file_paths, query)})
     else:
         messages.append({"role": "user", "content": query})
@@ -467,7 +470,7 @@ async def _chat_with_agent(
     # 添加当前用户的提问
     if file_ids:
         # 通常只有图片问答会走到这里
-        file_paths = get_file_paths(file_ids)
+        file_paths = _file_routes().get_file_paths(file_ids)
         messages.append({"role": "user", "content": convert_image_message(file_paths, query)})
     else:
         messages.append({"role": "user", "content": query})
@@ -618,10 +621,10 @@ async def chat_with_gpt(
     usage_tracker: Optional[UsageEventTracker] = None,
     trace_recorder: Optional[ChatTraceRecorder] = None,
 ):
-    file_paths = get_file_paths(file_ids)
+    file_paths = _file_routes().get_file_paths(file_ids)
     has_file_ids = bool(file_ids)
     image_only = is_image_only(file_paths)
-    image_file_ids, document_file_ids = split_file_ids_by_type(file_ids)
+    image_file_ids, document_file_ids = _file_routes().split_file_ids_by_type(file_ids)
     native_image_input = bool(model_config.get("supports_native_image_input"))
     forwarded_image_file_ids = image_file_ids if native_image_input else None
     use_reasoning = bool(reasoning_enabled)
@@ -631,7 +634,7 @@ async def chat_with_gpt(
             model_name = MODEL_NAME_VL
         elif has_file_ids:
             model_name = MODEL_NAME_THINKING
-            query += await extract_text_from_file_ids(file_ids)
+            query += await _file_routes().extract_text_from_file_ids(file_ids)
         elif is_complex(query):
             model_name = MODEL_NAME_THINKING
         else:
@@ -639,9 +642,9 @@ async def chat_with_gpt(
         use_reasoning = model_name == MODEL_NAME_THINKING
     else:
         if document_file_ids:
-            query += await extract_text_from_file_ids(document_file_ids)
+            query += await _file_routes().extract_text_from_file_ids(document_file_ids)
         if image_file_ids and not native_image_input:
-            query += await extract_text_from_file_ids(image_file_ids)
+            query += await _file_routes().extract_text_from_file_ids(image_file_ids)
 
     if usage_tracker:
         usage_tracker.set_model(model_name)

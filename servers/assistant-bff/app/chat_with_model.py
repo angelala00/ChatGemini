@@ -4,9 +4,14 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from app.chat_base import client, match_history, save_match_history
 from app.metrics.events import UsageEventTracker
-from app.routes.file_routes import get_file_paths
 from app.utils.model_tool import convert_image_message
 from app.utils.tool_register import dispatch_tool, get_tools
+
+
+def _file_routes():
+    from app.routes import file_routes
+
+    return file_routes
 
 
 class StreamHandledError(Exception):
@@ -20,7 +25,7 @@ def _sse(name: str, payload: Dict[str, Any]) -> str:
 
 def _append_user_message(messages: List[Dict[str, Any]], query: str, file_ids: Optional[str]) -> None:
     if file_ids:
-        file_paths = get_file_paths(file_ids)
+        file_paths = _file_routes().get_file_paths(file_ids)
         messages.append({"role": "user", "content": convert_image_message(file_paths, query)})
     else:
         messages.append({"role": "user", "content": query})

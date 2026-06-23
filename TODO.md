@@ -18,6 +18,7 @@
 - **Trace 权限与附件数据脱敏**：Trace 接口增加鉴权；事件不得保存图片 Base64 或附件内容。
 - **对象存储调用超时**：为 MinIO 操作配置明确超时及重试策略。
 - **附件间接 Prompt Injection 防护**：对具备业务工具能力的助手增加敏感操作人工确认。
+- **文件能力层下沉，消除路由反向依赖**：将 `app.routes.file_routes` 中被 `attachments`、`chat_service`、`chat_with_model` 复用的纯文件能力下沉到独立服务模块（如 `app/files/service.py`），至少包括 `extract_text_from_file_ids`、`get_file_paths`、`split_file_ids_by_type`、`load_file_mapping`、`describe_file_mapping_entry`。目标是让路由层只保留 HTTP 入口与鉴权编排，附件/聊天链路统一依赖文件服务层，彻底移除当前通过惰性导入规避循环导入的过渡方案。
 
 ### 中优先级一致性治理
 - **原生图片预处理异步化**：图片 Base64 编码移入受控线程池或流式链路，降低阻塞。
