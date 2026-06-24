@@ -64,16 +64,18 @@
 - JavaScript/TypeScript uses ES modules, double quotes, and semicolons; follow the style in the file you touch.
 - React components live in `src/components`, hooks in `src/hooks`, and helpers in `src/helpers`.
 - Tailwind utility classes are preferred over bespoke CSS; keep custom styles in `src/index.css` when needed.
+- When working in a file that is already unusually long or has grown unwieldy, call that out to the user and discuss whether the change should include splitting or refactoring the file instead of silently continuing to enlarge it.
 
 ## Versioning & Release Notes
 - Any user-visible behavior change should consider whether the app version needs to be updated.
-- Current assistant-web version display is maintained in `apps/assistant-web/src/components/Sidebar.tsx` (`APP_VERSION`) together with the sidebar release history data.
 - Update `changelog.md` when adding, changing, or removing user-facing functionality.
+- Current assistant-web version display is maintained in `apps/assistant-web/src/components/Sidebar.tsx` (`APP_VERSION`) together with the sidebar release history data, but do not update that file by default when making ordinary user-visible changes.
+- Only update `apps/assistant-web/src/components/Sidebar.tsx` version display and sidebar release history when the user explicitly asks to update version records or perform a release/version bump.
 - Version number rules:
   - Small interaction polish or bug-fix style improvements bump the third number, e.g. `v1.0.1` -> `v1.0.2`.
   - Small feature additions bump the second number, e.g. `v1.0.1` -> `v1.1.0`.
   - Larger upgrades, architecture-level changes, or broad product changes bump the first number, e.g. `v1.0.1` -> `v2.0.0`.
-- When bumping the version, keep these in sync: `APP_VERSION`, sidebar release history, locale text if needed, and `changelog.md`.
+- When explicitly bumping the version, keep these in sync: `APP_VERSION`, sidebar release history, locale text if needed, and `changelog.md`.
 
 ## Testing Guidelines
 - No automated test suite is configured. Validate changes manually (run the relevant dev server and exercise the feature).

@@ -66,6 +66,7 @@
 - **并发保护**：在上传和解析入口增加了并发数和超时（60s）限制。
 
 ## 3. 存储语义
+- **存储模块分层**：`app/storage/business_store.py` 继续作为兼容聚合入口与底层初始化/连接层；GPT/Pin 状态逻辑已拆到 `app/storage/gpts_store.py`，文件映射与上传预留逻辑拆到 `app/storage/file_store.py`，管理员模型/权限/开关/审计逻辑拆到 `app/storage/admin_store.py`。新增同类能力时优先写入对应分层模块，而不是继续回填到 `business_store.py`。
 - **普通附件 (Session Attachment)**：属于特定会话，随会话生命周期管理（默认 7 天过期）。
 - **知识文件 (Assistant Knowledge)**：属于智能体资产，仅随智能体手动删除时清理。
 - **资料库文件 (Library File)**：属于当前用户的个人资料库，独立于会话附件与智能体知识文件；MVP 阶段直接复用 `file_mapping` 与对象存储，以 `purpose=library_file` 区分。
@@ -79,10 +80,12 @@
 - **上传策略归属**：聊天附件允许上传的类型由智能体配置 `upload_file_types` 决定，属于智能体交互策略；后台模型配置不再作为上传类型策略源。
 - **图片能力归属**：模型是否支持原生图片输入继续由 `supports_native_image_input` 表达；支持时直接把图片作为 `ImageContent` 送入模型，不支持时通过附件读取工具或 OCR/VL 提取结果回退到文本链路。
 - **智能体入口可见性**：`gpts_feature_enabled` 只控制 GPTs 总开关；“更多智能体”入口对谁可见由管理员配置中的 `gpts_visible_scope` 与 `gpts_visible_users` 决定。运行时优先读取 DB 配置，未配置时才兼容回退到 `GPTS_WHITE_LIST`。
+- **智能体菜单语义**：智能体是否对某个用户可访问统一由当前 GPT 配置（`auth` + ACL + provider scope）决定。左侧菜单 `/api/gpts/pined` 在有 GPTS 入口权限时展示“当前可见且未被该用户显式取消 pin 的智能体”，在无 GPTS 入口权限时展示“当前全部可见智能体”；历史 pin 状态不会在入口权限被收回后继续隐藏智能体。
+- **Pin 状态模型**：`user_gpts_state` 保存用户对智能体菜单的显式 pin 覆盖，新增 `is_pinned` 字段后语义为“无记录 = 默认 pin；有记录且 `is_pinned=false` = 用户显式取消；有记录且 `is_pinned=true` = 用户显式恢复/调整顺序”。不要再通过 `required_pinned` 或启动时强制补 pin 来实现制度助手之类的固定入口。
 - **资料库入口可见性**：个人资料库入口使用独立的 `library_feature_enabled`、`library_visible_scope`、`library_visible_users` 配置；不要复用 GPTs 白名单语义。
 - **可见性策略抽象**：GPTs 与资料库入口这类“开关 + scope + users (+ fallback)”规则，统一收敛到 `app/admin/visibility_policy.py`，新增同类型入口时优先复用，不要在路由里重复手写。
 - **系统助手同步**：启动初始化从纯内置注册表识别系统助手并补种到 `agents`；已有记录仅同步 `assistant_kind` 与 `handler_key` 执行身份，不覆盖数据库中的名称、提示词、默认模型、可见模型或 ACL 等可编辑配置。
-- **智能体编辑语义**：`PUT /api/gpts/{gid}` 按合并更新处理，保留编辑页未提交的现有字段；系统助手的 `gid`、`assistant_kind`、`handler_key` 与 `required_pinned` 属于受保护字段，编辑名称、提示词或默认模型时不能被覆盖或清空。
+- **智能体编辑语义**：`PUT /api/gpts/{gid}` 按合并更新处理，保留编辑页未提交的现有字段；系统助手的 `gid`、`assistant_kind` 与 `handler_key` 属于受保护字段，编辑名称、提示词或默认模型时不能被覆盖或清空。
 - **制度知识入库**：启动初始化会把 `FILE_BASE/regulationassistant` 下的知识文件幂等迁移到当前对象存储后端，并写入 `file_mapping`，以 `purpose=assistant_knowledge` 标识；制度工具优先从这类 DB 映射读取目录和正文，目录缺失时会从映射集合合成一个兼容目录。
 - **智能体 ACL**：`agents.config` 承载 `owner`、`admins`、`viewers`，其中 `owner` 是唯一可转让所有者，`admins` 可编辑并管理知识文件，`viewers` 仅可见。系统内置 `regulationassistant` 与 `gptassistant` 在启动时会从 `GPTS_WHITE_LIST` 派生默认所有者和管理员列表；编辑页允许当前所有者转让 owner，并维护管理员/可见用户名单。
 - **旧表迁移策略**：启动时会将旧 `custom_gpts` 中尚未存在于 `agents` 的记录补迁到 `agents`，但不会反向覆盖 `agents` 中已存在的新配置，保证滚动升级期间旧节点继续读旧表、新节点只读新表。

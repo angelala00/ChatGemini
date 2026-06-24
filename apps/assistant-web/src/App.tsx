@@ -309,15 +309,11 @@ const App = () => {
     }
     // console.log("====id:" + id + " ====gid:" + gid)
     let r_gid = gid?gid:"gptassistant"
-    const isRequiredPinnedGpt = pinnedGpts.some(
-        (item) => item.gid === gid && item.is_required_pinned,
-    );
     const isPinnedGpt = pinnedGpts.some((item) => item.gid === gid);
     const canOpenCurrentGpt =
         !gid ||
         gid === "gptassistant" ||
         gptsFeatureAllowed ||
-        isRequiredPinnedGpt ||
         isPinnedGpt;
     const activeSessionHistory = id && id in sessions ? sessions[id] : [];
     const activeConversationId =

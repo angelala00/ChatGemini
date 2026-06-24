@@ -1214,6 +1214,29 @@ def _ensure_file_upload_reservations_auth_provider_column() -> None:
         conn.commit()
 
 
+def _ensure_user_gpts_state_is_pinned_column() -> None:
+    with _connect() as conn:
+        if _use_postgres():
+            exists_row = conn.execute(
+                "SELECT to_regclass('user_gpts_state') IS NOT NULL AS exists"
+            ).fetchone()
+            exists = bool(_normalize_row(exists_row).get("exists")) if exists_row else False
+            if not exists:
+                return
+            conn.execute(
+                "ALTER TABLE user_gpts_state ADD COLUMN IF NOT EXISTS is_pinned BOOLEAN NOT NULL DEFAULT TRUE"
+            )
+        else:
+            if not _sqlite_table_exists(conn, "user_gpts_state"):
+                return
+            columns = _sqlite_columns(conn, "user_gpts_state")
+            if "is_pinned" not in columns:
+                conn.execute(
+                    "ALTER TABLE user_gpts_state ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 1"
+                )
+        conn.commit()
+
+
 def _sqlite_table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
     row = conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
@@ -1408,22 +1431,33 @@ def _migrate_sqlite_light_business_tables_source_to_postgres(source_path: Path) 
                         summary["custom_gpts"] += 1
 
                 if _sqlite_table_exists(sqlite_conn, "user_gpts_state"):
+                    user_gpts_state_columns = _sqlite_columns(sqlite_conn, "user_gpts_state")
+                    select_pin_state_sql = (
+                        "SELECT user_id, gpts_id, is_pinned, pinned_at FROM user_gpts_state"
+                        if "is_pinned" in user_gpts_state_columns
+                        else "SELECT user_id, gpts_id, pinned_at FROM user_gpts_state"
+                    )
                     for row in sqlite_conn.execute(
-                        "SELECT user_id, gpts_id, pinned_at FROM user_gpts_state"
+                        select_pin_state_sql
                     ).fetchall():
                         item = _normalize_row(row)
                         user_id = str(item.get("user_id") or "").strip()
                         gpts_id = str(item.get("gpts_id") or "").strip()
+                        is_pinned = (
+                            _coerce_bool(item.get("is_pinned"))
+                            if "is_pinned" in item
+                            else True
+                        )
                         pinned_at = str(item.get("pinned_at") or "").strip() or _now_iso()
                         if not user_id or not gpts_id:
                             continue
                         conn.execute(
                             """
-                            INSERT INTO user_gpts_state(user_id, gpts_id, pinned_at)
-                            VALUES (%s, %s, %s)
+                            INSERT INTO user_gpts_state(user_id, gpts_id, is_pinned, pinned_at)
+                            VALUES (%s, %s, %s, %s)
                             ON CONFLICT (user_id, gpts_id) DO NOTHING
                             """,
-                            (user_id, gpts_id, pinned_at),
+                            (user_id, gpts_id, bool(is_pinned), pinned_at),
                         )
                         summary["user_gpts_state"] += 1
 
@@ -1886,6 +1920,7 @@ def init_business_storage() -> None:
     gpt_logger.info("business_storage_init started backend=%s", business_storage_backend())
     with _connect() as conn:
         _ensure_file_upload_reservations_auth_provider_column()
+        _ensure_user_gpts_state_is_pinned_column()
         if _use_postgres():
             conn.execute(
                 """
@@ -1950,6 +1985,7 @@ def init_business_storage() -> None:
                 CREATE TABLE IF NOT EXISTS user_gpts_state (
                   user_id TEXT NOT NULL,
                   gpts_id TEXT NOT NULL,
+                  is_pinned BOOLEAN NOT NULL DEFAULT TRUE,
                   pinned_at TIMESTAMPTZ NOT NULL,
                   PRIMARY KEY (user_id, gpts_id)
                 )
@@ -2135,6 +2171,7 @@ def init_business_storage() -> None:
                 CREATE TABLE IF NOT EXISTS user_gpts_state (
                   user_id TEXT NOT NULL,
                   gpts_id TEXT NOT NULL,
+                  is_pinned INTEGER NOT NULL DEFAULT 1,
                   pinned_at TEXT NOT NULL,
                   PRIMARY KEY (user_id, gpts_id)
                 );
@@ -2598,575 +2635,34 @@ def delete_session_history(conversation_id: str) -> None:
         conn.commit()
 
 
-def load_custom_gpts() -> dict[str, dict[str, Any]]:
-    ensure_initialized()
-    with _connect() as conn:
-        if _use_postgres():
-            rows = conn.execute("SELECT gid, config, assistant_kind, handler_key FROM agents").fetchall()
-        else:
-            rows = conn.execute("SELECT gid, config, assistant_kind, handler_key FROM agents").fetchall()
-    result: dict[str, dict[str, Any]] = {}
-    for row in rows:
-        item = _normalize_row(row)
-        payload = item.get("config")
-        if isinstance(payload, str):
-            try:
-                payload = json.loads(payload)
-            except json.JSONDecodeError:
-                continue
-        if isinstance(payload, dict):
-            normalized = _normalize_custom_gpt_payload(payload)
-            assistant_kind = str(item.get("assistant_kind") or "").strip()
-            handler_key = str(item.get("handler_key") or "").strip()
-            if assistant_kind:
-                normalized["assistant_kind"] = assistant_kind
-            if handler_key:
-                normalized["handler_key"] = handler_key
-            if str(item["gid"]) == "regulationassistant":
-                defaults = _regulation_acl_defaults()
-                normalized["owner"] = str(normalized.get("owner") or defaults["owner"] or "").strip()
-                normalized["admins"] = _normalize_identity_list(normalized.get("admins")) or defaults["admins"]
-                normalized["viewers"] = _normalize_identity_list(normalized.get("viewers")) or defaults["viewers"]
-            result[str(item["gid"])] = normalized
-    return result
+from app.storage.gpts_store import (
+    delete_custom_gpt,
+    delete_user_gpt_state_by_gid,
+    get_user_config_version,
+    insert_custom_gpt,
+    is_gpt_pinned,
+    list_pinned_gids,
+    list_user_gpt_pin_states,
+    list_user_pinned_rows,
+    load_custom_gpts,
+    set_user_config_version,
+    set_user_gpt_pin,
+    update_custom_gpt,
+)
 
 
-def insert_custom_gpt(gid: str, config: dict[str, Any]) -> None:
-    ensure_initialized()
-    payload = json.dumps(config, ensure_ascii=False)
-    metadata = _custom_gpt_metadata_from_config(config)
-    with _connect() as conn:
-        if _use_postgres():
-            conn.execute(
-                """
-                INSERT INTO agents(gid, config, assistant_kind, handler_key)
-                VALUES(%s, %s::jsonb, %s, %s)
-                """,
-                (gid, payload, metadata["assistant_kind"], metadata["handler_key"]),
-            )
-        else:
-            conn.execute(
-                """
-                INSERT INTO agents(gid, config, assistant_kind, handler_key)
-                VALUES(?, ?, ?, ?)
-                """,
-                (gid, payload, metadata["assistant_kind"], metadata["handler_key"]),
-            )
-        conn.commit()
-
-
-def update_custom_gpt(gid: str, config: dict[str, Any]) -> None:
-    ensure_initialized()
-    payload = json.dumps(config, ensure_ascii=False)
-    metadata = _custom_gpt_metadata_from_config(config)
-    with _connect() as conn:
-        if _use_postgres():
-            conn.execute(
-                """
-                UPDATE agents
-                   SET config=%s::jsonb,
-                       assistant_kind=%s,
-                       handler_key=%s
-                 WHERE gid=%s
-                """,
-                (payload, metadata["assistant_kind"], metadata["handler_key"], gid),
-            )
-        else:
-            conn.execute(
-                """
-                UPDATE agents
-                   SET config=?,
-                       assistant_kind=?,
-                       handler_key=?
-                 WHERE gid=?
-                """,
-                (payload, metadata["assistant_kind"], metadata["handler_key"], gid),
-            )
-        conn.commit()
-
-
-def delete_custom_gpt(gid: str) -> None:
-    ensure_initialized()
-    with _connect() as conn:
-        if _use_postgres():
-            conn.execute("DELETE FROM agents WHERE gid=%s", (gid,))
-        else:
-            conn.execute("DELETE FROM agents WHERE gid=?", (gid,))
-        conn.commit()
-
-
-def list_pinned_gids(user_id: str) -> set[str]:
-    ensure_initialized()
-    with _connect() as conn:
-        if _use_postgres():
-            rows = conn.execute(
-                "SELECT gpts_id FROM user_gpts_state WHERE user_id=%s",
-                (user_id,),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT gpts_id FROM user_gpts_state WHERE user_id=?",
-                (user_id,),
-            ).fetchall()
-    return {str(_normalize_row(row)["gpts_id"]) for row in rows}
-
-
-def is_gpt_pinned(user_id: str, gid: str) -> bool:
-    ensure_initialized()
-    with _connect() as conn:
-        if _use_postgres():
-            row = conn.execute(
-                "SELECT 1 FROM user_gpts_state WHERE user_id=%s AND gpts_id=%s",
-                (user_id, gid),
-            ).fetchone()
-        else:
-            row = conn.execute(
-                "SELECT 1 FROM user_gpts_state WHERE user_id=? AND gpts_id=?",
-                (user_id, gid),
-            ).fetchone()
-    return row is not None
-
-
-def ensure_required_pinned_gpts(user_id: str, gids: tuple[str, ...]) -> None:
-    ensure_initialized()
-    if not gids:
-        return
-    pinned_at = _now_iso()
-    with _connect() as conn:
-        for gid in gids:
-            if _use_postgres():
-                conn.execute(
-                    """
-                    INSERT INTO user_gpts_state(user_id, gpts_id, pinned_at)
-                    VALUES (%s, %s, %s)
-                    ON CONFLICT (user_id, gpts_id) DO NOTHING
-                    """,
-                    (user_id, gid, pinned_at),
-                )
-            else:
-                conn.execute(
-                    """
-                    INSERT OR IGNORE INTO user_gpts_state(user_id, gpts_id, pinned_at)
-                    VALUES (?, ?, ?)
-                    """,
-                    (user_id, gid, pinned_at),
-                )
-        conn.commit()
-
-
-def set_user_gpt_pin(user_id: str, gid: str, *, is_pinned: bool) -> None:
-    ensure_initialized()
-    pinned_at = _now_iso()
-    with _connect() as conn:
-        if _use_postgres():
-            conn.execute(
-                "DELETE FROM user_gpts_state WHERE user_id=%s AND gpts_id=%s",
-                (user_id, gid),
-            )
-            if is_pinned:
-                conn.execute(
-                    """
-                    INSERT INTO user_gpts_state(user_id, gpts_id, pinned_at)
-                    VALUES (%s, %s, %s)
-                    """,
-                    (user_id, gid, pinned_at),
-                )
-        else:
-            conn.execute(
-                "DELETE FROM user_gpts_state WHERE user_id=? AND gpts_id=?",
-                (user_id, gid),
-            )
-            if is_pinned:
-                conn.execute(
-                    """
-                    INSERT INTO user_gpts_state(user_id, gpts_id, pinned_at)
-                    VALUES (?, ?, ?)
-                    """,
-                    (user_id, gid, pinned_at),
-                )
-        conn.commit()
-
-
-def list_user_pinned_rows(user_id: str) -> list[dict[str, Any]]:
-    ensure_initialized()
-    with _connect() as conn:
-        if _use_postgres():
-            rows = conn.execute(
-                """
-                SELECT gpts_id, pinned_at
-                  FROM user_gpts_state
-                 WHERE user_id=%s
-                 ORDER BY pinned_at ASC
-                """,
-                (user_id,),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                """
-                SELECT gpts_id, pinned_at
-                  FROM user_gpts_state
-                 WHERE user_id=?
-                 ORDER BY pinned_at ASC
-                """,
-                (user_id,),
-            ).fetchall()
-    return [_normalize_row(row) for row in rows]
-
-
-def get_user_config_version(user_id: str) -> str | None:
-    ensure_initialized()
-    with _connect() as conn:
-        if _use_postgres():
-            row = conn.execute(
-                "SELECT version FROM user_config_version WHERE user_id=%s",
-                (user_id,),
-            ).fetchone()
-        else:
-            row = conn.execute(
-                "SELECT version FROM user_config_version WHERE user_id=?",
-                (user_id,),
-            ).fetchone()
-    if not row:
-        return None
-    return str(_normalize_row(row).get("version") or "")
-
-
-def set_user_config_version(user_id: str, version: str) -> None:
-    ensure_initialized()
-    with _connect() as conn:
-        if _use_postgres():
-            conn.execute(
-                """
-                INSERT INTO user_config_version(user_id, version)
-                VALUES (%s, %s)
-                ON CONFLICT (user_id) DO UPDATE SET version=EXCLUDED.version
-                """,
-                (user_id, version),
-            )
-        else:
-            conn.execute(
-                """
-                INSERT INTO user_config_version(user_id, version)
-                VALUES (?, ?)
-                ON CONFLICT(user_id) DO UPDATE SET version=excluded.version
-                """,
-                (user_id, version),
-            )
-        conn.commit()
-
-
-def delete_user_gpt_state_by_gid(gid: str) -> None:
-    ensure_initialized()
-    with _connect() as conn:
-        if _use_postgres():
-            conn.execute("DELETE FROM user_gpts_state WHERE gpts_id=%s", (gid,))
-        else:
-            conn.execute("DELETE FROM user_gpts_state WHERE gpts_id=?", (gid,))
-        conn.commit()
-
-
-def list_file_mappings(gid: str | None = None) -> dict[str, dict[str, Any]]:
-    ensure_initialized()
-    with _connect() as conn:
-        if gid:
-            if _use_postgres():
-                rows = conn.execute(
-                    """
-                    SELECT file_id, filename, file_extension, content_type, bucket,
-                           object_key, storage_backend, size_bytes, content_sha256, upload_time, gid,
-                           owner_user_id, owner_user_email, auth_provider, purpose, conversation_id
-                      FROM file_mapping
-                     WHERE gid=%s
-                    """,
-                    (gid,),
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    """
-                    SELECT file_id, filename, file_extension, content_type, bucket,
-                           object_key, storage_backend, size_bytes, content_sha256, upload_time, gid,
-                           owner_user_id, owner_user_email, auth_provider, purpose, conversation_id
-                      FROM file_mapping
-                     WHERE gid=?
-                    """,
-                    (gid,),
-                ).fetchall()
-        else:
-            rows = conn.execute(
-                """
-                SELECT file_id, filename, file_extension, content_type, bucket,
-                       object_key, storage_backend, size_bytes, content_sha256, upload_time, gid,
-                       owner_user_id, owner_user_email, auth_provider, purpose, conversation_id
-                  FROM file_mapping
-                """
-            ).fetchall()
-    result: dict[str, dict[str, Any]] = {}
-    for row in rows:
-        item = _normalize_row(row)
-        result[str(item["file_id"])] = {
-            "filename": item.get("filename"),
-            "fileExtension": item.get("file_extension"),
-            "contentType": item.get("content_type"),
-            "bucket": item.get("bucket"),
-            "objectKey": item.get("object_key"),
-            "storageBackend": item.get("storage_backend"),
-            "sizeBytes": item.get("size_bytes"),
-            "contentSha256": item.get("content_sha256"),
-            "uploadTime": str(item.get("upload_time")),
-            "gid": item.get("gid"),
-            "ownerUserId": item.get("owner_user_id"),
-            "ownerUserEmail": item.get("owner_user_email"),
-            "authProvider": item.get("auth_provider") or DEFAULT_AUTH_PROVIDER,
-            "purpose": item.get("purpose") or "session_attachment",
-            "conversationId": item.get("conversation_id"),
-        }
-    return result
-
-
-def get_file_mapping(file_id: str, gid: str | None = None) -> dict[str, Any] | None:
-    ensure_initialized()
-    with _connect() as conn:
-        if gid:
-            if _use_postgres():
-                row = conn.execute(
-                    """
-                    SELECT file_id, filename, file_extension, content_type, bucket,
-                           object_key, storage_backend, size_bytes, content_sha256, upload_time, gid,
-                           owner_user_id, owner_user_email, auth_provider, purpose, conversation_id
-                      FROM file_mapping
-                     WHERE file_id=%s AND gid=%s
-                    """,
-                    (file_id, gid),
-                ).fetchone()
-            else:
-                row = conn.execute(
-                    """
-                    SELECT file_id, filename, file_extension, content_type, bucket,
-                           object_key, storage_backend, size_bytes, content_sha256, upload_time, gid,
-                           owner_user_id, owner_user_email, auth_provider, purpose, conversation_id
-                      FROM file_mapping
-                     WHERE file_id=? AND gid=?
-                    """,
-                    (file_id, gid),
-                ).fetchone()
-        else:
-            if _use_postgres():
-                row = conn.execute(
-                    """
-                    SELECT file_id, filename, file_extension, content_type, bucket,
-                           object_key, storage_backend, size_bytes, content_sha256, upload_time, gid,
-                           owner_user_id, owner_user_email, auth_provider, purpose, conversation_id
-                      FROM file_mapping
-                     WHERE file_id=%s
-                    """,
-                    (file_id,),
-                ).fetchone()
-            else:
-                row = conn.execute(
-                    """
-                    SELECT file_id, filename, file_extension, content_type, bucket,
-                           object_key, storage_backend, size_bytes, content_sha256, upload_time, gid,
-                           owner_user_id, owner_user_email, auth_provider, purpose, conversation_id
-                      FROM file_mapping
-                     WHERE file_id=?
-                    """,
-                    (file_id,),
-                ).fetchone()
-    if not row:
-        return None
-    item = _normalize_row(row)
-    return {
-        "file_id": item.get("file_id"),
-        "filename": item.get("filename"),
-        "fileExtension": item.get("file_extension"),
-        "contentType": item.get("content_type"),
-        "bucket": item.get("bucket"),
-        "objectKey": item.get("object_key"),
-        "storageBackend": item.get("storage_backend"),
-        "sizeBytes": item.get("size_bytes"),
-        "contentSha256": item.get("content_sha256"),
-        "uploadTime": str(item.get("upload_time")),
-        "gid": item.get("gid"),
-        "ownerUserId": item.get("owner_user_id"),
-        "ownerUserEmail": item.get("owner_user_email"),
-        "authProvider": item.get("auth_provider") or DEFAULT_AUTH_PROVIDER,
-        "purpose": item.get("purpose") or "session_attachment",
-        "conversationId": item.get("conversation_id"),
-    }
-
-
-def find_owned_file_mapping_by_content(
-    content_sha256: str,
-    *,
-    owner_user_id: str | None,
-    owner_user_email: str | None,
-    auth_provider: str | None = None,
-) -> dict[str, Any] | None:
-    ensure_initialized()
-    placeholder = "%s" if _use_postgres() else "?"
-    if owner_user_id:
-        owner_clause = f"owner_user_id={placeholder}"
-        owner_value = owner_user_id
-    elif owner_user_email:
-        owner_clause = f"owner_user_id IS NULL AND owner_user_email={placeholder}"
-        owner_value = owner_user_email
-    else:
-        return None
-    provider_clause = ""
-    provider_params: list[str] = []
-    if auth_provider:
-        provider_clause = f" AND auth_provider={placeholder}"
-        provider_params.append(auth_provider)
-    with _connect() as conn:
-        row = conn.execute(
-            f"""
-            SELECT file_id
-              FROM file_mapping
-             WHERE content_sha256={placeholder}
-               AND {owner_clause}
-               {provider_clause}
-             ORDER BY upload_time ASC
-             LIMIT 1
-            """,
-            (content_sha256, owner_value, *provider_params),
-        ).fetchone()
-    if not row:
-        return None
-    return get_file_mapping(str(_normalize_row(row).get("file_id") or ""))
-
-
-def count_file_mapping_object_references(bucket: str, object_key: str) -> int:
-    ensure_initialized()
-    placeholder = "%s" if _use_postgres() else "?"
-    with _connect() as conn:
-        row = conn.execute(
-            f"""
-            SELECT COUNT(*) AS total
-              FROM file_mapping
-             WHERE bucket={placeholder} AND object_key={placeholder}
-            """,
-            (bucket, object_key),
-        ).fetchone()
-    return int((_normalize_row(row) or {}).get("total") or 0)
-
-
-def count_file_mappings(
-    gid: str | None = None,
-    *,
-    owner_user_id: str | None = None,
-    owner_user_email: str | None = None,
-    auth_provider: str | None = None,
-) -> int:
-    ensure_initialized()
-    conditions: list[str] = []
-    params: list[str] = []
-    placeholder = "%s" if _use_postgres() else "?"
-    if gid:
-        conditions.append(f"gid={placeholder}")
-        params.append(gid)
-    if owner_user_id:
-        conditions.append(f"owner_user_id={placeholder}")
-        params.append(owner_user_id)
-    elif owner_user_email:
-        conditions.append(f"owner_user_email={placeholder}")
-        params.append(owner_user_email)
-    if auth_provider:
-        conditions.append(f"auth_provider={placeholder}")
-        params.append(auth_provider)
-    where_clause = f" WHERE {' AND '.join(conditions)}" if conditions else ""
-    with _connect() as conn:
-        row = conn.execute(
-            f"SELECT COUNT(*) AS total FROM file_mapping{where_clause}",
-            tuple(params),
-        ).fetchone()
-    item = _normalize_row(row)
-    total = item.get("total", 0) if item else 0
-    return int(total or 0)
-
-
-def reserve_file_upload_slot(
-    gid: str,
-    *,
-    owner_user_id: str | None,
-    owner_user_email: str | None,
-    auth_provider: str,
-    max_user_files: int,
-    max_system_files: int,
-) -> str:
-    ensure_initialized()
-    reservation_id = str(uuid.uuid4())
-    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=15)).isoformat()
-    placeholder = "%s" if _use_postgres() else "?"
-    owner_column = "owner_user_id" if owner_user_id else "owner_user_email"
-    owner_value = owner_user_id or owner_user_email or ""
-    with _connect() as conn:
-        try:
-            if _use_postgres():
-                conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"file-upload:{gid}",))
-            else:
-                conn.execute("BEGIN IMMEDIATE")
-            if _use_postgres():
-                conn.execute(
-                    "DELETE FROM file_upload_reservations WHERE created_at < NOW() - INTERVAL '15 minutes'"
-                )
-            else:
-                conn.execute(
-                    "DELETE FROM file_upload_reservations WHERE created_at < ?",
-                    (cutoff,),
-                )
-            mapping_user_count = conn.execute(
-                f"SELECT COUNT(*) AS total FROM file_mapping WHERE gid={placeholder} AND {owner_column}={placeholder} AND auth_provider={placeholder}",
-                (gid, owner_value, auth_provider),
-            ).fetchone()
-            reservation_user_count = conn.execute(
-                f"SELECT COUNT(*) AS total FROM file_upload_reservations WHERE gid={placeholder} AND {owner_column}={placeholder} AND auth_provider={placeholder}",
-                (gid, owner_value, auth_provider),
-            ).fetchone()
-            mapping_system_count = conn.execute(
-                f"SELECT COUNT(*) AS total FROM file_mapping WHERE gid={placeholder} AND auth_provider={placeholder}",
-                (gid, auth_provider),
-            ).fetchone()
-            reservation_system_count = conn.execute(
-                f"SELECT COUNT(*) AS total FROM file_upload_reservations WHERE gid={placeholder} AND auth_provider={placeholder}",
-                (gid, auth_provider),
-            ).fetchone()
-            user_total = int(_normalize_row(mapping_user_count).get("total") or 0) + int(
-                _normalize_row(reservation_user_count).get("total") or 0
-            )
-            system_total = int(_normalize_row(mapping_system_count).get("total") or 0) + int(
-                _normalize_row(reservation_system_count).get("total") or 0
-            )
-            if user_total >= max_user_files:
-                raise FileUploadQuotaExceeded("user")
-            if system_total >= max_system_files:
-                raise FileUploadQuotaExceeded("system")
-            now = _now_iso()
-            conn.execute(
-                f"""
-                INSERT INTO file_upload_reservations(
-                    reservation_id, gid, owner_user_id, owner_user_email, auth_provider, created_at
-                ) VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})
-                """,
-                (reservation_id, gid, owner_user_id, owner_user_email, auth_provider, now),
-            )
-            conn.commit()
-            return reservation_id
-        except Exception:
-            conn.rollback()
-            raise
-
-
-def release_file_upload_slot(reservation_id: str | None) -> None:
-    if not reservation_id:
-        return
-    ensure_initialized()
-    with _connect() as conn:
-        placeholder = "%s" if _use_postgres() else "?"
-        conn.execute(
-            f"DELETE FROM file_upload_reservations WHERE reservation_id={placeholder}",
-            (reservation_id,),
-        )
-        conn.commit()
+from app.storage.file_store import (
+    bind_file_mappings_to_conversation,
+    count_file_mapping_object_references,
+    count_file_mappings,
+    delete_file_mapping,
+    find_owned_file_mapping_by_content,
+    get_file_mapping,
+    insert_file_mapping,
+    list_file_mappings,
+    release_file_upload_slot,
+    reserve_file_upload_slot,
+)
 
 
 @contextmanager
@@ -3208,617 +2704,25 @@ def distributed_task_lock(lock_name: str) -> Iterator[bool]:
                 conn.commit()
 
 
-def insert_file_mapping(
-    file_id: str,
-    *,
-    filename: str,
-    file_extension: str,
-    content_type: str | None,
-    bucket: str,
-    object_key: str,
-    storage_backend: str,
-    size_bytes: int | None,
-    content_sha256: str | None = None,
-    gid: str = "gptassistant",
-    owner_user_id: str | None = None,
-    owner_user_email: str | None = None,
-    auth_provider: str = DEFAULT_AUTH_PROVIDER,
-    purpose: str = "session_attachment",
-    conversation_id: str | None = None,
-) -> None:
-    ensure_initialized()
-    uploaded_at = _now_iso()
-    with _connect() as conn:
-        if _use_postgres():
-            conn.execute(
-                """
-                INSERT INTO file_mapping(
-                    file_id, filename, file_extension, content_type, bucket,
-                    object_key, storage_backend, size_bytes, content_sha256, upload_time, gid,
-                    owner_user_id, owner_user_email, auth_provider, purpose, conversation_id
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """,
-                (
-                    file_id,
-                    filename,
-                    file_extension,
-                    content_type,
-                    bucket,
-                    object_key,
-                    storage_backend,
-                    size_bytes,
-                    content_sha256,
-                    uploaded_at,
-                    gid,
-                    owner_user_id,
-                    owner_user_email,
-                    auth_provider,
-                    purpose,
-                    conversation_id,
-                ),
-            )
-        else:
-            conn.execute(
-                """
-                INSERT INTO file_mapping(
-                    file_id, filename, file_extension, content_type, bucket,
-                    object_key, storage_backend, size_bytes, content_sha256, upload_time, gid,
-                    owner_user_id, owner_user_email, auth_provider, purpose, conversation_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    file_id,
-                    filename,
-                    file_extension,
-                    content_type,
-                    bucket,
-                    object_key,
-                    storage_backend,
-                    size_bytes,
-                    content_sha256,
-                    uploaded_at,
-                    gid,
-                    owner_user_id,
-                    owner_user_email,
-                    auth_provider,
-                    purpose,
-                    conversation_id,
-                ),
-            )
-        conn.commit()
 
 
-def bind_file_mappings_to_conversation(
-    file_ids: list[str],
-    *,
-    gid: str,
-    conversation_id: str,
-    owner_user_id: str | None = None,
-    owner_user_email: str | None = None,
-    auth_provider: str | None = None,
-) -> int:
-    ensure_initialized()
-    normalized_file_ids = list(
-        dict.fromkeys(file_id.strip() for file_id in file_ids if file_id.strip())
-    )
-    if not normalized_file_ids or not gid or not conversation_id:
-        return 0
-    owner_conditions: list[str] = []
-    owner_params: list[str] = []
-    placeholder = "%s" if _use_postgres() else "?"
-    if owner_user_id:
-        owner_conditions.append(f"owner_user_id={placeholder}")
-        owner_params.append(owner_user_id)
-    if owner_user_email:
-        owner_conditions.append(
-            f"(owner_user_id IS NULL AND owner_user_email={placeholder})"
-        )
-        owner_params.append(owner_user_email)
-    if not owner_conditions:
-        return 0
-    provider_clause = ""
-    provider_params: list[str] = []
-    if auth_provider:
-        provider_clause = f" AND auth_provider={placeholder}"
-        provider_params.append(auth_provider)
-    owner_clause = " OR ".join(owner_conditions)
-    updated = 0
-    with _connect() as conn:
-        for file_id in normalized_file_ids:
-            cursor = conn.execute(
-                f"""
-                UPDATE file_mapping
-                   SET conversation_id={placeholder}
-                 WHERE file_id={placeholder}
-                   AND gid={placeholder}
-                   AND purpose='session_attachment'
-                   AND conversation_id IS NULL
-                   {provider_clause}
-                   AND ({owner_clause})
-                """,
-                (conversation_id, file_id, gid, *provider_params, *owner_params),
-            )
-            updated += max(0, int(cursor.rowcount or 0))
-        conn.commit()
-    return updated
-
-
-def delete_file_mapping(file_id: str) -> None:
-    ensure_initialized()
-    with _connect() as conn:
-        if _use_postgres():
-            conn.execute("DELETE FROM file_mapping WHERE file_id=%s", (file_id,))
-        else:
-            conn.execute("DELETE FROM file_mapping WHERE file_id=?", (file_id,))
-        conn.commit()
-
-
-def list_admin_model_configs() -> list[dict[str, Any]]:
-    ensure_initialized()
-    with _connect() as conn:
-        rows = conn.execute(
-            """
-            SELECT id, model_id, display_name, provider_model_name, sort_order,
-                   enabled, supports_reasoning, supports_tool_calling,
-                   supports_native_image_input, reasoning_default_enabled,
-                   reasoning_parser_mode, reasoning_parameter_format,
-                   allowed_upload_types, visibility_scope, visibility_users,
-                   metadata, created_at, updated_at
-              FROM admin_model_configs
-             ORDER BY sort_order ASC, id ASC
-            """
-        ).fetchall()
-    items: list[dict[str, Any]] = []
-    for row in rows:
-        item = _normalize_row(row)
-        items.append(
-            {
-                "id": item.get("id"),
-                "model_id": item.get("model_id"),
-                "display_name": item.get("display_name"),
-                "provider_model_name": item.get("provider_model_name"),
-                "sort_order": int(item.get("sort_order") or 1000),
-                "enabled": _coerce_bool(item.get("enabled")),
-                "supports_reasoning": _coerce_bool(item.get("supports_reasoning")),
-                "supports_tool_calling": _coerce_bool(item.get("supports_tool_calling")),
-                "supports_native_image_input": _coerce_bool(item.get("supports_native_image_input")),
-                "reasoning_default_enabled": _coerce_bool(item.get("reasoning_default_enabled")),
-                "reasoning_parser_mode": item.get("reasoning_parser_mode"),
-                "reasoning_parameter_format": item.get("reasoning_parameter_format"),
-                "allowed_upload_types": _load_json_field(item.get("allowed_upload_types"), fallback=[]),
-                "visibility_scope": item.get("visibility_scope") or "all",
-                "visibility_users": _load_json_field(item.get("visibility_users"), fallback=[]),
-                "metadata": _load_json_field(item.get("metadata"), fallback={}),
-                "created_at": str(item.get("created_at") or ""),
-                "updated_at": str(item.get("updated_at") or ""),
-            }
-        )
-    return items
-
-
-def get_admin_model_config(model_id: str) -> dict[str, Any] | None:
-    ensure_initialized()
-    with _connect() as conn:
-        if _use_postgres():
-            row = conn.execute(
-                """
-                SELECT id, model_id, display_name, provider_model_name, sort_order,
-                       enabled, supports_reasoning, supports_tool_calling,
-                       supports_native_image_input, reasoning_default_enabled,
-                       reasoning_parser_mode, reasoning_parameter_format,
-                       allowed_upload_types, visibility_scope, visibility_users,
-                       metadata, created_at, updated_at
-                  FROM admin_model_configs
-                 WHERE model_id=%s
-                """,
-                (model_id,),
-            ).fetchone()
-        else:
-            row = conn.execute(
-                """
-                SELECT id, model_id, display_name, provider_model_name, sort_order,
-                       enabled, supports_reasoning, supports_tool_calling,
-                       supports_native_image_input, reasoning_default_enabled,
-                       reasoning_parser_mode, reasoning_parameter_format,
-                       allowed_upload_types, visibility_scope, visibility_users,
-                       metadata, created_at, updated_at
-                  FROM admin_model_configs
-                 WHERE model_id=?
-                """,
-                (model_id,),
-            ).fetchone()
-    if not row:
-        return None
-    item = _normalize_row(row)
-    return {
-        "id": item.get("id"),
-        "model_id": item.get("model_id"),
-        "display_name": item.get("display_name"),
-        "provider_model_name": item.get("provider_model_name"),
-        "sort_order": int(item.get("sort_order") or 1000),
-        "enabled": _coerce_bool(item.get("enabled")),
-        "supports_reasoning": _coerce_bool(item.get("supports_reasoning")),
-        "supports_tool_calling": _coerce_bool(item.get("supports_tool_calling")),
-        "supports_native_image_input": _coerce_bool(item.get("supports_native_image_input")),
-        "reasoning_default_enabled": _coerce_bool(item.get("reasoning_default_enabled")),
-        "reasoning_parser_mode": item.get("reasoning_parser_mode"),
-        "reasoning_parameter_format": item.get("reasoning_parameter_format"),
-        "allowed_upload_types": _load_json_field(item.get("allowed_upload_types"), fallback=[]),
-        "visibility_scope": item.get("visibility_scope") or "all",
-        "visibility_users": _load_json_field(item.get("visibility_users"), fallback=[]),
-        "metadata": _load_json_field(item.get("metadata"), fallback={}),
-        "created_at": str(item.get("created_at") or ""),
-        "updated_at": str(item.get("updated_at") or ""),
-    }
-
-
-def upsert_admin_model_config(
-    *,
-    model_id: str,
-    display_name: str,
-    provider_model_name: str,
-    sort_order: int = 1000,
-    enabled: bool = True,
-    supports_reasoning: bool = False,
-    supports_tool_calling: bool = False,
-    supports_native_image_input: bool = False,
-    reasoning_default_enabled: bool = False,
-    reasoning_parser_mode: str | None = None,
-    reasoning_parameter_format: str | None = None,
-    allowed_upload_types: list[str] | None = None,
-    visibility_scope: str = "all",
-    visibility_users: list[str] | None = None,
-    metadata: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    ensure_initialized()
-    now = _now_iso()
-    payload = (
-        model_id,
-        display_name,
-        provider_model_name,
-        int(sort_order),
-        bool(enabled),
-        bool(supports_reasoning),
-        bool(supports_tool_calling),
-        bool(supports_native_image_input),
-        bool(reasoning_default_enabled),
-        reasoning_parser_mode,
-        reasoning_parameter_format,
-        _dump_json_field(allowed_upload_types, fallback=[]),
-        visibility_scope or "all",
-        _dump_json_field(visibility_users, fallback=[]),
-        _dump_json_field(metadata, fallback={}),
-        now,
-        now,
-    )
-    with _connect() as conn:
-        if _use_postgres():
-            conn.execute(
-                """
-                INSERT INTO admin_model_configs(
-                    model_id, display_name, provider_model_name, sort_order, enabled,
-                    supports_reasoning, supports_tool_calling, supports_native_image_input,
-                    reasoning_default_enabled, reasoning_parser_mode, reasoning_parameter_format,
-                    allowed_upload_types, visibility_scope, visibility_users, metadata,
-                    created_at, updated_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (model_id) DO UPDATE SET
-                    display_name=EXCLUDED.display_name,
-                    provider_model_name=EXCLUDED.provider_model_name,
-                    sort_order=EXCLUDED.sort_order,
-                    enabled=EXCLUDED.enabled,
-                    supports_reasoning=EXCLUDED.supports_reasoning,
-                    supports_tool_calling=EXCLUDED.supports_tool_calling,
-                    supports_native_image_input=EXCLUDED.supports_native_image_input,
-                    reasoning_default_enabled=EXCLUDED.reasoning_default_enabled,
-                    reasoning_parser_mode=EXCLUDED.reasoning_parser_mode,
-                    reasoning_parameter_format=EXCLUDED.reasoning_parameter_format,
-                    allowed_upload_types=EXCLUDED.allowed_upload_types,
-                    visibility_scope=EXCLUDED.visibility_scope,
-                    visibility_users=EXCLUDED.visibility_users,
-                    metadata=EXCLUDED.metadata,
-                    updated_at=EXCLUDED.updated_at
-                """,
-                payload,
-            )
-        else:
-            conn.execute(
-                """
-                INSERT INTO admin_model_configs(
-                    model_id, display_name, provider_model_name, sort_order, enabled,
-                    supports_reasoning, supports_tool_calling, supports_native_image_input,
-                    reasoning_default_enabled, reasoning_parser_mode, reasoning_parameter_format,
-                    allowed_upload_types, visibility_scope, visibility_users, metadata,
-                    created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(model_id) DO UPDATE SET
-                    display_name=excluded.display_name,
-                    provider_model_name=excluded.provider_model_name,
-                    sort_order=excluded.sort_order,
-                    enabled=excluded.enabled,
-                    supports_reasoning=excluded.supports_reasoning,
-                    supports_tool_calling=excluded.supports_tool_calling,
-                    supports_native_image_input=excluded.supports_native_image_input,
-                    reasoning_default_enabled=excluded.reasoning_default_enabled,
-                    reasoning_parser_mode=excluded.reasoning_parser_mode,
-                    reasoning_parameter_format=excluded.reasoning_parameter_format,
-                    allowed_upload_types=excluded.allowed_upload_types,
-                    visibility_scope=excluded.visibility_scope,
-                    visibility_users=excluded.visibility_users,
-                    metadata=excluded.metadata,
-                    updated_at=excluded.updated_at
-                """,
-                payload,
-            )
-        conn.commit()
-    item = get_admin_model_config(model_id)
-    if item is None:
-        raise RuntimeError(f"failed to persist admin model config: {model_id}")
-    return item
-
-
-def delete_admin_model_config(model_id: str) -> None:
-    ensure_initialized()
-    with _connect() as conn:
-        if _use_postgres():
-            conn.execute("DELETE FROM admin_model_configs WHERE model_id=%s", (model_id,))
-        else:
-            conn.execute("DELETE FROM admin_model_configs WHERE model_id=?", (model_id,))
-        conn.commit()
-
-
-def list_admin_user_permissions() -> list[dict[str, Any]]:
-    ensure_initialized()
-    with _connect() as conn:
-        rows = conn.execute(
-            """
-            SELECT id, user_key, permission_code, enabled, remark, created_at, updated_at
-              FROM admin_user_permissions
-             ORDER BY user_key ASC, permission_code ASC, id ASC
-            """
-        ).fetchall()
-    return [
-        {
-            "id": item.get("id"),
-            "user_key": item.get("user_key"),
-            "permission_code": item.get("permission_code"),
-            "enabled": _coerce_bool(item.get("enabled")),
-            "remark": item.get("remark"),
-            "created_at": str(item.get("created_at") or ""),
-            "updated_at": str(item.get("updated_at") or ""),
-        }
-        for item in (_normalize_row(row) for row in rows)
-    ]
-
-
-def get_admin_user_permission(user_key: str, permission_code: str) -> dict[str, Any] | None:
-    ensure_initialized()
-    with _connect() as conn:
-        if _use_postgres():
-            row = conn.execute(
-                """
-                SELECT id, user_key, permission_code, enabled, remark, created_at, updated_at
-                  FROM admin_user_permissions
-                 WHERE user_key=%s AND permission_code=%s
-                """,
-                (user_key, permission_code),
-            ).fetchone()
-        else:
-            row = conn.execute(
-                """
-                SELECT id, user_key, permission_code, enabled, remark, created_at, updated_at
-                  FROM admin_user_permissions
-                 WHERE user_key=? AND permission_code=?
-                """,
-                (user_key, permission_code),
-            ).fetchone()
-    if not row:
-        return None
-    item = _normalize_row(row)
-    return {
-        "id": item.get("id"),
-        "user_key": item.get("user_key"),
-        "permission_code": item.get("permission_code"),
-        "enabled": _coerce_bool(item.get("enabled")),
-        "remark": item.get("remark"),
-        "created_at": str(item.get("created_at") or ""),
-        "updated_at": str(item.get("updated_at") or ""),
-    }
-
-
-def upsert_admin_user_permission(
-    *,
-    user_key: str,
-    permission_code: str,
-    enabled: bool = True,
-    remark: str | None = None,
-) -> dict[str, Any]:
-    ensure_initialized()
-    now = _now_iso()
-    payload = (
-        user_key,
-        permission_code,
-        bool(enabled),
-        remark,
-        now,
-        now,
-    )
-    with _connect() as conn:
-        if _use_postgres():
-            conn.execute(
-                """
-                INSERT INTO admin_user_permissions(
-                    user_key, permission_code, enabled, remark, created_at, updated_at
-                ) VALUES (%s, %s, %s, %s, %s, %s)
-                ON CONFLICT (user_key, permission_code) DO UPDATE SET
-                    enabled=EXCLUDED.enabled,
-                    remark=EXCLUDED.remark,
-                    updated_at=EXCLUDED.updated_at
-                """,
-                payload,
-            )
-        else:
-            conn.execute(
-                """
-                INSERT INTO admin_user_permissions(
-                    user_key, permission_code, enabled, remark, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?)
-                ON CONFLICT(user_key, permission_code) DO UPDATE SET
-                    enabled=excluded.enabled,
-                    remark=excluded.remark,
-                    updated_at=excluded.updated_at
-                """,
-                payload,
-            )
-        conn.commit()
-    item = get_admin_user_permission(user_key, permission_code)
-    if item is None:
-        raise RuntimeError(
-            f"failed to persist admin user permission: {user_key}::{permission_code}"
-        )
-    return item
-
-
-def delete_admin_user_permission(user_key: str, permission_code: str) -> None:
-    ensure_initialized()
-    with _connect() as conn:
-        if _use_postgres():
-            conn.execute(
-                "DELETE FROM admin_user_permissions WHERE user_key=%s AND permission_code=%s",
-                (user_key, permission_code),
-            )
-        else:
-            conn.execute(
-                "DELETE FROM admin_user_permissions WHERE user_key=? AND permission_code=?",
-                (user_key, permission_code),
-            )
-        conn.commit()
-
-
-def list_admin_feature_flags() -> list[dict[str, Any]]:
-    ensure_initialized()
-    with _connect() as conn:
-        rows = conn.execute(
-            """
-            SELECT config_key, config_value, value_type, description, updated_at, updated_by
-              FROM admin_feature_flags
-             ORDER BY config_key ASC
-            """
-        ).fetchall()
-    items: list[dict[str, Any]] = []
-    for row in rows:
-        item = _normalize_row(row)
-        items.append(
-            {
-                "config_key": item.get("config_key"),
-                "config_value": _load_json_field(item.get("config_value"), fallback=item.get("config_value")),
-                "value_type": item.get("value_type"),
-                "description": item.get("description"),
-                "updated_at": str(item.get("updated_at") or ""),
-                "updated_by": item.get("updated_by"),
-            }
-        )
-    return items
-
-
-def get_admin_feature_flag(config_key: str) -> dict[str, Any] | None:
-    ensure_initialized()
-    with _connect() as conn:
-        if _use_postgres():
-            row = conn.execute(
-                """
-                SELECT config_key, config_value, value_type, description, updated_at, updated_by
-                  FROM admin_feature_flags
-                 WHERE config_key=%s
-                """,
-                (config_key,),
-            ).fetchone()
-        else:
-            row = conn.execute(
-                """
-                SELECT config_key, config_value, value_type, description, updated_at, updated_by
-                  FROM admin_feature_flags
-                 WHERE config_key=?
-                """,
-                (config_key,),
-            ).fetchone()
-    if not row:
-        return None
-    item = _normalize_row(row)
-    return {
-        "config_key": item.get("config_key"),
-        "config_value": _load_json_field(item.get("config_value"), fallback=item.get("config_value")),
-        "value_type": item.get("value_type"),
-        "description": item.get("description"),
-        "updated_at": str(item.get("updated_at") or ""),
-        "updated_by": item.get("updated_by"),
-    }
-
-
-def upsert_admin_feature_flag(
-    *,
-    config_key: str,
-    config_value: Any,
-    value_type: str,
-    description: str | None = None,
-    updated_by: str | None = None,
-) -> dict[str, Any]:
-    ensure_initialized()
-    now = _now_iso()
-    payload = (
-        config_key,
-        _dump_json_field(config_value, fallback=None),
-        value_type,
-        description,
-        now,
-        updated_by,
-    )
-    with _connect() as conn:
-        if _use_postgres():
-            conn.execute(
-                """
-                INSERT INTO admin_feature_flags(
-                    config_key, config_value, value_type, description, updated_at, updated_by
-                ) VALUES (%s, %s, %s, %s, %s, %s)
-                ON CONFLICT (config_key) DO UPDATE SET
-                    config_value=EXCLUDED.config_value,
-                    value_type=EXCLUDED.value_type,
-                    description=EXCLUDED.description,
-                    updated_at=EXCLUDED.updated_at,
-                    updated_by=EXCLUDED.updated_by
-                """,
-                payload,
-            )
-        else:
-            conn.execute(
-                """
-                INSERT INTO admin_feature_flags(
-                    config_key, config_value, value_type, description, updated_at, updated_by
-                ) VALUES (?, ?, ?, ?, ?, ?)
-                ON CONFLICT(config_key) DO UPDATE SET
-                    config_value=excluded.config_value,
-                    value_type=excluded.value_type,
-                    description=excluded.description,
-                    updated_at=excluded.updated_at,
-                    updated_by=excluded.updated_by
-                """,
-                payload,
-            )
-        conn.commit()
-    item = get_admin_feature_flag(config_key)
-    if item is None:
-        raise RuntimeError(f"failed to persist admin feature flag: {config_key}")
-    return item
-
-
-def delete_admin_feature_flag(config_key: str) -> None:
-    ensure_initialized()
-    with _connect() as conn:
-        if _use_postgres():
-            conn.execute("DELETE FROM admin_feature_flags WHERE config_key=%s", (config_key,))
-        else:
-            conn.execute("DELETE FROM admin_feature_flags WHERE config_key=?", (config_key,))
-        conn.commit()
+from app.storage.admin_store import (
+    delete_admin_feature_flag,
+    delete_admin_model_config,
+    delete_admin_user_permission,
+    get_admin_feature_flag,
+    get_admin_model_config,
+    get_admin_user_permission,
+    insert_admin_audit_log,
+    list_admin_audit_logs,
+    list_admin_feature_flags,
+    list_admin_model_configs,
+    list_admin_user_permissions,
+    list_enabled_permissions_for_user,
+    upsert_admin_feature_flag,
+    upsert_admin_model_config,
+    upsert_admin_user_permission,
+)
 
 
 def prune_admin_feature_flags_for_deleted_model(
@@ -3986,135 +2890,6 @@ def prune_admin_feature_flags_for_deleted_model(
     return changed
 
 
-def insert_admin_audit_log(
-    *,
-    actor_key: str,
-    actor_email: str | None,
-    action: str,
-    resource_type: str,
-    resource_key: str,
-    before_state: Any = None,
-    after_state: Any = None,
-) -> dict[str, Any]:
-    ensure_initialized()
-    created_at = _now_iso()
-    payload = (
-        actor_key,
-        actor_email,
-        action,
-        resource_type,
-        resource_key,
-        _dump_json_field(before_state, fallback=None) if before_state is not None else None,
-        _dump_json_field(after_state, fallback=None) if after_state is not None else None,
-        created_at,
-    )
-    with _connect() as conn:
-        if _use_postgres():
-            row = conn.execute(
-                """
-                INSERT INTO admin_audit_logs(
-                    actor_key, actor_email, action, resource_type, resource_key,
-                    before_state, after_state, created_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                RETURNING id, actor_key, actor_email, action, resource_type, resource_key,
-                          before_state, after_state, created_at
-                """,
-                payload,
-            ).fetchone()
-        else:
-            cursor = conn.execute(
-                """
-                INSERT INTO admin_audit_logs(
-                    actor_key, actor_email, action, resource_type, resource_key,
-                    before_state, after_state, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                payload,
-            )
-            row = conn.execute(
-                """
-                SELECT id, actor_key, actor_email, action, resource_type, resource_key,
-                       before_state, after_state, created_at
-                  FROM admin_audit_logs
-                 WHERE id=?
-                """,
-                (cursor.lastrowid,),
-            ).fetchone()
-        conn.commit()
-    item = _normalize_row(row)
-    return {
-        "id": item.get("id"),
-        "actor_key": item.get("actor_key"),
-        "actor_email": item.get("actor_email"),
-        "action": item.get("action"),
-        "resource_type": item.get("resource_type"),
-        "resource_key": item.get("resource_key"),
-        "before_state": _load_json_field(item.get("before_state"), fallback=None),
-        "after_state": _load_json_field(item.get("after_state"), fallback=None),
-        "created_at": str(item.get("created_at") or ""),
-    }
-
-
-def list_admin_audit_logs(limit: int = 50) -> list[dict[str, Any]]:
-    ensure_initialized()
-    safe_limit = max(1, min(int(limit or 50), 200))
-    with _connect() as conn:
-        if _use_postgres():
-            rows = conn.execute(
-                """
-                SELECT id, actor_key, actor_email, action, resource_type, resource_key,
-                       before_state, after_state, created_at
-                  FROM admin_audit_logs
-                 ORDER BY created_at DESC, id DESC
-                 LIMIT %s
-                """,
-                (safe_limit,),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                """
-                SELECT id, actor_key, actor_email, action, resource_type, resource_key,
-                       before_state, after_state, created_at
-                  FROM admin_audit_logs
-                 ORDER BY created_at DESC, id DESC
-                 LIMIT ?
-                """,
-                (safe_limit,),
-            ).fetchall()
-    items: list[dict[str, Any]] = []
-    for row in rows:
-        item = _normalize_row(row)
-        items.append(
-            {
-                "id": item.get("id"),
-                "actor_key": item.get("actor_key"),
-                "actor_email": item.get("actor_email"),
-                "action": item.get("action"),
-                "resource_type": item.get("resource_type"),
-                "resource_key": item.get("resource_key"),
-                "before_state": _load_json_field(item.get("before_state"), fallback=None),
-                "after_state": _load_json_field(item.get("after_state"), fallback=None),
-                "created_at": str(item.get("created_at") or ""),
-            }
-        )
-    return items
-
-
-def list_enabled_permissions_for_user(user_keys: list[str]) -> set[str]:
-    ensure_initialized()
-    normalized_keys = [key for key in user_keys if key]
-    if not normalized_keys:
-        return set()
-    placeholders = ",".join(["%s"] * len(normalized_keys)) if _use_postgres() else ",".join(["?"] * len(normalized_keys))
-    sql = f"""
-        SELECT permission_code
-          FROM admin_user_permissions
-         WHERE enabled = {'TRUE' if _use_postgres() else '1'}
-           AND user_key IN ({placeholders})
-    """
-    with _connect() as conn:
-        rows = conn.execute(sql, tuple(normalized_keys)).fetchall()
-    return {str(_normalize_row(row).get("permission_code") or "") for row in rows}
 
 
 __all__ = [
@@ -4134,7 +2909,6 @@ __all__ = [
     "delete_session_history",
     "delete_user_gpt_state_by_gid",
     "ensure_initialized",
-    "ensure_required_pinned_gpts",
     "get_admin_feature_flag",
     "get_admin_model_config",
     "get_admin_user_permission",
@@ -4154,6 +2928,7 @@ __all__ = [
     "list_file_mappings",
     "list_pinned_gids",
     "list_session_history_meta",
+    "list_user_gpt_pin_states",
     "list_user_pinned_rows",
     "release_file_upload_slot",
     "reserve_file_upload_slot",

@@ -76,36 +76,13 @@ register_gpt({
         "desc": "快速审查合同条款",
         "system_prompt": "",
         "model_name": MODEL_NAME_THINKING,
-        "auth": {"type": "all"},
+        "auth": {
+            "type": "white",
+            "user": ["alice@example.com", "user4-claude@nu.com"],
+        },
         "samples": [
             "审查合同中的潜在风险",
             "检查合同中的保密条款",
-        ],
-    },
-    "g5": {
-        "logo": "./gpts/echarts.svg",
-        "name": "ECharts 画图助手",
-        "desc": "用 ECharts 绘制可视化图表",
-        "system_prompt": "",
-        "samples": [
-            "使用ECharts绘制销售占比饼图",
-            "使用ECharts生成月度趋势折线图",
-        ],
-        "model_name": MODEL_NAME_THINKING,
-        # 知识库
-        # 工具
-        "auth": {"type": "all"},
-    },
-    "g6": {
-        "name": "PPT 大纲生成助手",
-        "desc": "自动生成演示文稿大纲",
-        "logo": "./gpts/ppt.svg",
-        "system_prompt": "",
-        "model_name": MODEL_NAME_THINKING,
-        "auth": {"type": "all"},
-        "samples": [
-            "生成创业计划书PPT大纲",
-            "生成项目汇报PPT大纲",
         ],
     }
 })

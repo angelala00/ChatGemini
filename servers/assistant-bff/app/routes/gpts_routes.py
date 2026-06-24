@@ -1,6 +1,6 @@
 import time
 import uuid
-from typing import Tuple, Optional
+from typing import Optional
 from fastapi import APIRouter, Request, Depends, HTTPException, status
 from app.agent_runtime_v3 import (
     DEFAULT_AGENT_CAPABILITY_IDS,
@@ -20,14 +20,10 @@ from app.base_config import model_config
 from app.storage.business_store import (
     delete_custom_gpt,
     delete_user_gpt_state_by_gid,
-    ensure_required_pinned_gpts as ensure_required_pinned_gpts_record,
-    get_user_config_version,
     insert_custom_gpt,
     list_admin_model_configs,
-    is_gpt_pinned,
-    list_pinned_gids,
+    list_user_gpt_pin_states,
     list_user_pinned_rows,
-    set_user_config_version,
     set_user_gpt_pin,
     update_custom_gpt,
     list_file_mappings,
@@ -37,7 +33,6 @@ from app.storage.file_lifecycle import delete_file_reference
 
 router = APIRouter(prefix="/api", tags=["gpts"])
 
-LIMIT_PINNED = 8
 MAX_SAMPLES = 5
 MAX_MODEL_ID_CHARS = 200
 GPT_PROVIDER_SCOPE_PROVIDER = "provider"
@@ -279,27 +274,13 @@ def delete_assistant_knowledge_files(gid: str) -> None:
         delete_file_reference(file_id, entry)
 
 
-def is_required_pinned_gid(gid: str) -> bool:
-    gpt = gpts.get(gid)
-    return bool(gpt and gpt.get("required_pinned"))
-
-
-def get_required_pinned_gids() -> tuple[str, ...]:
-    return tuple(
-        gid
-        for gid, gpt in gpts.items()
-        if isinstance(gpt, dict) and gpt.get("required_pinned")
-    )
-
-
-def ensure_required_pinned_gpts(user_id: str) -> None:
-    ensure_required_pinned_gpts_record(user_id, get_required_pinned_gids())
-
-
-def is_gpt_pinned_for_user(user_id: str, gid: str) -> bool:
-    if is_required_pinned_gid(gid):
-        ensure_required_pinned_gpts(user_id)
-    return is_gpt_pinned(user_id, gid)
+def _is_effectively_pinned(gid: str, pin_state: dict[str, dict] | None) -> bool:
+    if not pin_state:
+        return True
+    state = pin_state.get(gid)
+    if state is None:
+        return True
+    return bool(state.get("is_pinned"))
 
 
 def can_access_gpt(user: dict, gid: str) -> bool:
@@ -318,57 +299,68 @@ def can_access_gpt(user: dict, gid: str) -> bool:
         current_provider=current_provider,
     ):
         return True
-    if not is_gpts_feature_allowed(user):
-        return is_gpt_pinned_for_user(user_id, gid)
     return False
 
 
 def get_sidebar_gpts(user: dict) -> list[dict]:
     """Return the left-rail agent entries for the current user.
 
-    Compatibility rule:
-    - users with the global GPTS feature keep seeing their pinned/favorite agents here;
-    - users without that feature see every agent they can directly access.
-
-    This keeps gray-released users on the left rail without exposing the full gallery.
+    Sidebar semantics:
+    - users with the GPTS entry see visible agents unless they explicitly unpinned them;
+    - users without that entry see every agent currently visible to them.
     """
     refresh_gpts()
     user_email = user.get("email") or ""
     user_id = user.get("sub") or user.get("email") or ""
+    current_provider = get_current_auth_provider(user)
+    pin_state_map = list_user_gpt_pin_states(user_id) if user_id else {}
     if is_gpts_feature_allowed(user):
-        pinned_rows = list_user_pinned_rows(user_id) if user_id else []
+        explicit_pinned_rows = list_user_pinned_rows(user_id) if user_id else []
+        explicit_pinned_order = {
+            str(row.get("gpts_id") or ""): index
+            for index, row in enumerate(explicit_pinned_rows)
+        }
         pinned: list[dict] = []
-        required_gids = set(get_required_pinned_gids())
-
-        for index, row in enumerate(pinned_rows):
-            gid = row["gpts_id"]
-            gpt_item = gpts.get(gid)
-            if not gpt_item or not auth_ok(
-                gpt_item,
+        fallback_order = 0
+        for gid, value in fetch_gpts().items():
+            if gid == "gptassistant":
+                continue
+            if not auth_ok(
+                value,
                 user_email,
                 user_id,
-                current_provider=get_current_auth_provider(user),
+                current_provider=current_provider,
             ):
+                continue
+            if not _is_effectively_pinned(gid, pin_state_map):
                 continue
 
             item = {
                 "gid": gid,
-                "name": gpt_item.get("name") or gpt_item.get("title") or gid,
+                "name": value.get("name") or value.get("title") or gid,
                 "is_pinned": True,
-                "is_required_pinned": is_required_pinned_gid(gid),
-                "_order": index,
+                "_explicit_order": explicit_pinned_order.get(gid),
+                "_fallback_order": fallback_order,
             }
-            if "logo" in gpt_item:
-                item["logo"] = gpt_item["logo"]
+            if "logo" in value:
+                item["logo"] = value["logo"]
             pinned.append(item)
+            fallback_order += 1
 
-        pinned.sort(key=lambda item: (0 if item["gid"] in required_gids else 1, item["_order"]))
+        pinned.sort(
+            key=lambda item: (
+                0 if item["_explicit_order"] is not None else 1,
+                item["_explicit_order"] if item["_explicit_order"] is not None else item["_fallback_order"],
+                str(item.get("name") or "").lower(),
+                str(item.get("gid") or ""),
+            )
+        )
         for item in pinned:
-            item.pop("_order", None)
-        return pinned[:LIMIT_PINNED]
+            item.pop("_explicit_order", None)
+            item.pop("_fallback_order", None)
+        return pinned
 
     visible_items: list[dict] = []
-    pinned_ids = set(list_pinned_gids(user_id)) if user_id else set()
 
     for gid, value in fetch_gpts().items():
         if gid == "gptassistant":
@@ -377,7 +369,7 @@ def get_sidebar_gpts(user: dict) -> list[dict]:
             value,
             user_email,
             user_id,
-            current_provider=get_current_auth_provider(user),
+            current_provider=current_provider,
         ):
             continue
 
@@ -385,18 +377,10 @@ def get_sidebar_gpts(user: dict) -> list[dict]:
             {
                 "gid": gid,
                 **{k: v for k, v in value.items() if k not in {"system_prompt", "model_name", "auth"}},
-                "is_pinned": gid in pinned_ids or is_required_pinned_gid(gid),
-                "is_required_pinned": is_required_pinned_gid(gid),
+                "is_pinned": True,
             }
         )
 
-    visible_items.sort(
-        key=lambda item: (
-            0 if item["is_required_pinned"] else 1 if item["is_pinned"] else 2,
-            str(item.get("name") or "").lower(),
-            str(item.get("gid") or ""),
-        )
-    )
     return visible_items
 
 
@@ -692,15 +676,14 @@ async def get_gpts(user: dict = Depends(get_current_user)):
     gpt_logger.info(f"path=get_gpts user={user['email']} at={time.strftime('%Y-%m-%d %H:%M:%S')}")
     refresh_gpts()
     user_id = user.get("sub") or user.get("email") or ""
-    pinned_ids = list_pinned_gids(user_id)
     current_provider = get_current_auth_provider(user)
+    pin_state_map = list_user_gpt_pin_states(user_id) if user_id else {}
 
     gpts_list = [
         {
             "gid": key,
             **{k: v for k, v in value.items() if k not in {"system_prompt", "model_name", "auth"}},
-            "is_pinned": key in pinned_ids or is_required_pinned_gid(key),
-            "is_required_pinned": is_required_pinned_gid(key),
+            "is_pinned": _is_effectively_pinned(key, pin_state_map),
         }
         for key, value in fetch_gpts().items()
         if auth_ok(value, user["email"], user["sub"], current_provider=current_provider) and key != "gptassistant"
@@ -713,27 +696,19 @@ async def toggle_pin(gid: str, request: Request, user: dict = Depends(get_curren
     ensure_gpts_feature_allowed(user)
     body = await request.json()
     is_pinned = bool(body.get("is_pinned"))
-    if is_required_pinned_gid(gid) and not is_pinned:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "required pinned GPTS cannot be unpinned")
     refresh_gpts()
     if gid not in gpts:
         raise HTTPException(404, "GPTS not found or not visible")
+    if not auth_ok(
+        gpts[gid],
+        user.get("email") or "",
+        user.get("sub"),
+        current_provider=get_current_auth_provider(user),
+    ):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "GPTS not found or not visible")
     set_user_gpt_pin(user["sub"], gid, is_pinned=is_pinned)
 
     return {"gpts_id": gid, "is_pinned": is_pinned}
-
-
-# Version configuration
-CONFIG_VERSION = "v0.10.0"
-
-
-def parse_version(v: str) -> Tuple[int, ...]:
-    """Parse a semantic version string like 'v0.10.0' into a tuple."""
-    v = v.lstrip("v")
-    try:
-        return tuple(int(x) for x in v.split("."))
-    except ValueError:
-        return (0,)
 
 
 @router.get("/gpts/pined")
@@ -741,14 +716,6 @@ async def gpts_pined(user: dict = Depends(get_current_user)):
     user_id, user_email = get_user_identity(user)
     gpt_logger.info(f"path=gpts_pined user={user_email} at={time.strftime('%Y-%m-%d %H:%M:%S')}")
     refresh_gpts()
-    cfg = get_user_config_version(user_id)
-    need_init = True
-    if cfg:
-        need_init = parse_version(cfg) < parse_version(CONFIG_VERSION)
-    if need_init:
-        ensure_required_pinned_gpts(user_id)
-        set_user_config_version(user_id, CONFIG_VERSION)
-    ensure_required_pinned_gpts(user_id)
     return get_sidebar_gpts(user)
 
 
@@ -960,7 +927,7 @@ async def update_gpt(gid: str, request: Request, user: dict = Depends(get_curren
         if key != "chat_function" and not callable(value)
     }
     body = {**existing_config, **submitted_body}
-    for protected_field in ("gid", "assistant_kind", "handler_key", "required_pinned"):
+    for protected_field in ("gid", "assistant_kind", "handler_key"):
         if protected_field in existing_config:
             body[protected_field] = existing_config[protected_field]
     current_provider = get_current_auth_provider(user)

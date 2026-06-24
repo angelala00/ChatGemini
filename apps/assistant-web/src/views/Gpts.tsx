@@ -26,7 +26,6 @@ interface GptsItem {
     readonly owner?: string;
     readonly usage_count?: number;
     readonly pinned_user_count?: number;
-    readonly is_required_pinned?: boolean;
 }
 
 interface SectionProps {
@@ -120,17 +119,10 @@ const Section = ({ title, description, items, onToggle }: SectionProps) => {
 
                         <button
                             type="button"
-                            className={`absolute right-4 top-4 grid size-8 place-items-center rounded-[10px] border border-transparent transition ${
-                                item.is_required_pinned
-                                    ? "cursor-not-allowed opacity-50"
-                                    : "hover:border-[var(--assist-line)] hover:bg-[var(--assist-panel-soft)]"
-                            }`}
-                            disabled={item.is_required_pinned}
+                            className="absolute right-4 top-4 grid size-8 place-items-center rounded-[10px] border border-transparent transition hover:border-[var(--assist-line)] hover:bg-[var(--assist-panel-soft)]"
                             onClick={(event) => {
                                 event.stopPropagation();
-                                if (!item.is_required_pinned) {
-                                    onToggle(item.gid, item.is_pinned);
-                                }
+                                onToggle(item.gid, item.is_pinned);
                             }}
                             aria-label={item.is_pinned ? t("views.Gpts.unpin") : t("views.Gpts.pin")}
                         >
