@@ -497,9 +497,6 @@ body::-webkit-scrollbar {
 .dark .text-\[\#87919d\] {
     color: var(--assist-text-faint) !important;
 }
-.dark .text-[#66717d] {
-    color: var(--assist-text-soft) !important;
-}
 
 /* Input boxes overrides */
 .dark .input-area-border {
