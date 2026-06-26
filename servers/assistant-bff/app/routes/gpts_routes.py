@@ -881,7 +881,7 @@ async def create_gpt(request: Request, user: dict = Depends(get_current_user)):
     provider_scope = _normalize_provider_scope(body.get("provider_scope") or GPT_PROVIDER_SCOPE_PROVIDER)
     body["provider_scope"] = provider_scope
     body["auth_provider"] = current_provider if provider_scope == GPT_PROVIDER_SCOPE_PROVIDER else GLOBAL_AUTH_PROVIDER
-    auth = body.get("auth", {"type": "all"})
+    auth = body.get("auth", {"type": "self"})
     if auth.get("type") == "white":
         users = auth.get("user", [])
         if not isinstance(users, list) or any(not isinstance(u, str) for u in users):
@@ -944,7 +944,7 @@ async def update_gpt(gid: str, request: Request, user: dict = Depends(get_curren
     else:
         body["auth_provider"] = GLOBAL_AUTH_PROVIDER
     body["provider_scope"] = provider_scope
-    auth = body.get("auth", {"type": "all"})
+    auth = body.get("auth", {"type": "self"})
     if auth.get("type") == "white":
         users = auth.get("user", [])
         if not isinstance(users, list) or any(not isinstance(u, str) for u in users):

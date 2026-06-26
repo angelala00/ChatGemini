@@ -52,9 +52,28 @@ interface SidebarProps {
     readonly onSwitchTheme: (theme: "light" | "dark" | "system") => void;
 }
 
-const APP_VERSION = "v1.3.0";
+const APP_VERSION = "v1.3.1";
 
 const releaseHistory = [
+    {
+        version: "v1.3.1",
+        date: "2026.06",
+        type: "patch",
+        zhTitle: "智能体能力邀请制开放",
+        zhChanges: [
+            "“更多智能体”和“创建智能体”能力现已开放给首批受邀用户体验，当前仍采用邀请制逐步放量，待产品链路更成熟后再扩大开放范围。",
+            "创建智能体时默认改为“仅自己可见”，减少误操作把未完成配置的智能体直接开放给所有人的风险。",
+            "优化智能体菜单展示逻辑：当前用户看不到“更多智能体”入口时，侧边栏仍会稳定保留自己有权限使用的智能体，不再出现显示混乱或重复。",
+            "补强资料使用反馈：当智能体回答实际参考了上传文件或知识库时，会在回答附近给出更明确的轻量提示；读取失败时也不再完全静默。",
+        ],
+        enTitle: "Invitation-Only Agent Rollout",
+        enChanges: [
+            "Explore Agents and Create Agent are now available to an invited first group of users, with access being expanded gradually before a broader rollout.",
+            "New agents now default to Only Me visibility, reducing the risk of exposing unfinished agents to everyone by mistake.",
+            "Improved sidebar agent visibility behavior so users without the Explore Agents entry still see the agents they are explicitly allowed to use, without duplicate or inconsistent entries.",
+            "Made resource usage feedback clearer around answers when an agent actually references uploaded files or knowledge, while keeping failed reads from going completely silent.",
+        ],
+    },
     {
         version: "v1.3.0",
         date: "2026.06",

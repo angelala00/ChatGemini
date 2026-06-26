@@ -173,7 +173,7 @@ const CreateGpt = ({ onToggleSidebar, sidebarExpand }: CreateGptProps) => {
     const [samples, setSamples] = useState<string[]>([""]);
     const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [authType, setAuthType] = useState<"self" | "white" | "all">("all");
+    const [authType, setAuthType] = useState<"self" | "white" | "all">("self");
     const [authUsers, setAuthUsers] = useState("");
     const [ownerUser, setOwnerUser] = useState("");
     const [adminUsers, setAdminUsers] = useState<string[]>([]);
