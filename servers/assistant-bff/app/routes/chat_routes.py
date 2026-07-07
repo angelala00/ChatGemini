@@ -32,6 +32,7 @@ from .gpts_routes import (
     filter_models_for_user,
     gpts,
 )
+from app.gpts.config_gpts import BUILTIN_GIDS
 from app.gpts.model_metadata import resolve_model_configs
 from .file_routes import ensure_file_ids_owned_by_user, extract_text_from_file_ids
 from app.logger import gpt_logger
@@ -50,15 +51,18 @@ from app.chat_kernel_regulation_service import (
     KERNEL_HISTORY_PREFIX as REGULATION_KERNEL_HISTORY_PREFIX,
     chat_with_kernel_regulation,
 )
+from app.chat_with_model import chat_with_model
 from app.utils.model_tool import MODEL_NAME_THINKING
 from app.metrics.events import create_usage_event
 from app.tracing import create_chat_trace
 
 REGULATION_HANDLER_KEY = "kernel_regulation"
 AGENT_RUNTIME_V3_HANDLER_KEY = "agent_runtime_v3"
+OLD_STYLE_HANDLER_KEY = "kernel_old"
 CHAT_HANDLER_REGISTRY = {
     REGULATION_HANDLER_KEY: chat_with_kernel_regulation,
     AGENT_RUNTIME_V3_HANDLER_KEY: chat_with_agent_runtime_v3,
+    OLD_STYLE_HANDLER_KEY: chat_with_model,
 }
 
 
