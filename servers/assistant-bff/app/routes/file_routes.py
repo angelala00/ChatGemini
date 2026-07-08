@@ -864,6 +864,46 @@ async def get_file(file_id: str, user: dict = Depends(get_current_user)):
     )
 
 
+# 通过 gid 和文件路径获取本地静态文件（兼容历史审批表等路径式文件访问）
+@router.get("/file/{gid}/{file_path:path}")
+async def get_gid_file(gid: str, file_path: str, user: dict = Depends(get_current_user)):
+    gpt_logger.info(f"path=get_gid_file gid={gid} user={user['email']} at={time.strftime('%Y-%m-%d %H:%M:%S')}")
+
+    # 从路径中提取文件名和扩展名
+    # file_path 形如 "gangweilianzheng/中文.jpg"，需要拆分出 basename 和 extension
+    parts = file_path.rsplit(".", 1)
+    if len(parts) > 1:
+        name_part = parts[0]
+        suffix = parts[1]
+    else:
+        name_part = file_path
+        suffix = "pdf"
+
+    file_dir = f"{model_config.FILE_BASE}/{gid}/{suffix}/"
+    file_full_path = file_dir + name_part + "." + suffix
+
+    gpt_logger.info(f"get_gid_file resolving gid={gid} file_path={file_path} full_path={file_full_path}")
+
+    if not os.path.isfile(file_full_path):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="File not exist")
+
+    # 获取文件的 MIME 类型
+    mime_type = safe_content_type(filename=name_part + "." + suffix)
+
+    # 自定义 header，让浏览器直接打开而非下载
+    headers = {
+        "Content-Disposition": "inline",
+        "Accept-Ranges": "bytes",
+    }
+
+    return FileResponse(
+        file_full_path,
+        media_type=mime_type,
+        headers=headers,
+        filename=name_part.rsplit("/", 1)[-1] + "." + suffix,
+    )
+
+
 # 获取文件的原始文件名
 @router.get("/file_name/{file_id}")
 async def get_file_name(file_id, user: dict = Depends(get_current_user)):
