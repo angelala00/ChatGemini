@@ -33,6 +33,7 @@
 - `POSTGRES_POOL_MIN_SIZE`: Postgres 连接池最小连接数，默认 `1`。
 - `POSTGRES_POOL_MAX_SIZE`: Postgres 连接池最大连接数，默认 `5`。
 - `SQLITE_MIGRATION_NODE_ID`: 本节点 sqlite 迁移状态标识；当 `BUSINESS_STORAGE_BACKEND=postgres` 时会自动回填为当前机器的主 IP，也可以手工覆盖，但每个节点必须不同。
+- `FORCE_REGULATION_KNOWLEDGE_SEED_SYNC`: 设为 `true` 时强制本节点重新扫描并同步 `FILE_BASE/regulationassistant` 制度知识文件，默认 `false`。
 - `SESSION_HISTORY_ENCRYPTION_KEY`: 会话历史加密密钥。当前要求在 `BUSINESS_STORAGE_BACKEND=postgres` 时必填，格式为 `Fernet` key。
 - `OBJECT_STORAGE_BACKEND`: 文件存储后端。生产建议 `minio`，本地开发可用 `filesystem`。
 - `FILE_LIFETIME_DAYS`: 会话附件自动过期天数；设为 `0` 时关闭自动过期清理，默认 `7`。
@@ -146,6 +147,10 @@ curl http://localhost:5008/readyz
 - 成功迁移后会把 `file_mapping.storage_backend` 改成 `minio`，后续重复升级不会重复上传。
 - 额外状态会按 `(SQLITE_MIGRATION_NODE_ID, file_id)` 记录在 `file_object_migration_state`，用于断点续跑和避免重复处理缺失文件。
 - 如果本地文件已经不存在，会记录为 `missing` 并在后续重复升级中跳过，直到该记录源路径重新出现或元数据变化。
+
+### 制度知识启动同步
+
+启动初始化会把 `FILE_BASE/regulationassistant` 下的制度文件同步为 `regulationassistant` 的 `assistant_knowledge` 文件。同步成功后会按 `(SQLITE_MIGRATION_NODE_ID, regulation_knowledge_seed_sync:v1)` 在 `startup_task_state` 中记录节点级完成状态；同一节点后续升级启动会直接跳过该目录扫描。需要重新同步本地制度文件时，将 `FORCE_REGULATION_KNOWLEDGE_SEED_SYNC=true` 后启动一次服务。
 
 ### 暂不处理的内容
 

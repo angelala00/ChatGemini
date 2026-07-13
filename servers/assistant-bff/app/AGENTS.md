@@ -86,7 +86,7 @@
 - **可见性策略抽象**：GPTs 与资料库入口这类“开关 + scope + users (+ fallback)”规则，统一收敛到 `app/admin/visibility_policy.py`，新增同类型入口时优先复用，不要在路由里重复手写。
 - **系统助手同步**：启动初始化从纯内置注册表识别系统助手并补种到 `agents`；已有记录仅同步 `assistant_kind` 与 `handler_key` 执行身份，不覆盖数据库中的名称、提示词、默认模型、可见模型或 ACL 等可编辑配置。
 - **智能体编辑语义**：`PUT /api/gpts/{gid}` 按合并更新处理，保留编辑页未提交的现有字段；系统助手的 `gid`、`assistant_kind` 与 `handler_key` 属于受保护字段，编辑名称、提示词或默认模型时不能被覆盖或清空。
-- **制度知识入库**：启动初始化会把 `FILE_BASE/regulationassistant` 下的知识文件幂等迁移到当前对象存储后端，并写入 `file_mapping`，以 `purpose=assistant_knowledge` 标识；制度工具优先从这类 DB 映射读取目录和正文，目录缺失时会从映射集合合成一个兼容目录。
+- **制度知识入库**：启动初始化会把 `FILE_BASE/regulationassistant` 下的知识文件幂等迁移到当前对象存储后端，并写入 `file_mapping`，以 `purpose=assistant_knowledge` 标识；制度工具优先从这类 DB 映射读取目录和正文，目录缺失时会从映射集合合成一个兼容目录。该迁移通过 `startup_task_state` 按 `(SQLITE_MIGRATION_NODE_ID, regulation_knowledge_seed_sync:v1)` 记录节点级完成状态，已完成节点后续升级启动会直接跳过本地目录扫描；需要人工重跑时设置 `FORCE_REGULATION_KNOWLEDGE_SEED_SYNC=true`。
 - **智能体 ACL**：`agents.config` 承载 `owner`、`admins`、`viewers`，其中 `owner` 是唯一可转让所有者，`admins` 可编辑并管理知识文件，`viewers` 仅可见。系统内置 `regulationassistant` 与 `gptassistant` 在启动时会从 `GPTS_WHITE_LIST` 派生默认所有者和管理员列表；编辑页允许当前所有者转让 owner，并维护管理员/可见用户名单。
 - **新建智能体默认可见性**：`POST /api/gpts` 与 `PUT /api/gpts/{gid}` 在请求未显式提供 `auth` 时默认回落到 `auth.type=self`，避免新建智能体因前端漏传而变成全员可见。
 - **旧表迁移策略**：启动时会将旧 `custom_gpts` 中尚未存在于 `agents` 的记录补迁到 `agents`，但不会反向覆盖 `agents` 中已存在的新配置，保证滚动升级期间旧节点继续读旧表、新节点只读新表。

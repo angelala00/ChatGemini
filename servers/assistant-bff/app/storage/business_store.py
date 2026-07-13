@@ -41,6 +41,7 @@ _INITIALIZE_LOCK = Lock()
 _FERNET: Any = None
 _POSTGRES_POOL: Any = None
 _POSTGRES_POOL_DSN = ""
+REGULATION_KNOWLEDGE_SEED_SYNC_TASK_KEY = "regulation_knowledge_seed_sync:v1"
 FILE_MAPPING_REQUIRED_COLUMNS = {
     "file_id",
     "filename",
@@ -652,6 +653,79 @@ def _regulation_source_files() -> list[Path]:
     return files
 
 
+def _startup_task_node_id() -> str:
+    return model_config.SQLITE_MIGRATION_NODE_ID.strip() or "local"
+
+
+def _startup_task_completed(task_key: str) -> bool:
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            SELECT status
+              FROM startup_task_state
+             WHERE node_id=%s AND task_key=%s
+            """
+            if _use_postgres()
+            else """
+            SELECT status
+              FROM startup_task_state
+             WHERE node_id=? AND task_key=?
+            """,
+            (_startup_task_node_id(), task_key),
+        ).fetchone()
+    item = _normalize_row(row) if row else {}
+    return str(item.get("status") or "").strip().lower() == "completed"
+
+
+def _mark_startup_task_completed(task_key: str, summary: dict[str, Any]) -> None:
+    now = _now_iso()
+    serialized_summary = json.dumps(summary, ensure_ascii=False)
+    with _connect() as conn:
+        if _use_postgres():
+            conn.execute(
+                """
+                INSERT INTO startup_task_state(
+                    node_id, task_key, status, completed_at, summary, error
+                ) VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (node_id, task_key) DO UPDATE SET
+                    status=EXCLUDED.status,
+                    completed_at=EXCLUDED.completed_at,
+                    summary=EXCLUDED.summary,
+                    error=EXCLUDED.error
+                """,
+                (
+                    _startup_task_node_id(),
+                    task_key,
+                    "completed",
+                    now,
+                    serialized_summary,
+                    "",
+                ),
+            )
+        else:
+            conn.execute(
+                """
+                INSERT INTO startup_task_state(
+                    node_id, task_key, status, completed_at, summary, error
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(node_id, task_key) DO UPDATE SET
+                    status=excluded.status,
+                    completed_at=excluded.completed_at,
+                    summary=excluded.summary,
+                    error=excluded.error
+                """,
+                (
+                    _startup_task_node_id(),
+                    task_key,
+                    "completed",
+                    now,
+                    serialized_summary,
+                    "",
+                ),
+            )
+        conn.commit()
+
+
 def _regulation_seed_upload_time(path: Path) -> str:
     return datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).isoformat()
 
@@ -897,16 +971,17 @@ def _migrate_legacy_custom_gpts_to_agents() -> None:
     gpt_logger.info("legacy_custom_gpts_migration completed scanned=%s", len(rows))
 
 
-def _sync_seed_regulation_knowledge_files_to_storage() -> None:
+def _run_seed_regulation_knowledge_files_to_storage() -> dict[str, int]:
     source_files = _regulation_source_files()
     if not source_files:
         gpt_logger.info("regulation_knowledge_seed_sync skipped reason=no_source_files")
-        return
+        return {"total": 0, "inserted": 0, "updated": 0, "skipped": 0}
     gpt_logger.info(
         "regulation_knowledge_seed_sync started total=%s files=%s",
         len(source_files),
         ",".join(str(path.name) for path in source_files),
     )
+    summary = {"total": len(source_files), "inserted": 0, "updated": 0, "skipped": 0}
     with _connect() as conn:
         for path in source_files:
             seed_payload = _seed_regulation_knowledge_file_payload(path)
@@ -939,9 +1014,11 @@ def _sync_seed_regulation_knowledge_files_to_storage() -> None:
                     "regulation_knowledge_seed_sync skipped file_id=%s reason=already_current",
                     seed_payload["file_id"],
                 )
+                summary["skipped"] += 1
                 continue
             stored_payload = _regulation_seed_storage_payload(path, seed_payload)
             action = "update" if existing else "insert"
+            summary["updated" if existing else "inserted"] += 1
             gpt_logger.info(
                 "regulation_knowledge_seed_sync %s file_id=%s filename=%s sha256=%s",
                 action,
@@ -1089,6 +1166,25 @@ def _sync_seed_regulation_knowledge_files_to_storage() -> None:
                     )
         conn.commit()
     gpt_logger.info("regulation_knowledge_seed_sync completed total=%s", len(source_files))
+    return summary
+
+
+def _sync_seed_regulation_knowledge_files_to_storage() -> None:
+    if (
+        not model_config.FORCE_REGULATION_KNOWLEDGE_SEED_SYNC
+        and _startup_task_completed(REGULATION_KNOWLEDGE_SEED_SYNC_TASK_KEY)
+    ):
+        gpt_logger.info(
+            "regulation_knowledge_seed_sync skipped task_key=%s node_id=%s reason=already_completed_for_node",
+            REGULATION_KNOWLEDGE_SEED_SYNC_TASK_KEY,
+            _startup_task_node_id(),
+        )
+        return
+
+    summary = _run_seed_regulation_knowledge_files_to_storage()
+    if summary["total"] <= 0:
+        return
+    _mark_startup_task_completed(REGULATION_KNOWLEDGE_SEED_SYNC_TASK_KEY, summary)
 
 
 def _ensure_file_mapping_owner_columns() -> None:
@@ -2131,6 +2227,19 @@ def init_business_storage() -> None:
                   ON admin_audit_logs(created_at DESC)
                 """
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS startup_task_state (
+                  node_id TEXT NOT NULL,
+                  task_key TEXT NOT NULL,
+                  status TEXT NOT NULL,
+                  completed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                  summary TEXT NOT NULL DEFAULT '',
+                  error TEXT NOT NULL DEFAULT '',
+                  PRIMARY KEY (node_id, task_key)
+                )
+                """
+            )
         else:
             conn.executescript(
                 """
@@ -2265,6 +2374,15 @@ def init_business_storage() -> None:
                 );
                 CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_created_at
                   ON admin_audit_logs(created_at DESC);
+                CREATE TABLE IF NOT EXISTS startup_task_state (
+                  node_id TEXT NOT NULL,
+                  task_key TEXT NOT NULL,
+                  status TEXT NOT NULL,
+                  completed_at TEXT NOT NULL,
+                  summary TEXT NOT NULL DEFAULT '',
+                  error TEXT NOT NULL DEFAULT '',
+                  PRIMARY KEY (node_id, task_key)
+                );
                 """
             )
         conn.commit()

@@ -58,6 +58,10 @@ POSTGRES_DSN: str = os.getenv("POSTGRES_DSN", "").strip()
 POSTGRES_POOL_MIN_SIZE: int = _parse_int_env(os.getenv("POSTGRES_POOL_MIN_SIZE"), 1)
 POSTGRES_POOL_MAX_SIZE: int = _parse_int_env(os.getenv("POSTGRES_POOL_MAX_SIZE"), 5)
 SQLITE_MIGRATION_NODE_ID: str = os.getenv("SQLITE_MIGRATION_NODE_ID", "").strip()
+FORCE_REGULATION_KNOWLEDGE_SEED_SYNC: bool = _parse_bool_env(
+    os.getenv("FORCE_REGULATION_KNOWLEDGE_SEED_SYNC"),
+    False,
+)
 SESSION_HISTORY_ENCRYPTION_KEY: str = os.getenv("SESSION_HISTORY_ENCRYPTION_KEY", "").strip()
 AGENT_CONFIRMATION_SECRET: str = os.getenv(
     "AGENT_CONFIRMATION_SECRET",

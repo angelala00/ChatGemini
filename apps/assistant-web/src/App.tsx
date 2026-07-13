@@ -1082,6 +1082,7 @@ const App = () => {
         dispatch(updateAI({ ...ai, busy: true }));
         flushSessionDispatch(_sessions);
         const previousExtension = sessionExtensions[id];
+        let currentMappingsState = mappings;
         const nextSessionExtensions = {
             ...sessionExtensions,
             [id]: {
@@ -1099,6 +1100,15 @@ const App = () => {
         };
         dispatch(updateSessionExtensions(nextSessionExtensions));
         let currentSessionExtensionsState = nextSessionExtensions;
+        let shouldRefreshSessionSummaries = false;
+        let sessionSummariesRefreshRequested = false;
+        const refreshSessionSummariesOnce = () => {
+            if (sessionSummariesRefreshRequested) {
+                return;
+            }
+            sessionSummariesRefreshRequested = true;
+            loadSessionSummaries().catch(() => {});
+        };
         if(gid){
             navigate(`/g/${gid}/chat/${id}`);
         } else {
@@ -1112,8 +1122,11 @@ const App = () => {
         ) => {
 	        // console.log("onChatMessage, message=" + message + ", end=" +  end + ", convId=" + convId + ", id=" + id + ", gid=" + gid);
             if (convId !== "") {
-                if (!mappings[id] && !sessionExtensions[id]?.conversationId) {
-                    loadSessionSummaries().catch(() => {});
+                if (
+                    !currentMappingsState[id] &&
+                    !currentSessionExtensionsState[id]?.conversationId
+                ) {
+                    shouldRefreshSessionSummaries = true;
                 }
                 if (id !== convId) {
                     const previousId = id;
@@ -1122,8 +1135,9 @@ const App = () => {
                     _sessions = nextSessions;
                     flushSessionDispatch(nextSessions);
 
-                    const nextMappings = { ...mappings, [convId]: convId };
+                    const nextMappings = { ...currentMappingsState, [convId]: convId };
                     delete nextMappings[previousId];
+                    currentMappingsState = nextMappings;
                     dispatch(updateMappings(nextMappings));
 
                     currentSessionExtensionsState = {
@@ -1148,7 +1162,8 @@ const App = () => {
                         navigate(`/chat/${convId}`, { replace: true });
                     }
                 } else {
-                    dispatch(updateMappings({ ...mappings, [id]: convId}));
+                    currentMappingsState = { ...currentMappingsState, [id]: convId };
+                    dispatch(updateMappings(currentMappingsState));
                     currentSessionExtensionsState = {
                         ...currentSessionExtensionsState,
                         [id]: {
@@ -1163,6 +1178,9 @@ const App = () => {
             }
             if (end) {
                 dispatch(updateAI({ ...ai, busy: false }));
+                if (shouldRefreshSessionSummaries) {
+                    refreshSessionSummariesOnce();
+                }
             }
             // console.log("====onmessage handler")
             let prevParts = _sessions[id][_sessions[id].length - 1].parts;

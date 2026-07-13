@@ -178,6 +178,42 @@ class StorageBackendFallbackTests(unittest.TestCase):
         business_store.init_business_storage()
         self.assertTrue(business_store._INITIALIZED)
 
+    def test_regulation_knowledge_seed_sync_is_marked_once_per_node(self):
+        source_dir = Path(self.file_base) / "regulationassistant"
+        source_dir.mkdir(parents=True)
+        (source_dir / "policy.txt").write_text("policy content", encoding="utf-8")
+
+        with patch.object(model_config, "SQLITE_MIGRATION_NODE_ID", "node-a"), \
+             patch.object(model_config, "FORCE_REGULATION_KNOWLEDGE_SEED_SYNC", False):
+            business_store._sync_seed_regulation_knowledge_files_to_storage()
+
+            conn = sqlite3.connect(self.db_path)
+            try:
+                row = conn.execute(
+                    """
+                    SELECT status, summary
+                      FROM startup_task_state
+                     WHERE node_id=? AND task_key=?
+                    """,
+                    (
+                        "node-a",
+                        business_store.REGULATION_KNOWLEDGE_SEED_SYNC_TASK_KEY,
+                    ),
+                ).fetchone()
+            finally:
+                conn.close()
+
+            self.assertIsNotNone(row)
+            self.assertEqual(row[0], "completed")
+            self.assertEqual(json.loads(row[1])["inserted"], 1)
+
+            with patch.object(
+                business_store,
+                "_regulation_source_files",
+                side_effect=AssertionError("source files should not be scanned again"),
+            ):
+                business_store._sync_seed_regulation_knowledge_files_to_storage()
+
     def test_business_storage_health_reports_unowned_file_mappings(self):
         business_store.insert_file_mapping(
             "legacy-file",
