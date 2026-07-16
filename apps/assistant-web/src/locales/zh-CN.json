@@ -497,10 +497,27 @@
             "rename": "重命名",
             "export": "导出",
             "delete": "删除",
+            "collapse_sidebar": "收起侧栏",
+            "workspace_switcher": "切换助手体系",
+            "workspace_native": "智能问答",
+            "workspace_external": "智能办公",
             "version_tooltip": "点击查看功能变更记录",
             "release_history_title": "功能变更记录",
             "release_history_subtitle": "当前版本 {{version}}",
             "close_release_history": "关闭功能变更记录"
+        },
+        "ExternalAssistant": {
+            "menu_title": "智能办公菜单",
+            "menu_empty": "菜单待接入",
+            "menu_empty_hint": "外部系统提供菜单后，将在这里自动显示。",
+            "open_sidebar": "打开智能办公菜单",
+            "load_failed": "智能办公配置加载失败",
+            "load_failed_hint": "请检查网络或稍后重试。若问题持续出现，请联系管理员检查接入配置。",
+            "retry": "重新尝试",
+            "placeholder_title": "智能办公框架已就绪",
+            "placeholder_hint": "白名单、产品切换和嵌入容器已经准备完成。配置外部系统地址和菜单后，即可在这里加载完整页面。",
+            "placeholder_status": "等待外部系统接入",
+            "iframe_loading": "正在连接智能办公…"
         }
     }
 }

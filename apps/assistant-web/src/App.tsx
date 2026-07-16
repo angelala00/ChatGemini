@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { globalConfig } from "./config/global";
 import { Sidebar } from "./components/Sidebar";
+import { ExternalAssistantSidebar } from "./components/ExternalAssistantSidebar";
+import { ExternalAssistantWorkspace } from "./components/ExternalAssistantWorkspace";
 import { Container } from "./components/Container";
 import { Header } from "./components/Header";
 import { InputArea } from "./components/InputArea";
@@ -38,6 +40,7 @@ import { resolveAttachmentViewItems } from "./helpers/getAttachmentViewItems";
 import { buildAttachmentPostscriptHtml } from "./helpers/buildAttachmentPostscriptHtml";
 import { SessionSummary } from "./types/sessionHistory";
 import localForage from "localforage";
+import { useExternalAssistantWorkspace } from "./hooks/useExternalAssistantWorkspace";
 
 const PREFERRED_MODEL_COOKIE_KEY = "preferred_model";
 const PREFERRED_REASONING_COOKIE_KEY = "preferred_reasoning_enabled";
@@ -1290,6 +1293,25 @@ const App = () => {
         currentPath === routes.index.prefix ||
         (!!gid && !id && currentPath === `/g/${gid}`);
     const isDefaultNewSessionPage = isNewSessionPage && !gid;
+    const externalAssistantWorkspace = useExternalAssistantWorkspace({
+        hasLogined,
+        workspaceAvailable: !isTracePage && !isVoiceLabPage && !isAdminPage,
+    });
+    const {
+        allowed: externalAssistantAllowed,
+        bootstrap: externalAssistantBootstrap,
+        bootstrapStatus: externalAssistantBootstrapStatus,
+        iframeUrl: externalAssistantIframeUrl,
+        loadBootstrap: loadExternalAssistantBootstrap,
+        selectedMenuId: externalAssistantSelectedMenuId,
+        selectMenu: selectExternalAssistantMenu,
+        setWorkspaceMode,
+        shouldMountExternalWorkspace,
+        workspaceMode,
+    } = externalAssistantWorkspace;
+    const externalAssistantTitle =
+        externalAssistantBootstrap?.title ||
+        t("components.Sidebar.workspace_external");
 
     useEffect(() => {
         if (!hasLogined) {
@@ -1793,30 +1815,37 @@ const App = () => {
                                 : "grid-cols-[0_minmax(0,1fr)]"
                         } max-[900px]:grid-cols-[1fr]`}
                     >
-                        <Sidebar
-                            title={header}
-                            userName={userName}
-                            locales={locales}
-                            sessions={sessions}
-                            sessionSummaries={sessionSummaries}
-                            expand={sidebarExpand}
-                            gptsFeatureAllowed={gptsFeatureAllowed}
-                            voiceLabAllowed={voiceLabAllowed}
-                            adminAllowed={adminAllowed}
-                            libraryAllowed={libraryAllowed}
-                            currentLocale={currentLocale}
-                            onSwitchLocale={handleSwitchLocale}
-                            onDeleteSession={handleDeleteSession}
-                            onRenameSession={handleRenameSession}
-                            onToggleSidebar={() =>
-                                setSidebarExpand((state) => !state)
-                            }
-                            theme={theme}
-                            onSwitchTheme={setTheme}
-                        />
-                        <Container
-                            className="col-start-2 flex h-screen min-w-0 flex-col bg-white/95 max-[900px]:col-start-1"
+                        <div
+                            className={workspaceMode === "native" ? "contents" : "hidden"}
+                            aria-hidden={workspaceMode !== "native"}
                         >
+                            <Sidebar
+                                title={header}
+                                userName={userName}
+                                locales={locales}
+                                sessions={sessions}
+                                sessionSummaries={sessionSummaries}
+                                expand={sidebarExpand}
+                                gptsFeatureAllowed={gptsFeatureAllowed}
+                                voiceLabAllowed={voiceLabAllowed}
+                                adminAllowed={adminAllowed}
+                                libraryAllowed={libraryAllowed}
+                                externalAssistantAllowed={externalAssistantAllowed}
+                                workspaceMode={workspaceMode}
+                                currentLocale={currentLocale}
+                                onSwitchLocale={handleSwitchLocale}
+                                onDeleteSession={handleDeleteSession}
+                                onRenameSession={handleRenameSession}
+                                onToggleSidebar={() =>
+                                    setSidebarExpand((state) => !state)
+                                }
+                                onWorkspaceModeChange={setWorkspaceMode}
+                                theme={theme}
+                                onSwitchTheme={setTheme}
+                            />
+                            <Container
+                                className="col-start-2 flex h-screen min-w-0 flex-col bg-white/95 max-[900px]:col-start-1"
+                            >
                             {!isGptsPage && !isAdminPage && !isLibraryPage && (
                                 <Header
                                     sidebarExpand={sidebarExpand}
@@ -1891,7 +1920,42 @@ const App = () => {
                                     />
                                 )}
                             </div>
-                        </Container>
+                            </Container>
+                        </div>
+                        {shouldMountExternalWorkspace && (
+                            <div
+                                className={
+                                    workspaceMode === "external" ? "contents" : "hidden"
+                                }
+                                aria-hidden={workspaceMode !== "external"}
+                            >
+                                <ExternalAssistantSidebar
+                                    title={header}
+                                    bootstrap={externalAssistantBootstrap}
+                                    selectedMenuId={externalAssistantSelectedMenuId}
+                                    userName={userName}
+                                    expand={sidebarExpand}
+                                    workspaceMode={workspaceMode}
+                                    onSelectMenu={selectExternalAssistantMenu}
+                                    onToggleSidebar={() =>
+                                        setSidebarExpand((state) => !state)
+                                    }
+                                    onWorkspaceModeChange={setWorkspaceMode}
+                                />
+                                <ExternalAssistantWorkspace
+                                    title={externalAssistantTitle}
+                                    iframeUrl={externalAssistantIframeUrl}
+                                    bootstrapStatus={externalAssistantBootstrapStatus}
+                                    sidebarExpand={sidebarExpand}
+                                    onRetryBootstrap={() => {
+                                        void loadExternalAssistantBootstrap();
+                                    }}
+                                    onToggleSidebar={() =>
+                                        setSidebarExpand((state) => !state)
+                                    }
+                                />
+                            </div>
+                        )}
                         <button
                             type="button"
                             aria-label="关闭历史会话"

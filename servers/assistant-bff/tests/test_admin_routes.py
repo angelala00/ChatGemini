@@ -122,6 +122,29 @@ class AdminRoutesTests(unittest.IsolatedAsyncioTestCase):
             flags["gpts_visible_users"]["config_value"],
             ["admin@example.com"],
         )
+        self.assertFalse(flags["external_assistant_feature_enabled"]["config_value"])
+        self.assertEqual(
+            flags["external_assistant_visible_scope"]["config_value"],
+            "restricted",
+        )
+        self.assertEqual(
+            flags["external_assistant_visible_users"]["config_value"],
+            [],
+        )
+        self.assertIsInstance(
+            flags["external_assistant_base_url"]["config_value"],
+            str,
+        )
+        self.assertEqual(
+            flags["external_assistant_menus"]["config_value"],
+            [
+                {
+                    "id": "home",
+                    "label": business_store.model_config.EXTERNAL_ASSISTANT_TITLE,
+                    "path": "",
+                }
+            ],
+        )
         self.assertNotIn("default_model", flags)
         self.assertNotIn("default_visible_models", flags)
         self.assertNotIn("default_reasoning_enabled", flags)
@@ -155,6 +178,11 @@ class AdminRoutesTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("gpts_feature_enabled", flags)
         self.assertIn("gpts_visible_scope", flags)
         self.assertIn("gpts_visible_users", flags)
+        self.assertIn("external_assistant_feature_enabled", flags)
+        self.assertIn("external_assistant_visible_scope", flags)
+        self.assertIn("external_assistant_visible_users", flags)
+        self.assertIn("external_assistant_base_url", flags)
+        self.assertIn("external_assistant_menus", flags)
         self.assertNotIn("default_model", flags)
         self.assertNotIn("default_visible_models", flags)
         self.assertNotIn("default_reasoning_enabled", flags)

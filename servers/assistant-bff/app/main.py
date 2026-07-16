@@ -9,6 +9,7 @@ from app.routes.admin_routes import router as admin_router
 from app.auth.auth_routes import router as auth_router
 from app.routes.chat_routes import router as chat_router
 from app.routes.chat_trace_routes import router as trace_router
+from app.routes.external_assistant_routes import router as external_assistant_router
 from app.routes.file_routes import (
     get_upload_request_max_bytes,
     router as file_router,
@@ -59,6 +60,7 @@ app.include_router(auth_router, prefix="")
 app.include_router(admin_router, prefix="")
 app.include_router(chat_router, prefix="")
 app.include_router(trace_router, prefix="")
+app.include_router(external_assistant_router, prefix="")
 app.include_router(file_router, prefix="")
 app.include_router(gpts_router, prefix="")
 app.include_router(library_router, prefix="")

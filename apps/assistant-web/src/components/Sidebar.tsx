@@ -3,7 +3,6 @@ import emptyIcon from "../assets/icons/folder-open-solid.svg";
 import closeIcon from "../assets/icons/xmark-solid.svg";
 const regulationIcon = "/gpts/policy.svg";
 import wandIcon from "../assets/icons/ds-logo.svg";
-import logoIcon from "../assets/logo.svg";
 import appsIcon from "../assets/icons/apps.svg";
 import {
     ShieldCheckIcon,
@@ -30,6 +29,8 @@ import { getFullPath } from "../helpers/getDomainAndPath";
 import { globalConfig } from "../config/global";
 import { normalizeAssetPath } from "../helpers/normalizeAssetPath";
 import { SessionSummary } from "../types/sessionHistory";
+import { WorkspaceMode } from "../types/externalAssistant";
+import { WorkspaceSidebarHeader } from "./WorkspaceSidebarHeader";
 
 interface SidebarProps {
     readonly title: string;
@@ -38,6 +39,8 @@ interface SidebarProps {
     readonly voiceLabAllowed: boolean;
     readonly adminAllowed: boolean;
     readonly libraryAllowed: boolean;
+    readonly externalAssistantAllowed: boolean;
+    readonly workspaceMode: WorkspaceMode;
     readonly userName: string;
     readonly limitation?: number;
     readonly sessions: Sessions;
@@ -48,6 +51,7 @@ interface SidebarProps {
     readonly onSwitchLocale: (locale: string) => void;
     readonly onRenameSession: (id: string, newTitle: string) => void;
     readonly onToggleSidebar: () => void;
+    readonly onWorkspaceModeChange: (mode: WorkspaceMode) => void;
     readonly theme: "light" | "dark" | "system";
     readonly onSwitchTheme: (theme: "light" | "dark" | "system") => void;
 }
@@ -397,6 +401,8 @@ export const Sidebar = (props: SidebarProps) => {
         voiceLabAllowed,
         adminAllowed,
         libraryAllowed,
+        externalAssistantAllowed,
+        workspaceMode,
         userName,
         limitation,
         sessions,
@@ -407,6 +413,7 @@ export const Sidebar = (props: SidebarProps) => {
         onSwitchLocale,
         onRenameSession,
         onToggleSidebar,
+        onWorkspaceModeChange,
         theme,
         onSwitchTheme,
     } = props;
@@ -578,33 +585,13 @@ export const Sidebar = (props: SidebarProps) => {
                     : "pointer-events-none -translate-x-6 opacity-0 max-[900px]:-translate-x-full"
             }`}
         >
-            <div className="relative flex shrink-0 items-center justify-between pl-0 pr-0 text-[#2f3a46]">
-                <div className="inline-flex min-w-0 items-center gap-2">
-                    <span className="grid size-[32px] shrink-0 place-items-center">
-                        <img src={logoIcon} className="size-[32px] object-contain" />
-                    </span>
-                    <span className="min-w-0 translate-y-px truncate text-[18px] font-semibold tracking-[0] text-[rgba(47,58,70,0.82)]">
-                        {title}
-                    </span>
-                </div>
-                <button
-                    type="button"
-                    className="mr-[-6px] grid size-[30px] place-items-center rounded-[9px] text-[#87919d] transition-colors hover:bg-white/90 hover:text-[#66717d]"
-                    aria-label="收起侧栏"
-                    onClick={onToggleSidebar}
-                >
-                    <svg
-                        className="size-5"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.8"
-                    >
-                        <rect x="4" y="5" width="16" height="14" rx="2" />
-                        <path d="M10 5v14" />
-                    </svg>
-                </button>
-            </div>
+            <WorkspaceSidebarHeader
+                title={title}
+                externalAssistantAllowed={externalAssistantAllowed}
+                workspaceMode={workspaceMode}
+                onToggleSidebar={onToggleSidebar}
+                onWorkspaceModeChange={onWorkspaceModeChange}
+            />
             <button
                 type="button"
                 className={`mt-1.5 flex min-h-10 w-full shrink-0 items-center justify-between gap-3 rounded-[14px] border pl-0 pr-[13px] text-[14px] font-normal text-[rgba(47,58,70,0.98)] transition-all hover:-translate-y-px hover:border-[rgba(194,208,216,0.98)] hover:shadow-[0_7px_16px_rgba(23,28,38,0.032),0_0_0_1px_rgba(133,210,226,0.028)] ${

@@ -84,6 +84,8 @@
 - **Pin 状态模型**：`user_gpts_state` 保存用户对智能体菜单的显式 pin 覆盖，新增 `is_pinned` 字段后语义为“无记录 = 默认 pin；有记录且 `is_pinned=false` = 用户显式取消；有记录且 `is_pinned=true` = 用户显式恢复/调整顺序”。不要再通过 `required_pinned` 或启动时强制补 pin 来实现制度助手之类的固定入口。
 - **资料库入口可见性**：个人资料库入口使用独立的 `library_feature_enabled`、`library_visible_scope`、`library_visible_users` 配置；不要复用 GPTs 白名单语义。
 - **可见性策略抽象**：GPTs 与资料库入口这类“开关 + scope + users (+ fallback)”规则，统一收敛到 `app/admin/visibility_policy.py`，新增同类型入口时优先复用，不要在路由里重复手写。
+- **智能办公接入门控**：智能办公工作区内部沿用 `external_assistant_*` 命名，使用独立的 `external_assistant_feature_enabled`、`external_assistant_visible_scope`、`external_assistant_visible_users`，不得复用 GPTs 或资料库名单。`GET /api/external-assistant/permission` 只返回当前用户是否可见；`GET /api/external-assistant/bootstrap` 再对获准用户返回标题、菜单和安全规范化后的 iframe 地址。默认关闭且空名单，非法 URL scheme 会被丢弃。
+- **智能办公菜单配置**：复用 `admin_feature_flags`，无需新增表。`external_assistant_base_url` 保存同源基础路径（推荐 `/b/`）或 https 地址；`external_assistant_menus` 保存 `{id,label,path}` JSON 数组。`path` 必须相对基础路径，后端拒绝协议、跨域、反斜杠和路径回退，并在 bootstrap 时拼成 iframe URL；管理后台保存后，用户刷新智能办公页面即可生效。
 - **系统助手同步**：启动初始化从纯内置注册表识别系统助手并补种到 `agents`；已有记录仅同步 `assistant_kind` 与 `handler_key` 执行身份，不覆盖数据库中的名称、提示词、默认模型、可见模型或 ACL 等可编辑配置。
 - **智能体编辑语义**：`PUT /api/gpts/{gid}` 按合并更新处理，保留编辑页未提交的现有字段；系统助手的 `gid`、`assistant_kind` 与 `handler_key` 属于受保护字段，编辑名称、提示词或默认模型时不能被覆盖或清空。
 - **制度知识入库**：启动初始化会把 `FILE_BASE/regulationassistant` 下的知识文件幂等迁移到当前对象存储后端，并写入 `file_mapping`，以 `purpose=assistant_knowledge` 标识；制度工具优先从这类 DB 映射读取目录和正文，目录缺失时会从映射集合合成一个兼容目录。该迁移通过 `startup_task_state` 按 `(SQLITE_MIGRATION_NODE_ID, regulation_knowledge_seed_sync:v1)` 记录节点级完成状态，已完成节点后续升级启动会直接跳过本地目录扫描；需要人工重跑时设置 `FORCE_REGULATION_KNOWLEDGE_SEED_SYNC=true`。

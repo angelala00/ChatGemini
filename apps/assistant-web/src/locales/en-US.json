@@ -497,10 +497,27 @@
             "rename": "Rename",
             "export": "Export",
             "delete": "Delete",
+            "collapse_sidebar": "Collapse sidebar",
+            "workspace_switcher": "Switch assistant workspace",
+            "workspace_native": "Smart Q&A",
+            "workspace_external": "Smart Office",
             "version_tooltip": "Click to view release notes",
             "release_history_title": "Release Notes",
             "release_history_subtitle": "Current version {{version}}",
             "close_release_history": "Close release notes"
+        },
+        "ExternalAssistant": {
+            "menu_title": "Smart Office Menu",
+            "menu_empty": "Menu pending",
+            "menu_empty_hint": "Items will appear here when the external system provides its menu.",
+            "open_sidebar": "Open Smart Office menu",
+            "load_failed": "Failed to load Smart Office configuration",
+            "load_failed_hint": "Check the network and try again. If the issue continues, ask an administrator to review the integration configuration.",
+            "retry": "Try again",
+            "placeholder_title": "Smart Office shell is ready",
+            "placeholder_hint": "The allowlist, product switcher, and embed container are ready. Configure the external system URL and menu to load the full experience here.",
+            "placeholder_status": "Waiting for external system",
+            "iframe_loading": "Connecting to Smart Office…"
         }
     }
 }

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 from app.storage.business_store import get_admin_feature_flag, upsert_admin_feature_flag
 
@@ -13,7 +13,9 @@ class VisibilityPolicyConfig:
     users_key: str
     feature_default: bool = False
     fallback_users: tuple[str, ...] = field(default_factory=tuple)
+    fallback_users_provider: Callable[[], Iterable[object]] | None = None
     fallback_scope: str = "restricted"
+    empty_fallback_scope: str = "all"
 
 
 def coerce_bool(value: Any, default: bool) -> bool:
@@ -70,10 +72,15 @@ def get_visibility_config(config: VisibilityPolicyConfig) -> tuple[str, list[str
     if normalized_scope:
         return normalized_scope, sorted(normalized_users), False
 
-    fallback_users = normalize_user_identifiers(config.fallback_users)
+    fallback_source = (
+        config.fallback_users_provider()
+        if config.fallback_users_provider is not None
+        else config.fallback_users
+    )
+    fallback_users = normalize_user_identifiers(fallback_source)
     if fallback_users:
         return config.fallback_scope, sorted(fallback_users), True
-    return "all", [], True
+    return config.empty_fallback_scope, [], True
 
 
 def normalize_visibility_payload(visible_scope: str, visible_users: Iterable[object]) -> dict[str, Any]:

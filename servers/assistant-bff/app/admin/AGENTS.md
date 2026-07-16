@@ -22,3 +22,9 @@
 
 ## 权限模型 (Permission Model)
 系统采用功能码权限模型。除 DB 记录外，原有的环境变量白名单（如 `GPTS_WHITE_LIST`）在 V1 版本中依然作为 fallback 生效，以确保系统在未配置数据库时仍可进入管理后台。
+
+## 外部助手试用可见性
+- 外部助手入口复用 `VisibilityPolicyConfig`，由 `external_assistant_feature_enabled`、`external_assistant_visible_scope`、`external_assistant_visible_users` 三个 feature flag 共同决定。
+- 默认配置必须保持关闭、`restricted` 且名单为空，避免新部署或配置缺失时误开放给所有登录用户。
+- `EXTERNAL_ASSISTANT_FEATURE_ENABLED` 与 `EXTERNAL_ASSISTANT_WHITE_LIST` 只作为数据库初始化和兼容回退；管理员 feature flag 保存后以数据库为准。
+- 普通权限查询只返回 `allowed`；外部标题、菜单和 iframe 地址由受保护的 bootstrap 接口返回，白名单外用户不能取得接入配置。

@@ -93,4 +93,15 @@ ALLOW_ORIGINS: List[str] = [
 GPTS_FEATURE_ENABLED: bool = _parse_bool_env(os.getenv("GPTS_FEATURE_ENABLED"), True)
 GPTS_WHITE_LIST: Set[str] = _parse_list_env(os.getenv("GPTS_WHITE_LIST", ""))
 VOICE_LAB_WHITE_LIST: Set[str] = _parse_list_env(os.getenv("VOICE_LAB_WHITE_LIST", ""))
+EXTERNAL_ASSISTANT_FEATURE_ENABLED: bool = _parse_bool_env(
+    os.getenv("EXTERNAL_ASSISTANT_FEATURE_ENABLED"),
+    False,
+)
+EXTERNAL_ASSISTANT_WHITE_LIST: Set[str] = _parse_list_env(
+    os.getenv("EXTERNAL_ASSISTANT_WHITE_LIST", "")
+)
+EXTERNAL_ASSISTANT_URL: str = os.getenv("EXTERNAL_ASSISTANT_URL", "").strip()
+EXTERNAL_ASSISTANT_TITLE: str = (
+    os.getenv("EXTERNAL_ASSISTANT_TITLE", "智能办公").strip() or "智能办公"
+)
 TRACE_ENABLED: bool = os.getenv("GPT_TRACE_ENABLED", "false").lower() == "true"

@@ -19,9 +19,7 @@ GPTS_VISIBILITY_POLICY = VisibilityPolicyConfig(
     scope_key="gpts_visible_scope",
     users_key="gpts_visible_users",
     feature_default=bool(model_config.GPTS_FEATURE_ENABLED),
-    fallback_users=tuple(
-        sorted(str(item).strip() for item in model_config.GPTS_WHITE_LIST if str(item).strip())
-    ),
+    fallback_users_provider=lambda: model_config.GPTS_WHITE_LIST,
 )
 
 LIBRARY_VISIBILITY_POLICY = VisibilityPolicyConfig(
@@ -29,6 +27,15 @@ LIBRARY_VISIBILITY_POLICY = VisibilityPolicyConfig(
     scope_key="library_visible_scope",
     users_key="library_visible_users",
     feature_default=False,
+)
+
+EXTERNAL_ASSISTANT_VISIBILITY_POLICY = VisibilityPolicyConfig(
+    feature_key="external_assistant_feature_enabled",
+    scope_key="external_assistant_visible_scope",
+    users_key="external_assistant_visible_users",
+    feature_default=bool(model_config.EXTERNAL_ASSISTANT_FEATURE_ENABLED),
+    fallback_users_provider=lambda: model_config.EXTERNAL_ASSISTANT_WHITE_LIST,
+    empty_fallback_scope="restricted",
 )
 
 
@@ -123,8 +130,21 @@ def is_library_visible_to_user(user: dict[str, object]) -> bool:
     )
 
 
+def is_external_assistant_visible_to_user(user: dict[str, object]) -> bool:
+    scope, users, _using_fallback = get_visibility_config(
+        EXTERNAL_ASSISTANT_VISIBILITY_POLICY
+    )
+    return is_user_allowed(
+        user_keys(user),
+        feature_enabled=get_feature_enabled(EXTERNAL_ASSISTANT_VISIBILITY_POLICY),
+        visible_scope=scope,
+        visible_users=users,
+    )
+
+
 __all__ = [
     "fallback_permissions_for_user",
+    "EXTERNAL_ASSISTANT_VISIBILITY_POLICY",
     "GPTS_VISIBILITY_POLICY",
     "LIBRARY_VISIBILITY_POLICY",
     "get_feature_flag_value",
@@ -134,6 +154,7 @@ __all__ = [
     "get_library_visibility_users",
     "get_feature_flag_string_list",
     "is_feature_flag_enabled",
+    "is_external_assistant_visible_to_user",
     "is_gpts_feature_visible_to_user",
     "is_library_visible_to_user",
     "resolve_user_permissions",

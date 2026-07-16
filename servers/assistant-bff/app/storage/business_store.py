@@ -1902,6 +1902,46 @@ def _load_seed_admin_feature_flags() -> list[dict[str, Any]]:
             "value_type": "json",
             "description": "List of user identifiers that can see GPTS when visibility is restricted.",
         },
+        {
+            "config_key": "external_assistant_feature_enabled",
+            "config_value": bool(model_config.EXTERNAL_ASSISTANT_FEATURE_ENABLED),
+            "value_type": "boolean",
+            "description": "Enable the external assistant workspace entry.",
+        },
+        {
+            "config_key": "external_assistant_visible_scope",
+            "config_value": "restricted",
+            "value_type": "string",
+            "description": "Controls whether the external assistant workspace is visible to all users or restricted to listed users.",
+        },
+        {
+            "config_key": "external_assistant_visible_users",
+            "config_value": sorted(
+                str(item).strip()
+                for item in model_config.EXTERNAL_ASSISTANT_WHITE_LIST
+                if str(item).strip()
+            ),
+            "value_type": "json",
+            "description": "List of user identifiers that can see the external assistant workspace when visibility is restricted.",
+        },
+        {
+            "config_key": "external_assistant_base_url",
+            "config_value": model_config.EXTERNAL_ASSISTANT_URL,
+            "value_type": "string",
+            "description": "Smart Office base URL or same-origin base path, for example /b/.",
+        },
+        {
+            "config_key": "external_assistant_menus",
+            "config_value": [
+                {
+                    "id": "home",
+                    "label": model_config.EXTERNAL_ASSISTANT_TITLE,
+                    "path": "",
+                }
+            ],
+            "value_type": "json",
+            "description": "Smart Office menus as JSON: [{\"id\":\"new-chat\",\"label\":\"新建会话\",\"path\":\"chat/new\"}]. Paths are relative to the base URL.",
+        },
     ]
 
 
@@ -1928,6 +1968,19 @@ def _should_backfill_feature_flag(
     if config_key == "gpts_visible_scope":
         return not (isinstance(current_value, str) and current_value.strip().lower() in {"all", "restricted"})
     if config_key == "gpts_visible_users":
+        return not isinstance(current_value, list)
+    if config_key == "external_assistant_feature_enabled":
+        return not isinstance(current_value, bool)
+    if config_key == "external_assistant_visible_scope":
+        return not (
+            isinstance(current_value, str)
+            and current_value.strip().lower() in {"all", "restricted"}
+        )
+    if config_key == "external_assistant_visible_users":
+        return not isinstance(current_value, list)
+    if config_key == "external_assistant_base_url":
+        return not isinstance(current_value, str)
+    if config_key == "external_assistant_menus":
         return not isinstance(current_value, list)
 
     return False
