@@ -59,7 +59,7 @@ const Platform = (props: RouterComponentProps) => {
         return "apikey";
     };
     const parseDocsPage = (value?: string | null): DocsPage => {
-        if (value === "claude-zhipu" || value === "gateway-api") {
+        if (value === "claude-zhipu" || value === "gateway-api" || value === "aicode-cli") {
             return value;
         }
         return "gateway-api";

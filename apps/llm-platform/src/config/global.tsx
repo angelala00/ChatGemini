@@ -38,4 +38,9 @@ export const globalConfig = {
             ? env["REACT_APP_PLATFORM_ADMIN_CONTACT"]
             : "",
     },
+    aicode: {
+        placeholder: !!env["REACT_APP_AICODE_PLACEHOLDER"]?.length
+            ? env["REACT_APP_AICODE_PLACEHOLDER"]
+            : "xxxx",
+    },
 };

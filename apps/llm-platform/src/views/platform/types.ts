@@ -154,7 +154,7 @@ export interface UserUsageResponse extends UserModelRankingResponse {
 
 export type TopMenu = "console" | "market" | "docs" | "diagnostics" | "skills" | "mcps";
 export type ConsoleSideMenu = "apikey" | "usage";
-export type DocsPage = "gateway-api" | "claude-zhipu";
+export type DocsPage = "gateway-api" | "claude-zhipu" | "aicode-cli";
 
 export interface VisibleModelGroup {
     type: string;
