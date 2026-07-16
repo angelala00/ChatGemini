@@ -94,25 +94,30 @@ def _configured_menus(base_url: str, value: object) -> list[dict[str, str]]:
 
     menus: list[dict[str, str]] = []
     seen_ids: set[str] = set()
+    seen_paths: set[str] = set()
     for item in value[:MAX_EXTERNAL_ASSISTANT_MENUS]:
         if not isinstance(item, dict):
             continue
         menu_id = str(item.get("id") or "").strip()
         label = str(item.get("label") or "").strip()
         relative_path = _normalize_menu_path(item.get("path"))
+        route_path = urlsplit(relative_path).path if relative_path is not None else ""
         if (
             not _MENU_ID_PATTERN.fullmatch(menu_id)
             or not label
             or len(label) > 80
             or relative_path is None
             or menu_id in seen_ids
+            or route_path in seen_paths
         ):
             continue
         seen_ids.add(menu_id)
+        seen_paths.add(route_path)
         menus.append(
             {
                 "id": menu_id,
                 "label": label,
+                "path": route_path,
                 "url": _resolve_menu_url(base_url, relative_path),
             }
         )

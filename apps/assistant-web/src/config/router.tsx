@@ -52,6 +52,12 @@ export const routerConfig: RouterConfig = {
     routes: {
         index: { prefix: "/", uri: "", suffix: "", element: Home },
         chat: { prefix: "/chat", uri: "/:id", suffix: "", element: GptAssistantChat },
+        external_workspace: {
+            prefix: "/chat/deer",
+            uri: "/*",
+            suffix: "",
+            element: Home,
+        },
         trace: { prefix: "/trace", uri: "/:conversationId?", suffix: "", element: TraceInspector },
         voice_lab: { prefix: "/voice-lab", uri: "", suffix: "", element: VoiceLab },
         admin_index: { prefix: "/admin", uri: "", suffix: "", element: AdminIndex },

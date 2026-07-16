@@ -184,11 +184,13 @@ class ExternalAssistantRoutesTests(unittest.IsolatedAsyncioTestCase):
                 {
                     "id": "new-chat",
                     "label": "新建会话",
+                    "path": "chat/new",
                     "url": "/b/chat/new",
                 },
                 {
                     "id": "history",
                     "label": "历史会话",
+                    "path": "chat/history",
                     "url": "/b/chat/history",
                 },
             ],
@@ -229,11 +231,13 @@ class ExternalAssistantRoutesTests(unittest.IsolatedAsyncioTestCase):
                 {
                     "id": "home",
                     "label": "首页",
+                    "path": "",
                     "url": "https://llm.nu.com/b/",
                 },
                 {
                     "id": "history",
                     "label": "历史会话",
+                    "path": "chat/history",
                     "url": "https://llm.nu.com/b/chat/history",
                 },
             ],

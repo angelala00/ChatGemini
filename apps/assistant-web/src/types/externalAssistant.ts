@@ -3,6 +3,7 @@ export type WorkspaceMode = "native" | "external";
 export interface ExternalAssistantMenuItem {
     readonly id: string;
     readonly label: string;
+    readonly path: string;
     readonly url: string;
 }
 

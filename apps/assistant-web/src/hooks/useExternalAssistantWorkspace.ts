@@ -12,6 +12,27 @@ import {
 const WORKSPACE_QUERY_KEY = "workspace";
 const EXTERNAL_PAGE_QUERY_KEY = "externalPage";
 const EXTERNAL_WORKSPACE_QUERY_VALUE = "external";
+const EXTERNAL_WORKSPACE_PATH = "/chat/deer";
+
+const getExternalMenuPathFromPath = (pathname: string): string | null => {
+    const match = pathname.match(/^\/chat\/deer(?:\/(.*))?\/?$/);
+    if (!match) {
+        return null;
+    }
+    try {
+        return match[1] ? decodeURIComponent(match[1]).replace(/\/$/, "") : "";
+    } catch {
+        return "";
+    }
+};
+
+const getExternalWorkspacePath = (menuPath = ""): string =>
+    menuPath
+        ? `${EXTERNAL_WORKSPACE_PATH}/${menuPath
+              .split("/")
+              .map((segment) => encodeURIComponent(segment))
+              .join("/")}`
+        : EXTERNAL_WORKSPACE_PATH;
 
 interface UseExternalAssistantWorkspaceOptions {
     readonly hasLogined: boolean;
@@ -25,9 +46,10 @@ const normalizeBootstrap = (payload: any): ExternalAssistantBootstrap => {
                   const id = typeof item?.id === "string" ? item.id.trim() : "";
                   const label =
                       typeof item?.label === "string" ? item.label.trim() : "";
+                  const path = typeof item?.path === "string" ? item.path.trim() : "";
                   const url = typeof item?.url === "string" ? item.url.trim() : "";
                   if (id && label && url) {
-                      items.push({ id, label, url });
+                      items.push({ id, label, path, url });
                   }
                   return items;
               },
@@ -66,11 +88,16 @@ export const useExternalAssistantWorkspace = ({
         () => new URLSearchParams(location.search),
         [location.search],
     );
-    const externalWorkspaceRequested =
+    const externalMenuPathFromPath = getExternalMenuPathFromPath(location.pathname);
+    const externalWorkspaceRequestedByQuery =
         searchParams.get(WORKSPACE_QUERY_KEY) ===
         EXTERNAL_WORKSPACE_QUERY_VALUE;
+    const externalWorkspaceRequested =
+        externalMenuPathFromPath !== null || externalWorkspaceRequestedByQuery;
     const requestedExternalPage =
-        searchParams.get(EXTERNAL_PAGE_QUERY_KEY)?.trim() ?? "";
+        externalMenuPathFromPath ??
+        searchParams.get(EXTERNAL_PAGE_QUERY_KEY)?.trim() ??
+        "";
     const workspaceMode: WorkspaceMode =
         workspaceAvailable &&
         permissionLoaded &&
@@ -80,11 +107,15 @@ export const useExternalAssistantWorkspace = ({
             : "native";
 
     const navigateWithParams = useCallback(
-        (params: URLSearchParams, replace = false) => {
+        (
+            params: URLSearchParams,
+            replace = false,
+            pathname = location.pathname,
+        ) => {
             const search = params.toString();
             navigate(
                 {
-                    pathname: location.pathname,
+                    pathname,
                     search: search ? `?${search}` : "",
                     hash: location.hash,
                 },
@@ -142,13 +173,42 @@ export const useExternalAssistantWorkspace = ({
         const params = new URLSearchParams(location.search);
         params.delete(WORKSPACE_QUERY_KEY);
         params.delete(EXTERNAL_PAGE_QUERY_KEY);
-        navigateWithParams(params, true);
+        navigateWithParams(
+            params,
+            true,
+            externalMenuPathFromPath !== null ? "/" : location.pathname,
+        );
     }, [
         allowed,
+        externalMenuPathFromPath,
         externalWorkspaceRequested,
         location.search,
         navigateWithParams,
         permissionLoaded,
+    ]);
+
+    useEffect(() => {
+        if (
+            !allowed ||
+            !externalWorkspaceRequestedByQuery ||
+            externalMenuPathFromPath !== null ||
+            !bootstrap
+        ) {
+            return;
+        }
+        const params = new URLSearchParams(location.search);
+        params.delete(WORKSPACE_QUERY_KEY);
+        params.delete(EXTERNAL_PAGE_QUERY_KEY);
+        const menu = bootstrap.menus.find(({ id }) => id === requestedExternalPage);
+        navigateWithParams(params, true, getExternalWorkspacePath(menu?.path));
+    }, [
+        allowed,
+        bootstrap,
+        externalMenuPathFromPath,
+        externalWorkspaceRequestedByQuery,
+        location.search,
+        navigateWithParams,
+        requestedExternalPage,
     ]);
 
     const loadBootstrap = useCallback(() => {
@@ -183,6 +243,27 @@ export const useExternalAssistantWorkspace = ({
         }
     }, [bootstrapStatus, loadBootstrap, workspaceMode]);
 
+    useEffect(() => {
+        if (
+            workspaceMode !== "external" ||
+            externalMenuPathFromPath !== "" ||
+            !bootstrap?.menus[0]
+        ) {
+            return;
+        }
+        navigateWithParams(
+            new URLSearchParams(location.search),
+            true,
+            getExternalWorkspacePath(bootstrap.menus[0].path),
+        );
+    }, [
+        bootstrap,
+        externalMenuPathFromPath,
+        location.search,
+        navigateWithParams,
+        workspaceMode,
+    ]);
+
     const setWorkspaceMode = useCallback(
         (nextMode: WorkspaceMode) => {
             if (nextMode === "external" && !allowed) {
@@ -190,14 +271,26 @@ export const useExternalAssistantWorkspace = ({
             }
             const params = new URLSearchParams(location.search);
             if (nextMode === "external") {
-                params.set(WORKSPACE_QUERY_KEY, EXTERNAL_WORKSPACE_QUERY_VALUE);
+                params.delete(WORKSPACE_QUERY_KEY);
+                params.delete(EXTERNAL_PAGE_QUERY_KEY);
+                navigateWithParams(params, false, getExternalWorkspacePath());
             } else {
                 params.delete(WORKSPACE_QUERY_KEY);
                 params.delete(EXTERNAL_PAGE_QUERY_KEY);
+                navigateWithParams(
+                    params,
+                    false,
+                    externalMenuPathFromPath !== null ? "/" : location.pathname,
+                );
             }
-            navigateWithParams(params);
         },
-        [allowed, location.search, navigateWithParams],
+        [
+            allowed,
+            externalMenuPathFromPath,
+            location.pathname,
+            location.search,
+            navigateWithParams,
+        ],
     );
 
     const selectMenu = useCallback(
@@ -206,15 +299,19 @@ export const useExternalAssistantWorkspace = ({
                 return;
             }
             const params = new URLSearchParams(location.search);
-            params.set(WORKSPACE_QUERY_KEY, EXTERNAL_WORKSPACE_QUERY_VALUE);
-            params.set(EXTERNAL_PAGE_QUERY_KEY, menuId);
-            navigateWithParams(params);
+            params.delete(WORKSPACE_QUERY_KEY);
+            params.delete(EXTERNAL_PAGE_QUERY_KEY);
+            const menu = bootstrap?.menus.find(({ id }) => id === menuId);
+            if (!menu) {
+                return;
+            }
+            navigateWithParams(params, false, getExternalWorkspacePath(menu.path));
         },
-        [allowed, location.search, navigateWithParams],
+        [allowed, bootstrap, location.search, navigateWithParams],
     );
 
     const selectedMenu =
-        bootstrap?.menus.find(({ id }) => id === requestedExternalPage) ??
+        bootstrap?.menus.find(({ path }) => path === requestedExternalPage) ??
         bootstrap?.menus[0];
     const selectedMenuId = selectedMenu?.id ?? "";
     const iframeUrl = selectedMenu?.url || bootstrap?.iframeUrl || "";

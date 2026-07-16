@@ -91,11 +91,11 @@
 
 ## 智能办公工作区 (External Assistant Workspace)
 
-- 智能办公是现有两栏壳中的第二种产品模式，不注册新的业务路由；模式使用当前 URL 的 `workspace=external` 查询参数表达，切回智能问答时保留原 pathname 和其他查询参数。
+- 智能办公是现有两栏壳中的第二种产品模式，使用 `/chat/deer/<menu-path>` 路径表达；`menu-path` 对应 bootstrap 菜单的相对 `path`，支持多级路径，例如 `/chat/deer/other/a`。切回智能问答时回到首页并保留其他查询参数；旧的 `workspace=external&externalPage=<menuId>` 链接会自动迁移到路径式链接。
 - 前端登录后请求 `GET /api/external-assistant/permission`。未获准用户不显示产品切换 Tab、不挂载外部侧栏或 iframe，并会清理手工添加的外部模式查询参数。
 - 获准用户首次进入时请求 `GET /api/external-assistant/bootstrap`，使用返回的标题、菜单和 iframe 地址渲染外部工作区。地址为空时显示待接入占位页，加载失败时提供重试。
 - 原生工作区与已打开的外部工作区通过 CSS 显隐切换而不是销毁，保证切回后保留原页面、输入和会话状态；外部工作区未被打开前不创建 iframe。
 - 产品切换器由宿主页面控制，并同时存在于原生和外部侧栏顶部，不能下沉进 iframe，确保外部页面异常时用户仍可切回。
 - 产品切换器面向用户固定显示为“智能问答 / 智能办公”；产品品牌标题与外部 bootstrap 返回的页面标题不参与 Tab 命名。
 - 智能办公顶栏只保留页面标题和必要的侧栏展开入口，不展示宿主级重新加载按钮或白名单试用标签；bootstrap 加载失败页保留重试能力。
-- 智能办公菜单由 bootstrap 返回的 `{id,label,url}` 列表驱动；后端从产品配置中的 `external_assistant_base_url`（推荐 `/b/`）和相对 `path` 菜单配置安全拼接 URL。菜单更新后需要刷新当前页面以重新拉取 bootstrap。
+- 智能办公菜单由 bootstrap 返回的 `{id,label,url}` 列表驱动；后端从产品配置中的 `external_assistant_base_url`（同域反代推荐 `/deer/`）和相对 `path` 菜单配置安全拼接 URL。菜单更新后需要刷新当前页面以重新拉取 bootstrap。
