@@ -12,10 +12,11 @@ import {
 const WORKSPACE_QUERY_KEY = "workspace";
 const EXTERNAL_PAGE_QUERY_KEY = "externalPage";
 const EXTERNAL_WORKSPACE_QUERY_VALUE = "external";
-const EXTERNAL_WORKSPACE_PATH = "/chat/deer";
+// React Router applies the deployment base path (for example, /chat) itself.
+const EXTERNAL_WORKSPACE_PATH = "/deer";
 
 const getExternalMenuPathFromPath = (pathname: string): string | null => {
-    const match = pathname.match(/^\/chat\/deer(?:\/(.*))?\/?$/);
+    const match = pathname.match(/^\/deer(?:\/(.*))?\/?$/);
     if (!match) {
         return null;
     }

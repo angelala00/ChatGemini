@@ -53,7 +53,7 @@ export const routerConfig: RouterConfig = {
         index: { prefix: "/", uri: "", suffix: "", element: Home },
         chat: { prefix: "/chat", uri: "/:id", suffix: "", element: GptAssistantChat },
         external_workspace: {
-            prefix: "/chat/deer",
+            prefix: "/deer",
             uri: "/*",
             suffix: "",
             element: Home,
