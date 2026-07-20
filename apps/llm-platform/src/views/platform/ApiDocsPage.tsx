@@ -1,6 +1,7 @@
 import { apiDocs, groupedApiDocs } from "./apiDocs";
 import { globalConfig } from "../../config/global";
 import { ConsoleSideMenu, DocsPage } from "./types";
+import { Link } from "react-router-dom";
 
 interface ApiDocsPageProps {
     activeDocsPage: DocsPage;
@@ -298,7 +299,7 @@ aicode-cli -v`}</pre>
     }
   }
 }`}</pre>
-                        <a href="/market" className="mt-3 inline-block text-sm text-blue-700 underline hover:text-blue-800">查看可用模型清单</a>
+                        <Link to="/market" className="mt-3 inline-block text-sm text-blue-700 underline hover:text-blue-800">查看可用模型清单</Link>
                     </div>
                     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
                         <div className="text-sm font-semibold text-slate-800">步骤三：开始使用</div>
