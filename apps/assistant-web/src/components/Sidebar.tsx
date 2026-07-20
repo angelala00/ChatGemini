@@ -56,9 +56,35 @@ interface SidebarProps {
     readonly onSwitchTheme: (theme: "light" | "dark" | "system") => void;
 }
 
-const APP_VERSION = "v1.3.1";
+const APP_VERSION = "v1.4.0";
 
 const releaseHistory = [
+    {
+        version: "v1.4.0",
+        date: "2026.07",
+        type: "minor",
+        zhTitle: "智能办公试用上线",
+        zhChanges: [
+            "智能办公开启定向试用，首批受邀用户可在 AI 助手中体验一体化智能问答与办公协作。",
+        ],
+        enTitle: "Smart Office Preview Launch",
+        enChanges: [
+            "Smart Office is now available as a limited preview, giving the first invited users a unified intelligent Q&A and workplace collaboration experience in AI Assistant.",
+        ],
+    },
+    {
+        version: "v1.3.2",
+        date: "2026.07",
+        type: "patch",
+        zhTitle: "个人资料库试用上线",
+        zhChanges: [
+            "个人资料库开启定向试用，首批受邀用户可集中管理工作资料，为后续知识化应用做好准备。",
+        ],
+        enTitle: "Personal Library Preview Launch",
+        enChanges: [
+            "Personal Library is now available as a limited preview, allowing the first invited users to manage work materials in one place and prepare them for future knowledge-powered experiences.",
+        ],
+    },
     {
         version: "v1.3.1",
         date: "2026.06",

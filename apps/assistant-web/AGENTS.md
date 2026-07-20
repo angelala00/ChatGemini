@@ -92,6 +92,7 @@
 ## 智能办公工作区 (External Assistant Workspace)
 
 - 智能办公是现有两栏壳中的第二种产品模式，使用 `/chat/deer/<menu-path>` 路径表达；`menu-path` 对应 bootstrap 菜单的相对 `path`，支持多级路径，例如 `/chat/deer/other/a`。切回智能问答时回到首页并保留其他查询参数；旧的 `workspace=external&externalPage=<menuId>` 链接会自动迁移到路径式链接。
+- 宿主会话参数只允许通过 React Router 的 `/chat/:id` 与 `/g/:gid/chat/:id` 路由匹配取得，不得按 pathname 固定下标猜测；因此 `/deer/workspace/...` 等外部菜单路径不能触发宿主的会话详情接口。
 - 前端登录后请求 `GET /api/external-assistant/permission`。未获准用户不显示产品切换 Tab、不挂载外部侧栏或 iframe，并会清理手工添加的外部模式查询参数。
 - 获准用户首次进入时请求 `GET /api/external-assistant/bootstrap`，使用返回的标题、菜单和 iframe 地址渲染外部工作区。地址为空时显示待接入占位页，加载失败时提供重试。
 - 原生工作区与已打开的外部工作区通过 CSS 显隐切换而不是销毁，保证切回后保留原页面、输入和会话状态；外部工作区未被打开前不创建 iframe。

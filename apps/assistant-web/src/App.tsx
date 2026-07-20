@@ -299,17 +299,29 @@ const App = () => {
     const [libraryAllowed, setLibraryAllowed] = useState(false);
     const [libraryPermissionLoaded, setLibraryPermissionLoaded] = useState(false);
     
-    const pathParts = location.pathname.split("/")
-    const mod = pathParts[1];
-    let gid: string;
-    let id: string;
-    if (mod == 'g'){
-        gid = pathParts[2] || "";
-        id = pathParts[4] || "";
-    } else {
-        gid = "";
-        id = pathParts[2] || "";
-    }
+    const gptChatMatch = matchPath(
+        {
+            path: `${routes.g_chat.prefix}${routes.g_chat.uri}${routes.g_chat.suffix}`,
+            end: true,
+        },
+        location.pathname,
+    );
+    const gptIndexMatch = matchPath(
+        {
+            path: `${routes.g_index.prefix}${routes.g_index.uri}${routes.g_index.suffix}`,
+            end: true,
+        },
+        location.pathname,
+    );
+    const nativeChatMatch = matchPath(
+        {
+            path: `${routes.chat.prefix}${routes.chat.uri}${routes.chat.suffix}`,
+            end: true,
+        },
+        location.pathname,
+    );
+    let gid = gptChatMatch?.params.gid || gptIndexMatch?.params.gid || "";
+    let id = gptChatMatch?.params.id || nativeChatMatch?.params.id || "";
     // console.log("====id:" + id + " ====gid:" + gid)
     let r_gid = gid?gid:"gptassistant"
     const isPinnedGpt = pinnedGpts.some((item) => item.gid === gid);
