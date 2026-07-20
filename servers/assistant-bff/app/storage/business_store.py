@@ -1503,6 +1503,7 @@ def _migrate_sqlite_light_business_tables_source_to_postgres(source_path: Path) 
         "custom_gpts": 0,
         "user_gpts_state": 0,
         "user_config_version": 0,
+        "user_release_notice_state": 0,
     }
     try:
         sqlite_conn = sqlite3.connect(source_path)
@@ -1575,6 +1576,33 @@ def _migrate_sqlite_light_business_tables_source_to_postgres(source_path: Path) 
                             (user_id, version),
                         )
                         summary["user_config_version"] += 1
+
+                if _sqlite_table_exists(sqlite_conn, "user_release_notice_state"):
+                    for row in sqlite_conn.execute(
+                        "SELECT user_id, release_id, seen_stage, updated_at FROM user_release_notice_state"
+                    ).fetchall():
+                        item = _normalize_row(row)
+                        user_id = str(item.get("user_id") or "").strip()
+                        release_id = str(item.get("release_id") or "").strip()
+                        seen_stage = max(0, min(3, int(item.get("seen_stage") or 0)))
+                        updated_at = str(item.get("updated_at") or "").strip() or _now_iso()
+                        if not user_id or not release_id:
+                            continue
+                        conn.execute(
+                            """
+                            INSERT INTO user_release_notice_state(user_id, release_id, seen_stage, updated_at)
+                            VALUES (%s, %s, %s, %s)
+                            ON CONFLICT (user_id, release_id) DO UPDATE SET
+                                seen_stage=GREATEST(user_release_notice_state.seen_stage, EXCLUDED.seen_stage),
+                                updated_at=CASE
+                                    WHEN EXCLUDED.seen_stage > user_release_notice_state.seen_stage
+                                    THEN EXCLUDED.updated_at
+                                    ELSE user_release_notice_state.updated_at
+                                END
+                            """,
+                            (user_id, release_id, seen_stage, updated_at),
+                        )
+                        summary["user_release_notice_state"] += 1
                 conn.commit()
         finally:
             sqlite_conn.close()
@@ -1593,6 +1621,7 @@ def _migrate_sqlite_light_business_tables_to_postgres_if_needed() -> None:
         "custom_gpts": 0,
         "user_gpts_state": 0,
         "user_config_version": 0,
+        "user_release_notice_state": 0,
     }
     migrated_sources: list[str] = []
     for source_path in sqlite_business_source_paths():
@@ -1610,7 +1639,8 @@ def _migrate_sqlite_light_business_tables_to_postgres_if_needed() -> None:
         "sqlite_light_business_migration_done "
         f"sources={migrated_sources} custom_gpts={totals['custom_gpts']} "
         f"user_gpts_state={totals['user_gpts_state']} "
-        f"user_config_version={totals['user_config_version']}",
+        f"user_config_version={totals['user_config_version']} "
+        f"user_release_notice_state={totals['user_release_notice_state']}",
         flush=True,
     )
 
@@ -2156,6 +2186,17 @@ def init_business_storage() -> None:
             )
             conn.execute(
                 """
+                CREATE TABLE IF NOT EXISTS user_release_notice_state (
+                  user_id TEXT NOT NULL,
+                  release_id TEXT NOT NULL,
+                  seen_stage INTEGER NOT NULL DEFAULT 0,
+                  updated_at TIMESTAMPTZ NOT NULL,
+                  PRIMARY KEY (user_id, release_id)
+                )
+                """
+            )
+            conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS file_mapping (
                   file_id TEXT PRIMARY KEY,
                   filename TEXT NOT NULL,
@@ -2342,6 +2383,13 @@ def init_business_storage() -> None:
                 CREATE TABLE IF NOT EXISTS user_config_version (
                   user_id TEXT PRIMARY KEY,
                   version TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS user_release_notice_state (
+                  user_id TEXT NOT NULL,
+                  release_id TEXT NOT NULL,
+                  seen_stage INTEGER NOT NULL DEFAULT 0,
+                  updated_at TEXT NOT NULL,
+                  PRIMARY KEY (user_id, release_id)
                 );
                 CREATE TABLE IF NOT EXISTS file_mapping (
                   file_id TEXT PRIMARY KEY,
@@ -2821,6 +2869,11 @@ from app.storage.gpts_store import (
     update_custom_gpt,
 )
 
+from app.storage.release_notice_store import (
+    advance_user_release_notice_stage,
+    list_user_release_notice_states,
+)
+
 
 from app.storage.file_store import (
     bind_file_mappings_to_conversation,
@@ -3065,6 +3118,7 @@ def prune_admin_feature_flags_for_deleted_model(
 
 __all__ = [
     "bind_file_mappings_to_conversation",
+    "advance_user_release_notice_stage",
     "business_storage_backend",
     "business_storage_health",
     "close_business_storage",
@@ -3101,6 +3155,7 @@ __all__ = [
     "list_session_history_meta",
     "list_user_gpt_pin_states",
     "list_user_pinned_rows",
+    "list_user_release_notice_states",
     "release_file_upload_slot",
     "reserve_file_upload_slot",
     "load_custom_gpts",

@@ -719,6 +719,33 @@ def _flush_user_config_version_batch(
     rows.clear()
 
 
+def _flush_user_release_notice_state_batch(
+    conn,
+    *,
+    rows: list[tuple[str, str, int, str]],
+    dry_run: bool,
+) -> None:
+    if dry_run or not rows:
+        rows.clear()
+        return
+    with conn.cursor() as cursor:
+        cursor.executemany(
+            """
+            INSERT INTO user_release_notice_state(user_id, release_id, seen_stage, updated_at)
+            VALUES (%s, %s, %s, %s::timestamptz)
+            ON CONFLICT (user_id, release_id) DO UPDATE SET
+                seen_stage=GREATEST(user_release_notice_state.seen_stage, EXCLUDED.seen_stage),
+                updated_at=CASE
+                    WHEN EXCLUDED.seen_stage > user_release_notice_state.seen_stage
+                    THEN EXCLUDED.updated_at
+                    ELSE user_release_notice_state.updated_at
+                END
+            """,
+            rows,
+        )
+    rows.clear()
+
+
 def _migrate_light_business_tables(
     source_path: Path,
     target_conn,
@@ -729,12 +756,14 @@ def _migrate_light_business_tables(
         "custom_gpts": 0,
         "user_gpts_state": 0,
         "user_config_version": 0,
+        "user_release_notice_state": 0,
     }
     source_conn = sqlite3.connect(source_path)
     source_conn.row_factory = sqlite3.Row
     custom_gpts_batch: list[tuple[str, str]] = []
     user_gpts_state_batch: list[tuple[str, str, str]] = []
     user_config_version_batch: list[tuple[str, str]] = []
+    user_release_notice_state_batch: list[tuple[str, str, int, str]] = []
     try:
         if _sqlite_table_exists(source_conn, "custom_gpts"):
             total_rows = _sqlite_table_count(source_conn, "custom_gpts")
@@ -785,6 +814,36 @@ def _migrate_light_business_tables(
                         dry_run=dry_run,
                     )
             _flush_user_config_version_batch(target_conn, rows=user_config_version_batch, dry_run=dry_run)
+
+        if _sqlite_table_exists(source_conn, "user_release_notice_state"):
+            total_rows = _sqlite_table_count(source_conn, "user_release_notice_state")
+            _log(f"[migrating] source={source_path} table=user_release_notice_state rows=0/{total_rows}")
+            for row in _iter_sqlite_rows(source_conn, "user_release_notice_state"):
+                user_id = str(row.get("user_id") or "").strip()
+                release_id = str(row.get("release_id") or "").strip()
+                seen_stage = max(0, min(3, int(row.get("seen_stage") or 0)))
+                updated_at = str(row.get("updated_at") or "").strip() or datetime.now(timezone.utc).isoformat()
+                if not user_id or not release_id:
+                    continue
+                summary["user_release_notice_state"] += 1
+                _log_table_progress(
+                    source_path,
+                    "user_release_notice_state",
+                    summary["user_release_notice_state"],
+                    total_rows,
+                )
+                user_release_notice_state_batch.append((user_id, release_id, seen_stage, updated_at))
+                if len(user_release_notice_state_batch) >= BATCH_SIZE:
+                    _flush_user_release_notice_state_batch(
+                        target_conn,
+                        rows=user_release_notice_state_batch,
+                        dry_run=dry_run,
+                    )
+            _flush_user_release_notice_state_batch(
+                target_conn,
+                rows=user_release_notice_state_batch,
+                dry_run=dry_run,
+            )
     finally:
         source_conn.close()
     return summary
@@ -1011,6 +1070,7 @@ def main() -> int:
         "custom_gpts": 0,
         "user_gpts_state": 0,
         "user_config_version": 0,
+        "user_release_notice_state": 0,
         "object_rows": 0,
         "object_uploaded": 0,
         "object_relinked": 0,
@@ -1064,6 +1124,7 @@ def main() -> int:
                     f"custom_gpts={light_business_summary['custom_gpts']} "
                     f"user_gpts_state={light_business_summary['user_gpts_state']} "
                     f"user_config_version={light_business_summary['user_config_version']}"
+                    f" user_release_notice_state={light_business_summary['user_release_notice_state']}"
                 )
                 for key, value in summary.items():
                     totals[key] += value
@@ -1106,6 +1167,7 @@ def main() -> int:
         f"custom_gpts={totals['custom_gpts']} "
         f"user_gpts_state={totals['user_gpts_state']} "
         f"user_config_version={totals['user_config_version']} "
+        f"user_release_notice_state={totals['user_release_notice_state']} "
         f"object_rows={totals['object_rows']} "
         f"object_uploaded={totals['object_uploaded']} "
         f"object_relinked={totals['object_relinked']} "

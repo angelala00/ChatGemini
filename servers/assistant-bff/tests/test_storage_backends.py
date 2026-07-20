@@ -106,6 +106,19 @@ class StorageBackendFallbackTests(unittest.TestCase):
         business_store.set_user_config_version("user-1", "v1.2.3")
         self.assertEqual(business_store.get_user_config_version("user-1"), "v1.2.3")
 
+        self.assertEqual(
+            business_store.advance_user_release_notice_stage("user-1", "v1.4.0", 2),
+            2,
+        )
+        self.assertEqual(
+            business_store.advance_user_release_notice_stage("user-1", "v1.4.0", 1),
+            2,
+        )
+        self.assertEqual(
+            business_store.list_user_release_notice_states("user-1"),
+            {"v1.4.0": 2},
+        )
+
     def test_file_mapping_dedup_is_scoped_by_auth_provider(self):
         business_store.insert_file_mapping(
             "file-a",

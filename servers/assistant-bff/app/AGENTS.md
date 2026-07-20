@@ -82,6 +82,7 @@
 - **智能体入口可见性**：`gpts_feature_enabled` 只控制 GPTs 总开关；“更多智能体”入口对谁可见由管理员配置中的 `gpts_visible_scope` 与 `gpts_visible_users` 决定。运行时优先读取 DB 配置，未配置时才兼容回退到 `GPTS_WHITE_LIST`。
 - **智能体菜单语义**：智能体是否对某个用户可访问统一由当前 GPT 配置（`auth` + ACL + provider scope）决定。左侧菜单 `/api/gpts/pined` 在有 GPTS 入口权限时展示“当前可见且未被该用户显式取消 pin 的智能体”，在无 GPTS 入口权限时展示“当前全部可见智能体”；历史 pin 状态不会在入口权限被收回后继续隐藏智能体。
 - **Pin 状态模型**：`user_gpts_state` 保存用户对智能体菜单的显式 pin 覆盖，新增 `is_pinned` 字段后语义为“无记录 = 默认 pin；有记录且 `is_pinned=false` = 用户显式取消；有记录且 `is_pinned=true` = 用户显式恢复/调整顺序”。不要再通过 `required_pinned` 或启动时强制补 pin 来实现制度助手之类的固定入口。
+- **版本提醒状态**：`user_release_notice_state` 按 `(user_id, release_id)` 保存版本公告最高已读阶段 `seen_stage`（1=账号菜单、2=版本入口、3=具体条目）。`PATCH /api/release-notices/{release_id}` 只允许阶段单调前进；该表与智能体 pin 一样支持 SQLite/Postgres 和本地 SQLite 到 Postgres 迁移，但两类业务状态不得混表。
 - **资料库入口可见性**：个人资料库入口使用独立的 `library_feature_enabled`、`library_visible_scope`、`library_visible_users` 配置；不要复用 GPTs 白名单语义。
 - **可见性策略抽象**：GPTs 与资料库入口这类“开关 + scope + users (+ fallback)”规则，统一收敛到 `app/admin/visibility_policy.py`，新增同类型入口时优先复用，不要在路由里重复手写。
 - **智能办公接入门控**：智能办公工作区内部沿用 `external_assistant_*` 命名，使用独立的 `external_assistant_feature_enabled`、`external_assistant_visible_scope`、`external_assistant_visible_users`，不得复用 GPTs 或资料库名单。`GET /api/external-assistant/permission` 只返回当前用户是否可见；`GET /api/external-assistant/bootstrap` 再对获准用户返回标题、菜单和安全规范化后的 iframe 地址。默认关闭且空名单，非法 URL scheme 会被丢弃。

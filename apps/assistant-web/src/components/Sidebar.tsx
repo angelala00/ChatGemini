@@ -16,7 +16,7 @@ import {
     TrashIcon,
     BookOpenIcon,
 } from "@heroicons/react/24/outline";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
@@ -58,11 +58,23 @@ interface SidebarProps {
 
 const APP_VERSION = "v1.4.0";
 
-const releaseHistory = [
+interface ReleaseHistoryItem {
+    readonly version: string;
+    readonly date: string;
+    readonly type: string;
+    readonly zhTitle: string;
+    readonly zhChanges: readonly string[];
+    readonly enTitle: string;
+    readonly enChanges: readonly string[];
+    readonly notify?: boolean;
+}
+
+const releaseHistory: readonly ReleaseHistoryItem[] = [
     {
         version: "v1.4.0",
         date: "2026.07",
         type: "minor",
+        notify: true,
         zhTitle: "智能办公试用上线",
         zhChanges: [
             "智能办公开启定向试用，首批受邀用户可在 AI 助手中体验一体化智能问答与办公协作。",
@@ -76,6 +88,7 @@ const releaseHistory = [
         version: "v1.3.2",
         date: "2026.07",
         type: "patch",
+        notify: true,
         zhTitle: "个人资料库试用上线",
         zhChanges: [
             "个人资料库开启定向试用，首批受邀用户可集中管理工作资料，为后续知识化应用做好准备。",
@@ -418,6 +431,10 @@ const releaseHistory = [
     },
 ];
 
+const notificationReleaseIds = releaseHistory
+    .filter(({ notify }) => notify)
+    .map(({ version }) => version);
+
 export const Sidebar = (props: SidebarProps) => {
     const { t } = useTranslation();
     const {
@@ -458,7 +475,12 @@ export const Sidebar = (props: SidebarProps) => {
     const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isHistoryCollapsed, setIsHistoryCollapsed] = useState(false);
+    const [releaseNoticeStates, setReleaseNoticeStates] = useState<Record<string, number>>({});
+    const [releaseNoticeStatesLoaded, setReleaseNoticeStatesLoaded] = useState(false);
+    const [visibleUnreadReleaseIds, setVisibleUnreadReleaseIds] = useState<readonly string[]>([]);
     const profileMenuRef = useRef<HTMLDivElement>(null);
+    const releaseSectionRefs = useRef<Record<string, HTMLElement | null>>({});
+    const releaseSeenTimersRef = useRef<Record<string, number>>({});
     const historyLongPressTimerRef = useRef<number | null>(null);
     const historyLongPressTriggeredRef = useRef(false);
 
@@ -489,6 +511,36 @@ export const Sidebar = (props: SidebarProps) => {
         () => sessionSummaries.map((item) => item.conversation_id),
         [sessionSummaries],
     );
+
+    const advanceReleaseNoticeStage = useCallback((releaseId: string, seenStage: number) => {
+        setReleaseNoticeStates((states) => ({
+            ...states,
+            [releaseId]: Math.max(states[releaseId] ?? 0, seenStage),
+        }));
+        handleRequest(
+            "PATCH",
+            getFullPath(`/api/release-notices/${encodeURIComponent(releaseId)}`),
+            JSON.stringify({ seen_stage: seenStage }),
+            { "Content-Type": "application/json" },
+        ).catch(() => {
+            handleRequest("GET", getFullPath("/api/release-notices"))
+                .then((payload) => setReleaseNoticeStates(payload?.states ?? {}))
+                .catch(() => {});
+        });
+    }, []);
+
+    const advanceAllReleaseNotices = useCallback((seenStage: number) => {
+        notificationReleaseIds.forEach((releaseId) => {
+            advanceReleaseNoticeStage(releaseId, seenStage);
+        });
+    }, [advanceReleaseNoticeStage]);
+
+    const showProfileReleaseNotice =
+        releaseNoticeStatesLoaded &&
+        notificationReleaseIds.some((releaseId) => (releaseNoticeStates[releaseId] ?? 0) < 1);
+    const showVersionMenuNotice =
+        releaseNoticeStatesLoaded &&
+        notificationReleaseIds.some((releaseId) => (releaseNoticeStates[releaseId] ?? 0) < 2);
     const sessionSummaryMap = useMemo(
         () =>
             sessionSummaries.reduce<Record<string, SessionSummary>>((acc, item) => {
@@ -509,6 +561,65 @@ export const Sidebar = (props: SidebarProps) => {
             dispatch(updatePinnedGpts(response_json ?? []));
         }).catch(() => dispatch(updatePinnedGpts([])));
     }, [dispatch]);
+
+    useEffect(() => {
+        let active = true;
+        setReleaseNoticeStatesLoaded(false);
+        handleRequest("GET", getFullPath("/api/release-notices"))
+            .then((payload) => {
+                if (active) {
+                    setReleaseNoticeStates(payload?.states ?? {});
+                }
+            })
+            .catch(() => {
+                if (active) {
+                    setReleaseNoticeStates({});
+                }
+            })
+            .finally(() => {
+                if (active) {
+                    setReleaseNoticeStatesLoaded(true);
+                }
+            });
+        return () => {
+            active = false;
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!isVersionHistoryOpen || typeof IntersectionObserver === "undefined") {
+            return;
+        }
+        const observer = new IntersectionObserver(
+            (entries) => {
+                entries.forEach((entry) => {
+                    const releaseId = (entry.target as HTMLElement).dataset.releaseId;
+                    if (!releaseId || !entry.isIntersecting || entry.intersectionRatio < 0.5) {
+                        return;
+                    }
+                    if ((releaseNoticeStates[releaseId] ?? 0) >= 3 || releaseSeenTimersRef.current[releaseId]) {
+                        return;
+                    }
+                    releaseSeenTimersRef.current[releaseId] = window.setTimeout(() => {
+                        advanceReleaseNoticeStage(releaseId, 3);
+                        delete releaseSeenTimersRef.current[releaseId];
+                    }, 600);
+                });
+            },
+            { threshold: [0.5] },
+        );
+        notificationReleaseIds.forEach((releaseId) => {
+            const element = releaseSectionRefs.current[releaseId];
+            if (element && (releaseNoticeStates[releaseId] ?? 0) < 3) {
+                observer.observe(element);
+            }
+        });
+        return () => {
+            observer.disconnect();
+            Object.values(releaseSeenTimersRef.current).forEach((timer) => window.clearTimeout(timer));
+            releaseSeenTimersRef.current = {};
+        };
+    }, [advanceReleaseNoticeStage, isVersionHistoryOpen, releaseNoticeStates]);
         
     useEffect(() => {
         if (!isVersionHistoryOpen) {
@@ -967,12 +1078,26 @@ export const Sidebar = (props: SidebarProps) => {
                             type="button"
                             className="inline-flex min-h-9 items-center justify-between gap-2 rounded-[10px] px-2.5 text-left text-[13px] font-normal text-[rgba(56,67,79,0.96)] transition-colors hover:bg-[rgba(229,234,239,0.82)]"
                             onClick={() => {
+                                setVisibleUnreadReleaseIds(
+                                    notificationReleaseIds.filter(
+                                        (releaseId) => (releaseNoticeStates[releaseId] ?? 0) < 3,
+                                    ),
+                                );
+                                advanceAllReleaseNotices(2);
                                 setIsProfileMenuOpen(false);
                                 setIsVersionHistoryOpen(true);
                             }}
                         >
                             <span className="text-[#87919d]">当前版本</span>
-                            <span className="font-medium text-[#2f3a46]">{APP_VERSION}</span>
+                            <span className="inline-flex items-center gap-2 font-medium text-[#2f3a46]">
+                                {APP_VERSION}
+                                {showVersionMenuNotice && (
+                                    <span
+                                        className="size-2 rounded-full bg-[#48b6cd]"
+                                        aria-label="有未读版本更新"
+                                    />
+                                )}
+                            </span>
                         </button>
                         {adminAllowed && (
                             <button
@@ -1036,7 +1161,12 @@ export const Sidebar = (props: SidebarProps) => {
                     className="mx-1 flex min-h-11 w-[calc(100%-8px)] cursor-pointer items-center justify-between gap-[11px] rounded-xl px-1.5 pl-2 text-left"
                     aria-expanded={isProfileMenuOpen}
                     aria-label="打开账号菜单"
-                    onClick={() => setIsProfileMenuOpen((state) => !state)}
+                    onClick={() => {
+                        if (!isProfileMenuOpen) {
+                            advanceAllReleaseNotices(1);
+                        }
+                        setIsProfileMenuOpen((state) => !state);
+                    }}
                 >
                     <span className="flex min-w-0 items-center gap-[9px]">
                         <span className="grid size-[30px] shrink-0 place-items-center rounded-full bg-[linear-gradient(180deg,rgba(212,146,114,0.96),rgba(190,124,95,0.96))] text-xs font-semibold text-white">
@@ -1046,10 +1176,18 @@ export const Sidebar = (props: SidebarProps) => {
                             {displayUserName}
                         </span>
                     </span>
-                    <EllipsisHorizontalIcon
-                        className="size-5 shrink-0 text-[#87919d]"
-                        strokeWidth={2}
-                    />
+                    <span className="relative shrink-0">
+                        <EllipsisHorizontalIcon
+                            className="size-5 text-[#87919d]"
+                            strokeWidth={2}
+                        />
+                        {showProfileReleaseNotice && (
+                            <span
+                                className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-[#48b6cd]"
+                                aria-label="有未读版本更新"
+                            />
+                        )}
+                    </span>
                 </button>
             </div>
             {isVersionHistoryOpen && createPortal(
@@ -1100,12 +1238,26 @@ export const Sidebar = (props: SidebarProps) => {
                                     return (
                                         <section
                                             key={`${release.version}-${release.date}`}
+                                            ref={(element) => {
+                                                if (release.notify) {
+                                                    releaseSectionRefs.current[release.version] = element;
+                                                }
+                                            }}
+                                            data-release-id={release.notify ? release.version : undefined}
                                             className="border-l-2 border-slate-200 pl-4"
                                         >
                                             <div className="flex flex-wrap items-center gap-2">
                                                 <span className="text-sm font-semibold text-slate-900">
                                                     {release.version}
                                                 </span>
+                                                {release.notify &&
+                                                    releaseNoticeStatesLoaded &&
+                                                    visibleUnreadReleaseIds.includes(release.version) && (
+                                                        <span
+                                                            className="size-2 rounded-full bg-[#48b6cd]"
+                                                            aria-label="未读版本"
+                                                        />
+                                                    )}
                                                 <span className="rounded bg-slate-100 px-2 py-0.5 text-[11px] font-medium uppercase text-slate-500">
                                                     {release.type}
                                                 </span>

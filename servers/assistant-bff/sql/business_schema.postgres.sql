@@ -47,6 +47,14 @@ CREATE TABLE IF NOT EXISTS user_config_version (
   version TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS user_release_notice_state (
+  user_id TEXT NOT NULL,
+  release_id TEXT NOT NULL,
+  seen_stage INTEGER NOT NULL DEFAULT 0,
+  updated_at TIMESTAMPTZ NOT NULL,
+  PRIMARY KEY (user_id, release_id)
+);
+
 CREATE TABLE IF NOT EXISTS file_mapping (
   file_id TEXT PRIMARY KEY,
   filename TEXT NOT NULL,

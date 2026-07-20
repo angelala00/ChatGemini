@@ -75,6 +75,7 @@
   - `custom_gpts`
   - `user_gpts_state`
   - `user_config_version`
+  - `user_release_notice_state`
   - `file_mapping`
 - 文件本体：`MinIO` / 本地开发时可回退到 `filesystem`
   - 新上传文件按内容 SHA-256 使用 `assistant-files/blobs/sha256/<sha256>` 对象键。
@@ -132,9 +133,10 @@ curl http://localhost:5008/readyz
 - `custom_gpts`
 - `user_gpts_state`
 - `user_config_version`
+- `user_release_notice_state`
 
 会话历史会按 `updated_at` 幂等合并，`file_mapping` 会按 `file_id` 幂等插入，适合在多节点上重复执行。
-`custom_gpts` 和 `user_config_version` 会按主键 upsert，`user_gpts_state` 会按 `(user_id, gpts_id)` 插入忽略。
+`custom_gpts` 和 `user_config_version` 会按主键 upsert，`user_gpts_state` 会按 `(user_id, gpts_id)` 插入忽略，`user_release_notice_state` 会按 `(user_id, release_id)` 合并最高已读阶段。
 迁移状态按 `(SQLITE_MIGRATION_NODE_ID, source_path)` 记录；多节点共用同一套 Postgres 时，每个节点必须配置不同的 `SQLITE_MIGRATION_NODE_ID`，否则节点间会互相覆盖迁移状态。
 脚本会默认扫描 `FILE_BASE/gptassistant/business-dev.db`、`FILE_BASE/gptassistant/pins.db` 和 `servers/assistant-bff/app.db`；旧版 `pins.db` 中 `file_mapping(file_id, filename, fileExtension, path, uploadTime, gid)` 会映射到新版 `file_mapping` 表结构。
 老库中的会话元信息如果没有 `auth_provider` 字段，会统一按默认 Provider 写入；新请求会按当前请求上下文自动解析 Provider。
