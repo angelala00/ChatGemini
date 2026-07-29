@@ -5,6 +5,8 @@ export interface GatewayUserTokenInfo {
     ownerType: "user" | "project";
     projectId?: string;
     projectName?: string;
+    spaceId?: string;
+    spaceLabel?: string;
     note?: string | null;
     diagnosticsAuthorized?: boolean;
     diagnosticsActive?: boolean;
@@ -23,6 +25,17 @@ export interface TokenDiagnosticsState {
     expiresAt?: string | null;
 }
 
+export interface GatewayEffectiveSpaceSummary {
+    id: string;
+    label: string;
+    regionId?: string;
+    available: boolean;
+    status: string;
+    siteCount: number;
+    modelCount: number;
+    isDefault?: boolean;
+}
+
 export interface GatewayUserSummary {
     id?: string;
     displayName?: string | null;
@@ -30,10 +43,12 @@ export interface GatewayUserSummary {
     isAdmin: boolean;
     tokenCount: number;
     tokens: GatewayUserTokenInfo[];
+    spaces?: GatewayEffectiveSpaceSummary[];
     projects?: Array<{
         id: string;
         name: string;
         department?: string;
+        spaces?: GatewayEffectiveSpaceSummary[];
     }>;
     limits?: {
         userMax: number;

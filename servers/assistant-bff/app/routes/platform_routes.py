@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import JSONResponse
 import httpx
+from urllib.parse import quote
 
 from app.base_config import platform_config, model_config
 from app.auth.auth_routes import get_current_user
@@ -143,6 +144,46 @@ async def _fetch_json_with_params(
         return status.HTTP_502_BAD_GATEWAY, {"detail": "上游返回非 JSON 数据"}
 
 
+async def _load_effective_spaces(
+    request: Request,
+    subject_type: str,
+    subject_id: str,
+) -> tuple[list[dict] | None, JSONResponse | None]:
+    target_url = _build_target_url(
+        "/effective-services",
+        f"/{subject_type}/{quote(subject_id, safe='')}/spaces",
+    )
+    status_code, payload = await _fetch_json(request, target_url, method="GET")
+    if status_code >= 400:
+        return None, JSONResponse(status_code=status_code, content=payload)
+    raw_spaces = payload.get("spaces") if isinstance(payload, dict) else None
+    if not isinstance(raw_spaces, list):
+        return None, JSONResponse(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            content={"detail": "上游 Space 数据缺失"},
+        )
+    spaces: list[dict] = []
+    for item in raw_spaces:
+        if not isinstance(item, dict):
+            continue
+        space = item.get("space")
+        if not isinstance(space, dict) or not isinstance(space.get("id"), str):
+            continue
+        spaces.append(
+            {
+                "id": space["id"],
+                "label": space.get("label") or space["id"],
+                "regionId": space.get("regionId"),
+                "available": bool(item.get("available")),
+                "status": item.get("status") or "unavailable",
+                "siteCount": int(item.get("siteCount") or 0),
+                "modelCount": int(item.get("modelCount") or 0),
+                "isDefault": bool(space.get("isDefault")),
+            }
+        )
+    return spaces, None
+
+
 async def _load_user_api_key_summary(
     request: Request,
     user: dict,
@@ -195,6 +236,20 @@ async def _load_user_api_key_summary(
             if isinstance(owners, list) and user_email in owners:
                 owned_projects[project_id] = entry
 
+    user_spaces, spaces_error = await _load_effective_spaces(
+        request, "user", user_email
+    )
+    if spaces_error is not None:
+        return None, spaces_error
+    project_spaces: dict[str, list[dict]] = {}
+    for project_id in owned_projects:
+        spaces, spaces_error = await _load_effective_spaces(
+            request, "project", project_id
+        )
+        if spaces_error is not None:
+            return None, spaces_error
+        project_spaces[project_id] = spaces or []
+
     token_entries = []
     enabled = False
     for token_value, entry in tokens.items():
@@ -206,6 +261,7 @@ async def _load_user_api_key_summary(
             owner_payload = {
                 "ownerType": "user",
             }
+            owner_spaces = user_spaces or []
         elif isinstance(entry.get("project"), str) and entry.get("project") in owned_projects:
             project_id = entry.get("project")
             owner_payload = {
@@ -213,8 +269,22 @@ async def _load_user_api_key_summary(
                 "projectId": project_id,
                 "projectName": owned_projects.get(project_id, {}).get("name") or project_id,
             }
+            owner_spaces = project_spaces.get(project_id, [])
         if owner_payload is None:
             continue
+        space_id = entry.get("space_id")
+        space_label = None
+        if isinstance(space_id, str):
+            if not any(item.get("id") == space_id for item in owner_spaces):
+                continue
+            space_label = next(
+                (
+                    item.get("label")
+                    for item in owner_spaces
+                    if item.get("id") == space_id
+                ),
+                space_id,
+            )
         token_payload = {
             "token": token_value,
             "tokenId": access_token_entry.get("tokenId") or entry.get("id"),
@@ -223,6 +293,8 @@ async def _load_user_api_key_summary(
             "diagnosticsActive": bool(access_token_entry.get("diagnosticsActive", False)),
             "diagnosticsExpiresAt": access_token_entry.get("diagnosticsExpiresAt"),
             "note": access_token_entry.get("note") or entry.get("note"),
+            "spaceId": space_id,
+            "spaceLabel": space_label,
             **owner_payload,
         }
         token_entries.append(token_payload)
@@ -234,6 +306,7 @@ async def _load_user_api_key_summary(
             "id": project_id,
             "name": entry.get("name") or project_id,
             "department": entry.get("department"),
+            "spaces": project_spaces.get(project_id, []),
         }
         for project_id, entry in owned_projects.items()
         if isinstance(entry, dict)
@@ -251,6 +324,7 @@ async def _load_user_api_key_summary(
         "isAdmin": is_admin,
         "tokenCount": len(token_entries),
         "tokens": token_entries,
+        "spaces": user_spaces or [],
         "projects": project_list,
         "limits": {"userMax": USER_TOKEN_LIMIT, "projectMax": PROJECT_TOKEN_LIMIT},
     }, None
@@ -287,6 +361,33 @@ async def _ensure_user_token_access(
         status_code=status.HTTP_404_NOT_FOUND,
         content={"detail": "API Key 不存在或无权限访问"},
     )
+
+
+async def _ensure_user_token_value_access(
+    request: Request,
+    user: dict,
+    token: str,
+) -> JSONResponse | None:
+    user_email = _get_user_email(user)
+    target_url = _build_target_url("/access", "/db")
+    status_code, access_db = await _fetch_json(request, target_url, method="GET")
+    if status_code >= 400:
+        return JSONResponse(status_code=status_code, content=access_db)
+    tokens = access_db.get("tokens") if isinstance(access_db, dict) else None
+    projects = access_db.get("projects") if isinstance(access_db, dict) else None
+    entry = tokens.get(token) if isinstance(tokens, dict) else None
+    allowed = isinstance(entry, dict) and entry.get("user") == user_email
+    project_id = entry.get("project") if isinstance(entry, dict) else None
+    if not allowed and isinstance(project_id, str) and isinstance(projects, dict):
+        project = projects.get(project_id)
+        owners = project.get("owners") if isinstance(project, dict) else None
+        allowed = isinstance(owners, list) and user_email in owners
+    if not allowed:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={"detail": "API Key 不存在或无权限访问"},
+        )
+    return None
 
 
 def _filter_query_params(request: Request, excluded: set[str]) -> dict[str, str]:
@@ -502,7 +603,17 @@ async def create_user_token(
     payload = await request.json()
     owner_type = payload.get("ownerType")
     project_id = payload.get("projectId")
+    space_id = payload.get("spaceId")
     note = payload.get("note")
+    if owner_type not in {"user", "project"}:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"detail": "API Key 归属类型无效"},
+        )
+    if isinstance(space_id, str):
+        space_id = space_id.strip() or None
+    else:
+        space_id = None
 
     target_url = _build_target_url("/access", "/db")
     status_code, access_db = await _fetch_json(request, target_url, method="GET")
@@ -540,6 +651,8 @@ async def create_user_token(
         create_payload = {"project": project_id, "createdBy": user_email}
         if isinstance(note, str) and note.strip():
             create_payload["note"] = note.strip()
+        subject_type = "project"
+        subject_id = project_id
     else:
         existing = sum(
             1
@@ -554,6 +667,48 @@ async def create_user_token(
         create_payload = {"user": user_email, "createdBy": user_email}
         if isinstance(note, str) and note.strip():
             create_payload["note"] = note.strip()
+        subject_type = "user"
+        subject_id = user_email
+
+    spaces, spaces_error = await _load_effective_spaces(
+        request, subject_type, subject_id
+    )
+    if spaces_error is not None:
+        return spaces_error
+    selected_space = (
+        next(
+            (item for item in spaces or [] if item.get("id") == space_id),
+            None,
+        )
+        if space_id is not None
+        else next(
+            (item for item in spaces or [] if item.get("isDefault")),
+            None,
+        )
+    )
+    if selected_space is None:
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content={
+                "detail": (
+                    "该主体未获得所选服务空间的使用权限"
+                    if space_id is not None
+                    else "平台默认服务空间不可用"
+                )
+            },
+        )
+    space_id = selected_space["id"]
+    if not selected_space.get("available"):
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content={
+                "detail": (
+                    "所选服务空间当前不可用："
+                    f"{selected_space.get('status') or 'unknown'}"
+                )
+            },
+        )
+    create_payload["spaceId"] = space_id
 
     target_url = _build_target_url("/access", "/tokens")
     headers = _build_headers(request)
@@ -575,7 +730,9 @@ async def update_user_token_enabled(
     token: str,
     user: dict = Depends(get_current_user),
 ) -> Response:
-    _get_user_email(user)
+    error_response = await _ensure_user_token_value_access(request, user, token)
+    if error_response is not None:
+        return error_response
     target_url = _build_target_url(
         "/access",
         f"/tokens/{token}/enabled",
@@ -589,11 +746,26 @@ async def update_user_token_note(
     token: str,
     user: dict = Depends(get_current_user),
 ) -> Response:
-    _get_user_email(user)
+    error_response = await _ensure_user_token_value_access(request, user, token)
+    if error_response is not None:
+        return error_response
     target_url = _build_target_url(
         "/access",
         f"/tokens/{token}/note",
     )
+    return await _proxy_request(request, target_url)
+
+
+@router.delete("/user/tokens/{token}")
+async def delete_user_token(
+    request: Request,
+    token: str,
+    user: dict = Depends(get_current_user),
+) -> Response:
+    error_response = await _ensure_user_token_value_access(request, user, token)
+    if error_response is not None:
+        return error_response
+    target_url = _build_target_url("/access", f"/tokens/{token}")
     return await _proxy_request(request, target_url)
 
 

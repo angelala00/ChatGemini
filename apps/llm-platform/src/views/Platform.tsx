@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { globalConfig } from "../config/global";
 import { RouterComponentProps } from "../config/router";
 import {
+    platformUserDelete,
     platformUserGet,
     platformUserPatch,
     platformUserPost,
@@ -819,7 +820,12 @@ const Platform = (props: RouterComponentProps) => {
         setUsageData(null);
     }, [activeSideMenu, usageRange]);
 
-    const createToken = async (ownerType: "user" | "project", projectId?: string, note?: string) => {
+    const createToken = async (
+        ownerType: "user" | "project",
+        spaceId: string,
+        projectId?: string,
+        note?: string,
+    ) => {
         const createKey = ownerType === "project" ? `project:${projectId ?? ""}` : "user";
         if (createTokenLoading[createKey]) {
             return;
@@ -827,7 +833,7 @@ const Platform = (props: RouterComponentProps) => {
         setCreateTokenLoading((prev) => ({ ...prev, [createKey]: true }));
         setCreateTokenError(null);
         try {
-            const jsonPayload: Record<string, unknown> = { ownerType };
+            const jsonPayload: Record<string, unknown> = { ownerType, spaceId };
             if (ownerType === "project") {
                 jsonPayload.projectId = projectId;
             }
@@ -844,6 +850,25 @@ const Platform = (props: RouterComponentProps) => {
             setCreateTokenError(error instanceof Error ? error.message : "创建 API Key 失败");
         } finally {
             setCreateTokenLoading((prev) => ({ ...prev, [createKey]: false }));
+        }
+    };
+
+    const deleteToken = async (token: string) => {
+        if (tokenUpdating[token]) {
+            return;
+        }
+        if (!window.confirm("吊销后该 API Key 将立即失效且无法恢复，是否继续？")) {
+            return;
+        }
+        setTokenUpdating((prev) => ({ ...prev, [token]: true }));
+        setTokenActionError(null);
+        try {
+            await platformUserDelete(`/tokens/${encodeURIComponent(token)}`);
+            await loadApiKeys();
+        } catch (error) {
+            setTokenActionError(error instanceof Error ? error.message : "API Key 吊销失败");
+        } finally {
+            setTokenUpdating((prev) => ({ ...prev, [token]: false }));
         }
     };
 
@@ -1101,6 +1126,7 @@ const Platform = (props: RouterComponentProps) => {
                     handleCopyToken={handleCopyToken}
                     maskToken={maskToken}
                     createToken={createToken}
+                    deleteToken={deleteToken}
                     updateTokenStatus={updateTokenStatus}
                     updateTokenNote={updateTokenNote}
                     updateDiagnosticsState={updateDiagnosticsState}

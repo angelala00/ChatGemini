@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import {
+    GatewayEffectiveSpaceSummary,
     GatewayUserSummary,
     GatewayUserTokenInfo,
 } from "./types";
@@ -24,7 +25,8 @@ interface ApiKeysPageProps {
     openDiagnosticsPage: (tokenId?: string) => void;
     handleCopyToken: (token: string) => void;
     maskToken: (token: string, head?: number, tail?: number) => string;
-    createToken: (ownerType: "user" | "project", projectId?: string, note?: string) => void;
+    createToken: (ownerType: "user" | "project", spaceId: string, projectId?: string, note?: string) => void;
+    deleteToken: (token: string) => void;
     updateTokenStatus: (token: string, enabled: boolean) => void;
     updateTokenNote: (token: string, note: string | null) => void;
     updateDiagnosticsState: (token: GatewayUserTokenInfo, activate: boolean) => void;
@@ -44,8 +46,10 @@ interface TokenTableProps {
     saveNote: (token: string) => void;
     cancelEditNote: () => void;
     updateTokenStatus: (token: string, enabled: boolean) => void;
+    deleteToken: (token: string) => void;
     updateDiagnosticsState: (token: GatewayUserTokenInfo, activate: boolean) => void;
     openDiagnosticsPage: (tokenId?: string) => void;
+    showSpaceColumn?: boolean;
 }
 
 const TokenTable = ({
@@ -62,8 +66,10 @@ const TokenTable = ({
     saveNote,
     cancelEditNote,
     updateTokenStatus,
+    deleteToken,
     updateDiagnosticsState,
     openDiagnosticsPage,
+    showSpaceColumn = false,
 }: TokenTableProps) => {
     if (tokens.length === 0) {
         return (
@@ -74,14 +80,15 @@ const TokenTable = ({
     }
 
     return (
-        <div className="overflow-hidden rounded-2xl border border-slate-200">
-            <table className="w-full text-left text-sm">
+        <div className="overflow-x-auto rounded-2xl border border-slate-200">
+            <table className={`w-full text-left text-sm ${showSpaceColumn ? "min-w-[760px]" : "min-w-[640px]"}`}>
                 <thead className="bg-slate-50 text-xs uppercase tracking-widest text-slate-400">
                     <tr>
                         <th className="w-28 px-4 py-3">API Keys</th>
                         <th className="min-w-[120px] px-4 py-3">备注</th>
+                        {showSpaceColumn ? <th className="w-36 px-4 py-3">服务空间</th> : null}
                         <th className="w-20 px-4 py-3">状态</th>
-                        <th className="w-36 px-4 py-3">操作</th>
+                        <th className="w-44 px-4 py-3">操作</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -148,6 +155,20 @@ const TokenTable = ({
                                     </div>
                                 )}
                             </td>
+                            {showSpaceColumn ? <td className="px-4 py-3">
+                                {token.spaceId ? (
+                                    <div>
+                                        <div className="text-xs font-medium text-slate-700">
+                                            {token.spaceLabel || token.spaceId}
+                                        </div>
+                                        <div className="mt-0.5 font-mono text-[10px] text-slate-400">
+                                            {token.spaceId}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <span className="text-[11px] text-amber-700">旧 Key · 兼容范围</span>
+                                )}
+                            </td> : null}
                             <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-600">
                                 <span
                                     className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
@@ -179,6 +200,14 @@ const TokenTable = ({
                                         disabled={tokenUpdating[token.token]}
                                     >
                                         {token.enabled ? "禁用" : "启用"}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="rounded-lg border border-rose-100 px-1.5 py-1 text-[11px] text-rose-600 transition hover:bg-rose-50"
+                                        onClick={() => deleteToken(token.token)}
+                                        disabled={tokenUpdating[token.token]}
+                                    >
+                                        吊销
                                     </button>
                                     {token.diagnosticsAuthorized && token.tokenId && (
                                         <div className="ml-0.5 flex items-center gap-1 border-l border-slate-100 pl-1.5">
@@ -225,6 +254,7 @@ interface TokenSectionProps {
     createLabel: string;
     createDisabled: boolean;
     onCreate: () => void;
+    spaces: GatewayEffectiveSpaceSummary[];
     tokens: GatewayUserTokenInfo[];
     tableProps: TokenTableProps;
 }
@@ -236,10 +266,13 @@ const TokenSection = ({
     createLabel,
     createDisabled,
     onCreate,
+    spaces,
     tokens,
     tableProps,
-}: TokenSectionProps) => (
-    <section className="rounded-2xl border border-slate-200 bg-white p-4">
+}: TokenSectionProps) => {
+    const showSpaceContext = spaces.length > 1;
+    return (
+      <section className="rounded-2xl border border-slate-200 bg-white p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
                 <div className="text-sm font-semibold text-slate-800">{title}</div>
@@ -261,11 +294,28 @@ const TokenSection = ({
                 </button>
             </div>
         </div>
+        {showSpaceContext ? <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+            <span className="text-slate-400">可用服务空间</span>
+            {spaces.filter((space) => space.available).length > 0 ? (
+                spaces.filter((space) => space.available).map((space) => (
+                    <span key={space.id} className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-600">
+                        {space.label} · {space.modelCount} 个模型
+                    </span>
+                ))
+            ) : (
+                <span className="text-amber-700">暂无，请联系管理员授权</span>
+            )}
+        </div> : null}
         <div className="mt-4">
-            <TokenTable {...tableProps} tokens={tokens} />
+            <TokenTable
+                {...tableProps}
+                tokens={tokens}
+                showSpaceColumn={showSpaceContext}
+            />
         </div>
-    </section>
-);
+      </section>
+    );
+};
 
 const ApiKeysPage = ({
     apiKeyUser,
@@ -288,6 +338,7 @@ const ApiKeysPage = ({
     handleCopyToken,
     maskToken,
     createToken,
+    deleteToken,
     updateTokenStatus,
     updateTokenNote,
     updateDiagnosticsState,
@@ -297,6 +348,7 @@ const ApiKeysPage = ({
     const [createNoteValue, setCreateNoteValue] = useState("");
     const [createTokenType, setCreateTokenType] = useState<"user" | "project" | null>(null);
     const [createTokenProjectId, setCreateTokenProjectId] = useState<string | null>(null);
+    const [createSpaceId, setCreateSpaceId] = useState("");
 
     const startEditNote = (token: string, currentNote: string | null | undefined) => {
         setEditingToken(token);
@@ -315,24 +367,36 @@ const ApiKeysPage = ({
         setEditNoteValue("");
     };
 
-    const startCreateToken = (ownerType: "user" | "project", projectId?: string) => {
+    const startCreateToken = (
+        ownerType: "user" | "project",
+        spaces: GatewayEffectiveSpaceSummary[],
+        projectId?: string,
+    ) => {
         setCreateTokenType(ownerType);
         setCreateTokenProjectId(projectId ?? null);
+        setCreateSpaceId(spaces.find((space) => space.available)?.id ?? "");
         setCreateNoteValue("");
     };
 
     const confirmCreateToken = () => {
-        if (!createTokenType) return;
+        if (!createTokenType || !createSpaceId) return;
         const trimmed = createNoteValue.trim();
-        createToken(createTokenType, createTokenProjectId ?? undefined, trimmed || undefined);
+        createToken(
+            createTokenType,
+            createSpaceId,
+            createTokenProjectId ?? undefined,
+            trimmed || undefined,
+        );
         setCreateTokenType(null);
         setCreateTokenProjectId(null);
+        setCreateSpaceId("");
         setCreateNoteValue("");
     };
 
     const cancelCreateToken = () => {
         setCreateTokenType(null);
         setCreateTokenProjectId(null);
+        setCreateSpaceId("");
         setCreateNoteValue("");
     };
 
@@ -369,6 +433,7 @@ const ApiKeysPage = ({
                 id: projectId,
                 name: tokens[0]?.projectName?.trim() || `项目 ${projectId}`,
                 department: "未出现在项目列表中",
+                spaces: [],
                 tokens,
             }));
     }, [ownedProjects, projectTokensByProjectId]);
@@ -386,6 +451,7 @@ const ApiKeysPage = ({
         saveNote,
         cancelEditNote,
         updateTokenStatus,
+        deleteToken,
         updateDiagnosticsState,
         openDiagnosticsPage,
     };
@@ -398,6 +464,12 @@ const ApiKeysPage = ({
         ? ownedProjects.find((project) => project.id === createTokenProjectId) ??
           orphanProjectSections.find((project) => project.id === createTokenProjectId)
         : null;
+    const creatingSpaces =
+        createTokenType === "project"
+            ? creatingProject?.spaces ?? []
+            : apiKeyUser?.spaces ?? [];
+    const selectedCreatingSpace = creatingSpaces.find((space) => space.id === createSpaceId);
+    const showCreatingSpaceSelector = creatingSpaces.length > 1;
 
     return (
         <div className="flex flex-col gap-3">
@@ -447,6 +519,25 @@ const ApiKeysPage = ({
                         创建{createTokenType === "project" ? `项目 Token${creatingProject ? ` · ${creatingProject.name}` : ""}` : "个人 Token"}
                     </div>
                     <div className="mt-3 flex flex-col gap-3">
+                        {showCreatingSpaceSelector ? <label className="grid gap-1.5">
+                            <span className="text-xs font-medium text-blue-900">服务空间</span>
+                            <select
+                                value={createSpaceId}
+                                onChange={(event) => setCreateSpaceId(event.target.value)}
+                                className="rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-500"
+                            >
+                                {creatingSpaces.map((space) => (
+                                    <option key={space.id} value={space.id} disabled={!space.available}>
+                                        {space.label} · {space.available ? `${space.modelCount} 个模型可用` : "当前不可用"}
+                                    </option>
+                                ))}
+                            </select>
+                            {selectedCreatingSpace ? (
+                                <span className="text-xs text-blue-700">
+                                    Key 将绑定到该 Space；接入位置由平台自动管理。
+                                </span>
+                            ) : null}
+                        </label> : null}
                         <input
                             type="text"
                             value={createNoteValue}
@@ -464,7 +555,7 @@ const ApiKeysPage = ({
                                 type="button"
                                 className="rounded-full bg-blue-800 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
                                 onClick={confirmCreateToken}
-                                disabled={isCreateLoading}
+                                disabled={isCreateLoading || !createSpaceId}
                             >
                                 {isCreateLoading ? "创建中..." : "确认创建"}
                             </button>
@@ -496,10 +587,17 @@ const ApiKeysPage = ({
                                     ? "创建中..."
                                     : userLimitReached
                                       ? "额度已满"
-                                      : "创建 Token"
+                                      : !(apiKeyUser.spaces ?? []).some((space) => space.available)
+                                        ? "暂无可用 Space"
+                                        : "创建 Token"
                             }
-                            createDisabled={Boolean(createTokenLoading.user || userLimitReached)}
-                            onCreate={() => startCreateToken("user")}
+                            createDisabled={Boolean(
+                                createTokenLoading.user ||
+                                userLimitReached ||
+                                !(apiKeyUser.spaces ?? []).some((space) => space.available),
+                            )}
+                            onCreate={() => startCreateToken("user", apiKeyUser.spaces ?? [])}
+                            spaces={apiKeyUser.spaces ?? []}
                             tokens={personalTokens}
                             tableProps={tablePropsBase}
                         />
@@ -519,12 +617,17 @@ const ApiKeysPage = ({
                                             ? "创建中..."
                                             : projectLimitReached
                                               ? "额度已满"
-                                              : "创建 Token"
+                                              : !(project.spaces ?? []).some((space) => space.available)
+                                                ? "暂无可用 Space"
+                                                : "创建 Token"
                                     }
                                     createDisabled={Boolean(
-                                        createTokenLoading[`project:${project.id}`] || projectLimitReached,
+                                        createTokenLoading[`project:${project.id}`] ||
+                                        projectLimitReached ||
+                                        !(project.spaces ?? []).some((space) => space.available),
                                     )}
-                                    onCreate={() => startCreateToken("project", project.id)}
+                                    onCreate={() => startCreateToken("project", project.spaces ?? [], project.id)}
+                                    spaces={project.spaces ?? []}
                                     tokens={project.tokens}
                                     tableProps={tablePropsBase}
                                 />

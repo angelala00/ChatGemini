@@ -23,6 +23,21 @@
 ## API Keys Page
 
 - `src/views/platform/ApiKeysPage.tsx` receives a flat `apiKeyUser.tokens` array from the backend.
+- New API Keys are always persisted in a personal/project + Space context. When a
+  subject has only the platform default Space, the UI hides the Space concept and
+  uses it automatically. Space selection and the Space table column appear only
+  after the subject receives an additional Space. The UI never asks users to
+  choose a Site; Agent Site projection belongs to the portal control plane.
+- `apiKeyUser.spaces` and each `projects[].spaces` contain the effective Space
+  summaries computed by `model-api` portal-backend. Only entries with
+  `available=true` can be selected for creation.
+- Space-scoped tokens expose `spaceId`/`spaceLabel`. Portal startup safely migrates
+  legacy Keys whose complete Site scope maps uniquely to the default Space. Tokens
+  still lacking `spaceId` are ambiguous or non-default legacy-compatible entries
+  and must remain visible rather than being silently assigned by the frontend.
+- Users may update notes, enable/disable, and revoke only personal Keys or Keys
+  belonging to projects they own. The assistant-bff repeats ownership checks before
+  proxying each mutation.
 - The page should group tokens in the UI by ownership:
   - Personal API Keys first.
   - Then one section per project.
