@@ -14,6 +14,25 @@ USER_TOKEN_LIMIT = 2
 PROJECT_TOKEN_LIMIT = 5
 
 
+def _count_owner_tokens_in_space(
+    tokens: dict,
+    owner_field: str,
+    owner_id: str,
+    space_id: str,
+    default_space_id: str | None,
+) -> int:
+    count = 0
+    for entry in tokens.values():
+        if not isinstance(entry, dict) or entry.get(owner_field) != owner_id:
+            continue
+        entry_space_id = entry.get("space_id")
+        if not isinstance(entry_space_id, str) or not entry_space_id.strip():
+            entry_space_id = default_space_id
+        if entry_space_id == space_id:
+            count += 1
+    return count
+
+
 def _build_target_url(prefix: str, path: str) -> str:
     base = platform_config.PORTAL_BASE_URL
     if not base:
@@ -326,7 +345,11 @@ async def _load_user_api_key_summary(
         "tokens": token_entries,
         "spaces": user_spaces or [],
         "projects": project_list,
-        "limits": {"userMax": USER_TOKEN_LIMIT, "projectMax": PROJECT_TOKEN_LIMIT},
+        "limits": {
+            "userMax": USER_TOKEN_LIMIT,
+            "projectMax": PROJECT_TOKEN_LIMIT,
+            "scope": "space",
+        },
     }, None
 
 
@@ -638,32 +661,12 @@ async def create_user_token(
         owners = project_entry.get("owners") if isinstance(project_entry, dict) else None
         if not isinstance(owners, list) or user_email not in owners:
             return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content={"detail": "无项目权限"})
-        existing = sum(
-            1
-            for entry in tokens.values()
-            if isinstance(entry, dict) and entry.get("project") == project_id
-        )
-        if existing >= PROJECT_TOKEN_LIMIT:
-            return JSONResponse(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                content={"detail": f"项目 API Key 上限为 {PROJECT_TOKEN_LIMIT}"},
-            )
         create_payload = {"project": project_id, "createdBy": user_email}
         if isinstance(note, str) and note.strip():
             create_payload["note"] = note.strip()
         subject_type = "project"
         subject_id = project_id
     else:
-        existing = sum(
-            1
-            for entry in tokens.values()
-            if isinstance(entry, dict) and entry.get("user") == user_email
-        )
-        if existing >= USER_TOKEN_LIMIT:
-            return JSONResponse(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                content={"detail": f"个人 API Key 上限为 {USER_TOKEN_LIMIT}"},
-            )
         create_payload = {"user": user_email, "createdBy": user_email}
         if isinstance(note, str) and note.strip():
             create_payload["note"] = note.strip()
@@ -705,6 +708,36 @@ async def create_user_token(
                 "detail": (
                     "所选服务空间当前不可用："
                     f"{selected_space.get('status') or 'unknown'}"
+                )
+            },
+        )
+    default_space = next(
+        (item for item in spaces or [] if item.get("isDefault")),
+        None,
+    )
+    default_space_id = (
+        default_space.get("id") if isinstance(default_space, dict) else None
+    )
+    owner_field = "project" if owner_type == "project" else "user"
+    token_limit = (
+        PROJECT_TOKEN_LIMIT if owner_type == "project" else USER_TOKEN_LIMIT
+    )
+    existing = _count_owner_tokens_in_space(
+        tokens,
+        owner_field,
+        subject_id,
+        space_id,
+        default_space_id,
+    )
+    if existing >= token_limit:
+        owner_label = "项目" if owner_type == "project" else "个人"
+        space_label = selected_space.get("label") or space_id
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={
+                "detail": (
+                    f"{owner_label}在服务空间 {space_label} 下的 "
+                    f"API Key 上限为 {token_limit}"
                 )
             },
         )

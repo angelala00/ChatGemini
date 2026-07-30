@@ -51,6 +51,130 @@ class _FakeAsyncClient:
 
 
 class PlatformApiKeyTests(unittest.IsolatedAsyncioTestCase):
+    async def test_create_token_limit_is_scoped_to_selected_space(self) -> None:
+        access_db = {
+            "users": {"alice@example.com": {"space_ids": ["public", "bus"]}},
+            "projects": {},
+            "tokens": {
+                "public-1": {
+                    "user": "alice@example.com",
+                    "space_id": "public",
+                },
+                "public-2": {
+                    "user": "alice@example.com",
+                    "space_id": "public",
+                },
+            },
+        }
+        _FakeAsyncClient.sent_json = None
+        with (
+            patch.object(
+                platform_routes,
+                "_fetch_json",
+                new=AsyncMock(return_value=(200, access_db)),
+            ),
+            patch.object(
+                platform_routes,
+                "_ensure_user_registered",
+                new=AsyncMock(return_value=(access_db, None)),
+            ),
+            patch.object(
+                platform_routes,
+                "_load_effective_spaces",
+                new=AsyncMock(
+                    return_value=(
+                        [
+                            {
+                                "id": "public",
+                                "label": "公共空间",
+                                "available": True,
+                                "status": "available",
+                                "isDefault": True,
+                            },
+                            {
+                                "id": "bus",
+                                "label": "业务空间",
+                                "available": True,
+                                "status": "available",
+                            },
+                        ],
+                        None,
+                    )
+                ),
+            ),
+            patch.object(platform_routes.httpx, "AsyncClient", _FakeAsyncClient),
+            patch.object(
+                platform_routes,
+                "_build_headers",
+                return_value={"Authorization": "Bearer internal"},
+            ),
+        ):
+            response = await platform_routes.create_user_token(
+                _request(
+                    "POST",
+                    {
+                        "ownerType": "user",
+                        "spaceId": "bus",
+                    },
+                ),
+                {"email": "alice@example.com"},
+            )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(_FakeAsyncClient.sent_json["spaceId"], "bus")
+
+    async def test_legacy_tokens_count_toward_default_space_limit(self) -> None:
+        access_db = {
+            "users": {"alice@example.com": {}},
+            "projects": {},
+            "tokens": {
+                "legacy": {"user": "alice@example.com"},
+                "public": {
+                    "user": "alice@example.com",
+                    "space_id": "public",
+                },
+            },
+        }
+        _FakeAsyncClient.sent_json = None
+        with (
+            patch.object(
+                platform_routes,
+                "_fetch_json",
+                new=AsyncMock(return_value=(200, access_db)),
+            ),
+            patch.object(
+                platform_routes,
+                "_ensure_user_registered",
+                new=AsyncMock(return_value=(access_db, None)),
+            ),
+            patch.object(
+                platform_routes,
+                "_load_effective_spaces",
+                new=AsyncMock(
+                    return_value=(
+                        [
+                            {
+                                "id": "public",
+                                "label": "公共空间",
+                                "available": True,
+                                "status": "available",
+                                "isDefault": True,
+                            }
+                        ],
+                        None,
+                    )
+                ),
+            ),
+        ):
+            response = await platform_routes.create_user_token(
+                _request("POST", {"ownerType": "user"}),
+                {"email": "alice@example.com"},
+            )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("公共空间", json.loads(response.body)["detail"])
+        self.assertIsNone(_FakeAsyncClient.sent_json)
+
     async def test_create_token_forwards_validated_space_context(self) -> None:
         access_db = {
             "users": {

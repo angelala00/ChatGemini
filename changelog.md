@@ -9,6 +9,12 @@
 - 正式发布时应同步更新 Sidebar 当前版本、Sidebar 发布记录和本文件中的版本标记。
 
 
+## [2026.07.30] LLM Platform API Key 额度按 Space 计算
+- **空间额度独立**：个人和项目的 API Key 数量上限改为在每个 Space 内分别计算，默认空间额度用满后仍可在其他已授权空间创建。
+- **创建提示一致**：API Keys 页面展示每个 Space 的已用额度，只禁用当前不可用或额度已满的 Space，不再用跨空间总数阻止创建。
+- **历史 Key 归位**：仍缺少 Space 标识的历史 Key 按默认 Space 计入额度；禁用 Key 继续占用名额，吊销后释放。
+- **多层校验统一**：llm-platform、assistant-bff 与 model-api 使用同一套“归属主体 + Space”限额语义。
+
 ## [2026.07.29] LLM Platform 按 Space 自助管理 API Key
 - **默认空间无感使用**：主集群所在 Space 对所有个人和项目默认开放；只有获得额外 Space 后，页面才展示空间列表、Key 所属空间和创建选择。
 - **撤权即吊销**：管理员取消额外 Space 关联时，对应 API Key 从有效配置永久移除，用户端不再展示，重新授权也不会恢复旧 Key。

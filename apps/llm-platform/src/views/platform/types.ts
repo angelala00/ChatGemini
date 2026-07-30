@@ -53,6 +53,7 @@ export interface GatewayUserSummary {
     limits?: {
         userMax: number;
         projectMax: number;
+        scope?: "space";
     };
 }
 

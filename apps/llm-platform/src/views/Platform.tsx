@@ -448,14 +448,6 @@ const Platform = (props: RouterComponentProps) => {
     const claudeOnboardingExample = `{
   "hasCompletedOnboarding": true
 }`;
-    const projectTokenCounts = useMemo(() => {
-        const counts: Record<string, number> = {};
-        for (const token of apiKeyUser?.tokens ?? []) {
-            if (token.ownerType !== "project" || !token.projectId) continue;
-            counts[token.projectId] = (counts[token.projectId] ?? 0) + 1;
-        }
-        return counts;
-    }, [apiKeyUser?.tokens]);
     const diagnosticsTokens = useMemo(
         () => (apiKeyUser?.tokens ?? []).filter((token) => token.diagnosticsAuthorized && token.tokenId),
         [apiKeyUser?.tokens],
@@ -545,7 +537,6 @@ const Platform = (props: RouterComponentProps) => {
             (a, b) => getTimeValue(b.summary.timestamp) - getTimeValue(a.summary.timestamp),
         );
     }, [diagnosticsLogs]);
-    const userLimitReached = userTokenLimit > 0 && userTokenCount >= userTokenLimit;
     const groupedVisibleModels = useMemo(() => {
         const entries = visibleModels?.models ?? [];
         const groups: Record<string, typeof entries> = {};
@@ -1104,8 +1095,6 @@ const Platform = (props: RouterComponentProps) => {
                     userTokenCount={userTokenCount}
                     userTokenLimit={userTokenLimit}
                     projectTokenLimit={projectTokenLimit}
-                    projectTokenCounts={projectTokenCounts}
-                    userLimitReached={userLimitReached}
                     copiedToken={copiedToken}
                     createTokenLoading={createTokenLoading}
                     tokenUpdating={tokenUpdating}

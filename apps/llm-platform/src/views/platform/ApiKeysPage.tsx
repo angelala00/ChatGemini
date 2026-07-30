@@ -14,8 +14,6 @@ interface ApiKeysPageProps {
     userTokenCount: number;
     userTokenLimit: number;
     projectTokenLimit: number;
-    projectTokenCounts: Record<string, number>;
-    userLimitReached: boolean;
     copiedToken: string | null;
     createTokenLoading: Record<string, boolean>;
     tokenUpdating: Record<string, boolean>;
@@ -256,8 +254,29 @@ interface TokenSectionProps {
     onCreate: () => void;
     spaces: GatewayEffectiveSpaceSummary[];
     tokens: GatewayUserTokenInfo[];
+    tokenLimit: number;
     tableProps: TokenTableProps;
 }
+
+const countTokensInSpace = (
+    tokens: GatewayUserTokenInfo[],
+    spaces: GatewayEffectiveSpaceSummary[],
+    spaceId: string,
+) => {
+    const defaultSpaceId = spaces.find((space) => space.isDefault)?.id;
+    return tokens.filter((token) => (token.spaceId || defaultSpaceId) === spaceId).length;
+};
+
+const hasSpaceWithRemainingQuota = (
+    tokens: GatewayUserTokenInfo[],
+    spaces: GatewayEffectiveSpaceSummary[],
+    tokenLimit: number,
+) =>
+    spaces.some(
+        (space) =>
+            space.available &&
+            (tokenLimit <= 0 || countTokensInSpace(tokens, spaces, space.id) < tokenLimit),
+    );
 
 const TokenSection = ({
     title,
@@ -268,6 +287,7 @@ const TokenSection = ({
     onCreate,
     spaces,
     tokens,
+    tokenLimit,
     tableProps,
 }: TokenSectionProps) => {
     const showSpaceContext = spaces.length > 1;
@@ -299,7 +319,8 @@ const TokenSection = ({
             {spaces.filter((space) => space.available).length > 0 ? (
                 spaces.filter((space) => space.available).map((space) => (
                     <span key={space.id} className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-600">
-                        {space.label} · {space.modelCount} 个模型
+                        {space.label} · {countTokensInSpace(tokens, spaces, space.id)}/{tokenLimit || "-"} 个 Key
+                        {" · "}{space.modelCount} 个模型
                     </span>
                 ))
             ) : (
@@ -326,8 +347,6 @@ const ApiKeysPage = ({
     userTokenCount,
     userTokenLimit,
     projectTokenLimit,
-    projectTokenCounts,
-    userLimitReached,
     copiedToken,
     createTokenLoading,
     tokenUpdating,
@@ -370,11 +389,20 @@ const ApiKeysPage = ({
     const startCreateToken = (
         ownerType: "user" | "project",
         spaces: GatewayEffectiveSpaceSummary[],
+        tokens: GatewayUserTokenInfo[],
+        tokenLimit: number,
         projectId?: string,
     ) => {
         setCreateTokenType(ownerType);
         setCreateTokenProjectId(projectId ?? null);
-        setCreateSpaceId(spaces.find((space) => space.available)?.id ?? "");
+        setCreateSpaceId(
+            spaces.find(
+                (space) =>
+                    space.available &&
+                    (tokenLimit <= 0 ||
+                        countTokensInSpace(tokens, spaces, space.id) < tokenLimit),
+            )?.id ?? "",
+        );
         setCreateNoteValue("");
     };
 
@@ -469,6 +497,17 @@ const ApiKeysPage = ({
             ? creatingProject?.spaces ?? []
             : apiKeyUser?.spaces ?? [];
     const selectedCreatingSpace = creatingSpaces.find((space) => space.id === createSpaceId);
+    const creatingTokens =
+        createTokenType === "project" ? creatingProject?.tokens ?? [] : personalTokens;
+    const creatingTokenLimit =
+        createTokenType === "project" ? projectTokenLimit : userTokenLimit;
+    const selectedCreatingSpaceTokenCount = selectedCreatingSpace
+        ? countTokensInSpace(creatingTokens, creatingSpaces, selectedCreatingSpace.id)
+        : 0;
+    const selectedCreatingSpaceLimitReached =
+        Boolean(selectedCreatingSpace) &&
+        creatingTokenLimit > 0 &&
+        selectedCreatingSpaceTokenCount >= creatingTokenLimit;
     const showCreatingSpaceSelector = creatingSpaces.length > 1;
 
     return (
@@ -479,8 +518,8 @@ const ApiKeysPage = ({
             </p>
             <div className="mt-4 flex flex-wrap items-center gap-3">
                 <div className="text-sm text-slate-500">
-                    可用额度：用户 {userTokenCount}/{userTokenLimit || "-"}
-                    ，项目 {Object.keys(projectTokenCounts).length}/{projectTokenLimit || "-"}
+                    额度按服务空间独立计算：个人每个 Space 最多 {userTokenLimit || "-"} 个，
+                    项目每个 Space 最多 {projectTokenLimit || "-"} 个
                 </div>
             </div>
             {apiKeyError && (
@@ -527,8 +566,29 @@ const ApiKeysPage = ({
                                 className="rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-500"
                             >
                                 {creatingSpaces.map((space) => (
-                                    <option key={space.id} value={space.id} disabled={!space.available}>
-                                        {space.label} · {space.available ? `${space.modelCount} 个模型可用` : "当前不可用"}
+                                    <option
+                                        key={space.id}
+                                        value={space.id}
+                                        disabled={
+                                            !space.available ||
+                                            (creatingTokenLimit > 0 &&
+                                                countTokensInSpace(
+                                                    creatingTokens,
+                                                    creatingSpaces,
+                                                    space.id,
+                                                ) >= creatingTokenLimit)
+                                        }
+                                    >
+                                        {space.label} · {!space.available
+                                            ? "当前不可用"
+                                            : creatingTokenLimit > 0 &&
+                                                countTokensInSpace(
+                                                    creatingTokens,
+                                                    creatingSpaces,
+                                                    space.id,
+                                                ) >= creatingTokenLimit
+                                              ? `${creatingTokenLimit}/${creatingTokenLimit} 个 Key，额度已满`
+                                              : `${countTokensInSpace(creatingTokens, creatingSpaces, space.id)}/${creatingTokenLimit || "-"} 个 Key，${space.modelCount} 个模型可用`}
                                     </option>
                                 ))}
                             </select>
@@ -555,7 +615,11 @@ const ApiKeysPage = ({
                                 type="button"
                                 className="rounded-full bg-blue-800 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
                                 onClick={confirmCreateToken}
-                                disabled={isCreateLoading || !createSpaceId}
+                                disabled={
+                                    isCreateLoading ||
+                                    !createSpaceId ||
+                                    selectedCreatingSpaceLimitReached
+                                }
                             >
                                 {isCreateLoading ? "创建中..." : "确认创建"}
                             </button>
@@ -581,54 +645,79 @@ const ApiKeysPage = ({
                         <TokenSection
                             title="个人 API Keys"
                             subtitle="仅归属于当前用户个人账号的密钥。"
-                            tokenCountLabel={`已创建 ${userTokenCount}/${userTokenLimit || "-"}`}
+                            tokenCountLabel={`共 ${userTokenCount} 个 · 每个 Space 最多 ${userTokenLimit || "-"}`}
                             createLabel={
                                 createTokenLoading.user
                                     ? "创建中..."
-                                    : userLimitReached
-                                      ? "额度已满"
-                                      : !(apiKeyUser.spaces ?? []).some((space) => space.available)
-                                        ? "暂无可用 Space"
-                                        : "创建 Token"
+                                    : !hasSpaceWithRemainingQuota(
+                                          personalTokens,
+                                          apiKeyUser.spaces ?? [],
+                                          userTokenLimit,
+                                      )
+                                      ? (apiKeyUser.spaces ?? []).some((space) => space.available)
+                                          ? "各 Space 额度已满"
+                                          : "暂无可用 Space"
+                                      : "创建 Token"
                             }
                             createDisabled={Boolean(
                                 createTokenLoading.user ||
-                                userLimitReached ||
-                                !(apiKeyUser.spaces ?? []).some((space) => space.available),
+                                !hasSpaceWithRemainingQuota(
+                                    personalTokens,
+                                    apiKeyUser.spaces ?? [],
+                                    userTokenLimit,
+                                ),
                             )}
-                            onCreate={() => startCreateToken("user", apiKeyUser.spaces ?? [])}
+                            onCreate={() =>
+                                startCreateToken(
+                                    "user",
+                                    apiKeyUser.spaces ?? [],
+                                    personalTokens,
+                                    userTokenLimit,
+                                )
+                            }
                             spaces={apiKeyUser.spaces ?? []}
                             tokens={personalTokens}
+                            tokenLimit={userTokenLimit}
                             tableProps={tablePropsBase}
                         />
 
                         {visibleProjectSections.map((project) => {
-                            const projectLimitReached =
-                                projectTokenLimit > 0 &&
-                                (projectTokenCounts[project.id] ?? 0) >= projectTokenLimit;
+                            const projectHasRemainingQuota = hasSpaceWithRemainingQuota(
+                                project.tokens,
+                                project.spaces ?? [],
+                                projectTokenLimit,
+                            );
                             return (
                                 <TokenSection
                                     key={project.id}
                                     title={`${project.name} API Keys`}
                                     subtitle={project.department ?? "未填写部门"}
-                                    tokenCountLabel={`已创建 ${project.tokens.length}/${projectTokenLimit || "-"}`}
+                                    tokenCountLabel={`共 ${project.tokens.length} 个 · 每个 Space 最多 ${projectTokenLimit || "-"}`}
                                     createLabel={
                                         createTokenLoading[`project:${project.id}`]
                                             ? "创建中..."
-                                            : projectLimitReached
-                                              ? "额度已满"
-                                              : !(project.spaces ?? []).some((space) => space.available)
-                                                ? "暂无可用 Space"
-                                                : "创建 Token"
+                                            : !projectHasRemainingQuota
+                                              ? (project.spaces ?? []).some((space) => space.available)
+                                                  ? "各 Space 额度已满"
+                                                  : "暂无可用 Space"
+                                              : "创建 Token"
                                     }
                                     createDisabled={Boolean(
                                         createTokenLoading[`project:${project.id}`] ||
-                                        projectLimitReached ||
-                                        !(project.spaces ?? []).some((space) => space.available),
+                                        !projectHasRemainingQuota,
                                     )}
-                                    onCreate={() => startCreateToken("project", project.spaces ?? [], project.id)}
+                                    onCreate={() =>
+                                        startCreateToken(
+                                            "project",
+                                            project.spaces ?? [],
+                                            project.tokens,
+                                            projectTokenLimit,
+                                            project.id,
+                                        )
+                                    }
                                     spaces={project.spaces ?? []}
                                     tokens={project.tokens}
+                                    tokenLimit={projectTokenLimit}
                                     tableProps={tablePropsBase}
                                 />
                             );

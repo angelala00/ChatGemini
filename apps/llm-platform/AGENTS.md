@@ -31,10 +31,14 @@
 - `apiKeyUser.spaces` and each `projects[].spaces` contain the effective Space
   summaries computed by `model-api` portal-backend. Only entries with
   `available=true` can be selected for creation.
-- Space-scoped tokens expose `spaceId`/`spaceLabel`. Portal startup safely migrates
-  legacy Keys whose complete Site scope maps uniquely to the default Space. Tokens
-  still lacking `spaceId` are ambiguous or non-default legacy-compatible entries
-  and must remain visible rather than being silently assigned by the frontend.
+- Personal and project API Key limits are calculated independently in each Space.
+  The UI should show per-Space usage, select the first available Space with
+  remaining quota, and disable only full Space options. Disabled Keys still count;
+  revoking a Key releases its slot.
+- Space-scoped tokens expose `spaceId`/`spaceLabel`. Portal startup moves
+  authoritative legacy Keys into the default Space and removes the retired manual
+  Site-scope workflow. If an older response still omits `spaceId`, the frontend
+  counts that Key against the effective default Space for quota display.
 - Users may update notes, enable/disable, and revoke only personal Keys or Keys
   belonging to projects they own. The assistant-bff repeats ownership checks before
   proxying each mutation.

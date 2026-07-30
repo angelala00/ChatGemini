@@ -96,6 +96,8 @@
   model-api portal-backend 的自助访问边界。API Key 创建必须携带个人/项目归属和
   Space 上下文；页面未提交 `spaceId` 时只能回落到 portal 有效服务接口明确标记的
   默认 Space。BFF 校验本人或项目 Owner 权限，并只允许选择有效可用 Space；Key
+  数量上限按“归属主体 + Space”独立计算，缺少 `space_id` 的历史 Key 计入默认
+  Space；禁用 Key 仍占额度，只有吊销后才释放名额。Key
   汇总不得返回主体已失去 Space 资格的 Key。Key 的启停、备注和吊销也必须在代理前重新校验所有权，不能
   因为 BFF 使用平台级 `PLATFORM_PORTAL_TOKEN` 就直接透传任意 token 修改。
 - **旧表迁移策略**：启动时会将旧 `custom_gpts` 中尚未存在于 `agents` 的记录补迁到 `agents`，但不会反向覆盖 `agents` 中已存在的新配置，保证滚动升级期间旧节点继续读旧表、新节点只读新表。

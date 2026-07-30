@@ -28,8 +28,6 @@ interface ConsolePageProps {
     userTokenCount: number;
     userTokenLimit: number;
     projectTokenLimit: number;
-    projectTokenCounts: Record<string, number>;
-    userLimitReached: boolean;
     copiedToken: string | null;
     createTokenLoading: Record<string, boolean>;
     tokenUpdating: Record<string, boolean>;
@@ -69,8 +67,6 @@ const ConsolePage = ({
     userTokenCount,
     userTokenLimit,
     projectTokenLimit,
-    projectTokenCounts,
-    userLimitReached,
     copiedToken,
     createTokenLoading,
     tokenUpdating,
@@ -134,8 +130,6 @@ const ConsolePage = ({
                     userTokenCount={userTokenCount}
                     userTokenLimit={userTokenLimit}
                     projectTokenLimit={projectTokenLimit}
-                    projectTokenCounts={projectTokenCounts}
-                    userLimitReached={userLimitReached}
                     copiedToken={copiedToken}
                     createTokenLoading={createTokenLoading}
                     tokenUpdating={tokenUpdating}
