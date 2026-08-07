@@ -1053,7 +1053,7 @@ const Platform = (props: RouterComponentProps) => {
                                 >
                                     {item === "console" && "控制台"}
                                     {item === "market" && "模型广场"}
-                                    {item === "docs" && "API 文档"}
+                                    {item === "docs" && "文档"}
                                     {item === "skills" && "Skills"}
                                     {item === "mcps" && "MCPs"}
                                     {item === "diagnostics" && "诊断日志"}

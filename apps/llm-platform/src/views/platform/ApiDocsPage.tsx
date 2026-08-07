@@ -35,7 +35,7 @@ const ApiDocsPage = ({
     <div className="mx-auto flex w-full max-w-6xl gap-6 px-6 py-8">
         <aside className="w-full max-w-[260px] shrink-0 basis-[260px] rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="text-xs font-semibold uppercase tracking-widest text-slate-400">
-                API 文档
+                文档
             </div>
             <div className="mt-4 flex flex-col gap-2 text-sm font-medium text-slate-600">
                 {[
@@ -324,7 +324,6 @@ aicode-cli -v`}</pre>
                             <li><a href={`https://uni.${aicodePlaceholder}.com/unidoc/#/space/${aicodePlaceholder}/29/page/46884`} target="_blank" rel="noreferrer" className="underline hover:text-blue-800">IDEA 插件 - AICode 帮助手册</a></li>
                             <li><a href={`https://uni.${aicodePlaceholder}.com/unidoc/#/space/${aicodePlaceholder}/29/page/51494`} target="_blank" rel="noreferrer" className="underline hover:text-blue-800">aicode-skill 技能一键安装 CLI 帮助手册</a></li>
                             <li><a href={`https://uni.${aicodePlaceholder}.com/unidoc/#/space/${aicodePlaceholder}/29/page/50881`} target="_blank" rel="noreferrer" className="underline hover:text-blue-800">aicode 集成缺陷系统帮助手册</a></li>
-                            <li><a href={`https://uni.${aicodePlaceholder}.com/api/unidoc/v1/resources/2/1782704631072003169_0072a13d.jpg`} target="_blank" rel="noreferrer" className="underline hover:text-blue-800">aicode 集成 Sonar Check 本地检查使用手册</a></li>
                         </ul>
                         <p className="mt-4 text-sm text-slate-600">其他使用问题或需求，请联系平台部：xujianjiang@{aicodePlaceholder}.com。</p>
                     </div>
