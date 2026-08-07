@@ -4,7 +4,7 @@ import {
     LinkIcon,
     WindowIcon,
 } from "@heroicons/react/24/outline";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ExternalAssistantBootstrapStatus } from "../types/externalAssistant";
 
@@ -12,6 +12,7 @@ interface ExternalAssistantWorkspaceProps {
     readonly title: string;
     readonly iframeUrl: string;
     readonly bootstrapStatus: ExternalAssistantBootstrapStatus;
+    readonly isActive: boolean;
     readonly sidebarExpand: boolean;
     readonly onRetryBootstrap: () => void;
     readonly onToggleSidebar: () => void;
@@ -21,16 +22,54 @@ export const ExternalAssistantWorkspace = ({
     title,
     iframeUrl,
     bootstrapStatus,
+    isActive,
     sidebarExpand,
     onRetryBootstrap,
     onToggleSidebar,
 }: ExternalAssistantWorkspaceProps) => {
     const { t } = useTranslation();
     const [iframeLoading, setIframeLoading] = useState(Boolean(iframeUrl));
+    const iframeRef = useRef<HTMLIFrameElement>(null);
 
     useEffect(() => {
         setIframeLoading(Boolean(iframeUrl));
     }, [iframeUrl]);
+
+    useEffect(() => {
+        if (!isActive || !iframeUrl) {
+            return;
+        }
+
+        let firstFrame = 0;
+        let secondFrame = 0;
+        const refreshIframeLayout = () => {
+            window.dispatchEvent(new Event("resize"));
+            const iframeWindow = iframeRef.current?.contentWindow;
+            if (!iframeWindow) {
+                return;
+            }
+
+            const targetOrigin = new URL(iframeUrl, window.location.href).origin;
+            iframeWindow.postMessage(
+                { type: "external-assistant:layout-refresh" },
+                targetOrigin,
+            );
+
+            try {
+                iframeWindow.dispatchEvent(new Event("resize"));
+            } catch {
+                // Cross-origin iframe documents can only be notified via postMessage.
+            }
+        };
+
+        firstFrame = window.requestAnimationFrame(() => {
+            secondFrame = window.requestAnimationFrame(refreshIframeLayout);
+        });
+        return () => {
+            window.cancelAnimationFrame(firstFrame);
+            window.cancelAnimationFrame(secondFrame);
+        };
+    }, [iframeUrl, isActive]);
 
     return (
         <section className="col-start-2 flex h-screen min-w-0 flex-col bg-[#f8fafb] max-[900px]:col-start-1">
@@ -117,6 +156,7 @@ export const ExternalAssistantWorkspace = ({
                         )}
                         <iframe
                             key={iframeUrl}
+                            ref={iframeRef}
                             src={iframeUrl}
                             title={title || t("components.Sidebar.workspace_external")}
                             className="h-full w-full border-0 bg-white"

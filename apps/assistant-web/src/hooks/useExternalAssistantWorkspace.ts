@@ -84,6 +84,7 @@ export const useExternalAssistantWorkspace = ({
     const [bootstrapStatus, setBootstrapStatus] =
         useState<ExternalAssistantBootstrapStatus>("idle");
     const [hasOpened, setHasOpened] = useState(false);
+    const [lastExternalMenuPath, setLastExternalMenuPath] = useState("");
 
     const searchParams = useMemo(
         () => new URLSearchParams(location.search),
@@ -265,6 +266,17 @@ export const useExternalAssistantWorkspace = ({
         workspaceMode,
     ]);
 
+    useEffect(() => {
+        if (
+            workspaceMode !== "external" ||
+            !requestedExternalPage ||
+            !bootstrap?.menus.some(({ path }) => path === requestedExternalPage)
+        ) {
+            return;
+        }
+        setLastExternalMenuPath(requestedExternalPage);
+    }, [bootstrap, requestedExternalPage, workspaceMode]);
+
     const setWorkspaceMode = useCallback(
         (nextMode: WorkspaceMode) => {
             if (nextMode === "external" && !allowed) {
@@ -274,7 +286,11 @@ export const useExternalAssistantWorkspace = ({
             if (nextMode === "external") {
                 params.delete(WORKSPACE_QUERY_KEY);
                 params.delete(EXTERNAL_PAGE_QUERY_KEY);
-                navigateWithParams(params, false, getExternalWorkspacePath());
+                navigateWithParams(
+                    params,
+                    false,
+                    getExternalWorkspacePath(lastExternalMenuPath),
+                );
             } else {
                 params.delete(WORKSPACE_QUERY_KEY);
                 params.delete(EXTERNAL_PAGE_QUERY_KEY);
@@ -288,6 +304,7 @@ export const useExternalAssistantWorkspace = ({
         [
             allowed,
             externalMenuPathFromPath,
+            lastExternalMenuPath,
             location.pathname,
             location.search,
             navigateWithParams,
@@ -306,6 +323,7 @@ export const useExternalAssistantWorkspace = ({
             if (!menu) {
                 return;
             }
+            setLastExternalMenuPath(menu.path);
             navigateWithParams(params, false, getExternalWorkspacePath(menu.path));
         },
         [allowed, bootstrap, location.search, navigateWithParams],

@@ -1958,6 +1958,7 @@ const App = () => {
                                     title={externalAssistantTitle}
                                     iframeUrl={externalAssistantIframeUrl}
                                     bootstrapStatus={externalAssistantBootstrapStatus}
+                                    isActive={workspaceMode === "external"}
                                     sidebarExpand={sidebarExpand}
                                     onRetryBootstrap={() => {
                                         void loadExternalAssistantBootstrap();
