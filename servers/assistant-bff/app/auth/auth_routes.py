@@ -8,7 +8,7 @@ a dependency that returns a dummy user.  This allows other routes to use
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 
 DEFAULT_AUTH_PROVIDER = "c"
@@ -31,6 +31,32 @@ def resolve_auth_provider(request: Request) -> str:
 def normalize_auth_provider(value: object) -> str:
     provider = str(value or "").strip()
     return provider or DEFAULT_AUTH_PROVIDER
+
+
+def get_current_user(request: Request) -> dict[str, str]:
+    """Return a dummy user for dependency injection.
+
+    In production this function would verify a token or session and
+    return the authenticated user.  Here we simply return a static
+    dictionary so that other routes can depend on it without additional
+    setup.
+    """
+
+    return {
+        "sub": "user2-claude@nu.com",
+        "email": "user2-claude@nu.com",
+        "group": "CN=jc,OU=平台组,OU=平台运维,OU=nuuser,DC=nu,DC=com",
+        "auth_provider": resolve_auth_provider(request),
+    }
+
+
+def get_current_auth_provider(user: dict[str, str]) -> str:
+    provider = (
+        user.get("auth_provider")
+        or user.get("provider")
+        or user.get("provider_param")
+    )
+    return normalize_auth_provider(provider)
 
 
 # All authentication-related mock routes live under ``/api/auth`` so the
@@ -68,30 +94,37 @@ async def login() -> dict[str, str]:
     return {"access_token": "mock-token"}
 
 
-def get_current_user(request: Request) -> dict[str, str]:
-    """Return a dummy user for dependency injection.
+@router.get("/userinfo")
+async def userinfo(
+    user: dict[str, str] = Depends(get_current_user),
+) -> dict[str, str]:
+    """Return the current authenticated user's basic info.
 
-    In production this function would verify a token or session and
-    return the authenticated user.  Here we simply return a static
-    dictionary so that other routes can depend on it without additional
-    setup.
+    Intended for third-party sub-systems on the same domain to call with
+    the browser cookie forwarded, so they can verify login status and
+    obtain user identity without implementing their own SSO integration.
+
+    Returns:
+        200 with user info if authenticated.
+        401 if not authenticated (raised by get_current_user in production).
+
+    Example (sub-system 3 backend, Python):
+        cookie = request.headers.get("cookie", "")
+        resp = httpx.get(
+            "https://llm.company.com/api/auth/userinfo",
+            headers={"Cookie": cookie},
+        )
+        if resp.status_code == 401:
+            # redirect user to login
+            ...
+        user = resp.json()  # {"email": ..., "name": ..., "group": ...}
     """
-
     return {
-        "sub": "user2-claude@nu.com",
-        "email": "user2-claude@nu.com",
-        "group": "CN=jc,OU=平台组,OU=平台运维,OU=nuuser,DC=nu,DC=com",
-        "auth_provider": resolve_auth_provider(request),
+        "email": user.get("email", ""),
+        "name": user.get("email", "").split("@")[0],
+        "group": user.get("group", ""),
+        "auth_provider": user.get("auth_provider", ""),
     }
-
-
-def get_current_auth_provider(user: dict[str, str]) -> str:
-    provider = (
-        user.get("auth_provider")
-        or user.get("provider")
-        or user.get("provider_param")
-    )
-    return normalize_auth_provider(provider)
 
 
 __all__ = [
