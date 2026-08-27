@@ -5,6 +5,7 @@ export interface ExternalAssistantMenuItem {
     readonly label: string;
     readonly path: string;
     readonly url: string;
+    readonly icon: string;
 }
 
 export interface ExternalAssistantBootstrap {

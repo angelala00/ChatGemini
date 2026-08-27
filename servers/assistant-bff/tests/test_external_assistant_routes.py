@@ -243,6 +243,70 @@ class ExternalAssistantRoutesTests(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
+    async def test_bootstrap_passes_configured_menu_icons(self):
+        self._set_visibility(enabled=True, users=["pilot@example.com"])
+        self._set_workspace_config(
+            base_url="/b/",
+            menus=[
+                {"id": "new-chat", "label": "新建会话", "path": "chat/new", "icon": "squares-2x2"},
+                {"id": "history", "label": "历史会话", "path": "chat/history"},
+            ],
+        )
+        result = await external_assistant_routes.external_assistant_bootstrap(
+            {"email": "pilot@example.com", "sub": "pilot-sub"}
+        )
+
+        self.assertEqual(
+            result["menus"],
+            [
+                {
+                    "id": "new-chat",
+                    "label": "新建会话",
+                    "path": "chat/new",
+                    "url": "/b/chat/new",
+                    "icon": "squares-2x2",
+                },
+                {
+                    "id": "history",
+                    "label": "历史会话",
+                    "path": "chat/history",
+                    "url": "/b/chat/history",
+                },
+            ],
+        )
+
+    async def test_bootstrap_drops_invalid_menu_icons_but_keeps_menus(self):
+        self._set_visibility(enabled=True, users=["pilot@example.com"])
+        invalid_icons: list[object] = [
+            "Squares2X2Icon",
+            "../../x",
+            "<script>",
+            "chart bar",
+            123,
+            None,
+        ]
+        for icon in invalid_icons:
+            with self.subTest(icon=icon):
+                self._set_workspace_config(
+                    base_url="/b/",
+                    menus=[{"id": "history", "label": "历史会话", "path": "chat/history", "icon": icon}],
+                )
+                result = await external_assistant_routes.external_assistant_bootstrap(
+                    {"email": "pilot@example.com", "sub": "pilot-sub"}
+                )
+
+                self.assertEqual(
+                    result["menus"],
+                    [
+                        {
+                            "id": "history",
+                            "label": "历史会话",
+                            "path": "chat/history",
+                            "url": "/b/chat/history",
+                        },
+                    ],
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

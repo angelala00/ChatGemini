@@ -19,6 +19,7 @@ EXTERNAL_ASSISTANT_BASE_URL_KEY = "external_assistant_base_url"
 EXTERNAL_ASSISTANT_MENUS_KEY = "external_assistant_menus"
 MAX_EXTERNAL_ASSISTANT_MENUS = 30
 _MENU_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+_MENU_ICON_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 
 
 def is_external_assistant_allowed(user: dict[str, object]) -> bool:
@@ -88,6 +89,15 @@ def _resolve_menu_url(base_url: str, relative_path: str) -> str:
     return urlunsplit(("", "", resolved_path or "/", path.query, path.fragment))
 
 
+def _normalize_menu_icon(value: object) -> str:
+    if not isinstance(value, str):
+        return ""
+    normalized = value.strip()
+    if not _MENU_ICON_PATTERN.fullmatch(normalized):
+        return ""
+    return normalized
+
+
 def _configured_menus(base_url: str, value: object) -> list[dict[str, str]]:
     if not isinstance(value, list):
         return []
@@ -113,14 +123,16 @@ def _configured_menus(base_url: str, value: object) -> list[dict[str, str]]:
             continue
         seen_ids.add(menu_id)
         seen_paths.add(route_path)
-        menus.append(
-            {
-                "id": menu_id,
-                "label": label,
-                "path": route_path,
-                "url": _resolve_menu_url(base_url, relative_path),
-            }
-        )
+        menu: dict[str, str] = {
+            "id": menu_id,
+            "label": label,
+            "path": route_path,
+            "url": _resolve_menu_url(base_url, relative_path),
+        }
+        icon = _normalize_menu_icon(item.get("icon"))
+        if icon:
+            menu["icon"] = icon
+        menus.append(menu)
     return menus
 
 

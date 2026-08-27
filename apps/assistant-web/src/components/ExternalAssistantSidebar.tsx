@@ -1,6 +1,5 @@
 import {
     ArrowRightIcon,
-    BeakerIcon,
     Squares2X2Icon,
 } from "@heroicons/react/24/outline";
 import { useTranslation } from "react-i18next";
@@ -8,6 +7,7 @@ import {
     ExternalAssistantBootstrap,
     WorkspaceMode,
 } from "../types/externalAssistant";
+import { resolveMenuIcon } from "../helpers/menuIcon";
 import { WorkspaceSidebarHeader } from "./WorkspaceSidebarHeader";
 
 interface ExternalAssistantSidebarProps {
@@ -66,6 +66,7 @@ export const ExternalAssistantSidebar = ({
                 <div className="min-h-0 flex-1 space-y-1 overflow-y-auto overflow-x-hidden">
                     {(bootstrap?.menus ?? []).map((menu) => {
                         const active = selectedMenuId === menu.id;
+                        const MenuIcon = resolveMenuIcon(menu.icon);
                         return (
                             <button
                                 key={menu.id}
@@ -88,7 +89,7 @@ export const ExternalAssistantSidebar = ({
                                                 : "bg-white/70 text-[#87919d]"
                                         }`}
                                     >
-                                        <BeakerIcon className="size-4" strokeWidth={1.8} />
+                                        <MenuIcon className="size-4" strokeWidth={1.8} />
                                     </span>
                                     <span className="truncate">{menu.label}</span>
                                 </span>

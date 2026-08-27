@@ -1970,7 +1970,7 @@ def _load_seed_admin_feature_flags() -> list[dict[str, Any]]:
                 }
             ],
             "value_type": "json",
-            "description": "Smart Office menus as JSON: [{\"id\":\"new-chat\",\"label\":\"新建会话\",\"path\":\"chat/new\"}]. Paths are relative to the base URL.",
+            "description": "智能办公菜单 JSON 数组：[{\"id\":\"new-chat\",\"label\":\"新建会话\",\"path\":\"chat/new\",\"icon\":\"squares-2x2\"}]。path 相对 base URL；icon 可选，取 heroicons.com/icons 中 24/outline 图标的 kebab-case 名（如 chart-bar），无效或未配置时前端回退默认图标。",
         },
     ]
 

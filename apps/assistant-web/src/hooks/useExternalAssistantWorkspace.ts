@@ -49,8 +49,9 @@ const normalizeBootstrap = (payload: any): ExternalAssistantBootstrap => {
                       typeof item?.label === "string" ? item.label.trim() : "";
                   const path = typeof item?.path === "string" ? item.path.trim() : "";
                   const url = typeof item?.url === "string" ? item.url.trim() : "";
+                  const icon = typeof item?.icon === "string" ? item.icon.trim() : "";
                   if (id && label && url) {
-                      items.push({ id, label, path, url });
+                      items.push({ id, label, path, url, icon });
                   }
                   return items;
               },
