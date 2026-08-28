@@ -1,9 +1,11 @@
-import { getFullPath } from "./getDomainAndPath";
+import { getBasePath } from "./getBasePath";
 
 // Shared SSO login-redirect convention (see servers/assistant-bff/app/AGENTS.md).
-// Sub-apps redirect to `/api/auth/oauth-login/{provider}?returnTo=<relative path>`
-// and the auth backend 302s back after login, so no post-login restore logic is
-// needed on the frontend. Keep this file identical across sub-apps.
+// Sub-apps redirect to the assistant-web `/login` page with the current path as
+// returnTo; that page resolves the provider and forwards to oauth-login, and the
+// auth backend 302s back after login, so no post-login restore logic is needed
+// on the frontend. Keep this file identical across sub-apps (adjusting only the
+// login-page base URL resolution).
 
 export const LOGIN_RETRY_KEY = "sso.loginRetry";
 
@@ -40,8 +42,8 @@ export const consumeLoginRetry = (): boolean => {
     }
 };
 
-// For 401 interceptors and login components: redirect to the single SSO login
-// entry (the backend resolves the provider itself from request context).
+// For 401 interceptors and login components: redirect to the assistant-web
+// `/login` page (same-origin here) carrying the current path as returnTo.
 // Returns false without redirecting when a retry was already made.
 export const redirectToLoginIfPossible = (): boolean => {
     if (consumeLoginRetry()) {
@@ -49,6 +51,6 @@ export const redirectToLoginIfPossible = (): boolean => {
     }
     markLoginRetry();
     window.location.href =
-        getFullPath("/api/auth/login") + `?returnTo=${buildReturnTo()}`;
+        `${getBasePath()}/login?returnTo=` + buildReturnTo();
     return true;
 };

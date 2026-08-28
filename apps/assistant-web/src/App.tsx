@@ -24,6 +24,8 @@ import { handleRequest } from "./helpers/handleRequest";
 import { sendUserAlert } from "./helpers/sendUserAlert";
 import { sendUserConfirm } from "./helpers/sendUserConfirm";
 import { LoginByOAuth } from "./components/LoginByOAuth";
+import LoginGateway from "./views/LoginGateway";
+import { getBasePath } from "./helpers/getBasePath";
 import siteLogo from "./assets/logo.svg";
 import i18n, { i18nConfig } from "./config/i18n";
 import { setUserLocale } from "./helpers/setUserLocale";
@@ -1980,6 +1982,10 @@ const App = () => {
                             onClick={() => setSidebarExpand(false)}
                         />
                     </div>
+                ) : window.location.pathname === `${getBasePath()}/login` ? (
+                    // Sub-app login entry page: full-page navigations only,
+                    // so a non-reactive pathname check is sufficient here.
+                    <LoginGateway />
                 ) : (
                     <LoginByOAuth
                         title={header}

@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import { useLocation } from "react-router-dom";
 import { getFullPath } from "../helpers/getDomainAndPath";
+import { getBasePath } from "../helpers/getBasePath";
 import {
     buildReturnTo,
     clearLoginRetry,
@@ -54,10 +55,10 @@ export const LoginByOAuth = (props: LoginByOAuthProps) => {
             return false;
         }
 
-        // Single login entry: the backend resolves the provider itself.
+        // Login is hosted by this app's /login page (single entry for all sub-apps).
         markLoginRetry();
         window.location.href =
-            getFullPath("/api/auth/login") + "?returnTo=" + buildReturnTo();
+            `${getBasePath()}/login?returnTo=` + buildReturnTo();
         return false
     }, [onNoAuthorized]);
 

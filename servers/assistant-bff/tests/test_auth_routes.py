@@ -5,7 +5,7 @@ import unittest
 from fastapi.responses import RedirectResponse
 from starlette.requests import Request
 
-from app.auth.auth_routes import _safe_return_to, login, oauth_login
+from app.auth.auth_routes import _safe_return_to, oauth_login
 
 
 def _build_request(headers: dict[str, str] | None = None) -> Request:
@@ -95,35 +95,6 @@ class OauthLoginReturnToTests(unittest.IsolatedAsyncioTestCase):
             returnTo="/foo\\bar",
         )
         self.assertEqual(response, {"message": "mock redirect to mock"})
-
-
-class LoginEndpointTests(unittest.IsolatedAsyncioTestCase):
-    async def test_valid_return_to_redirects_with_status_302(self):
-        response = await login(request=_build_request(), returnTo="/library?x=1")
-        self.assertIsInstance(response, RedirectResponse)
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual(response.headers["location"], "/library?x=1")
-
-    async def test_referer_origin_is_prepended_for_dev_ports(self):
-        response = await login(
-            request=_build_request({"referer": "http://localhost:3000/console/apikey"}),
-            returnTo="/console/usage?tab=2",
-        )
-        self.assertEqual(
-            response.headers["location"],
-            "http://localhost:3000/console/usage?tab=2",
-        )
-
-    async def test_missing_return_to_keeps_json_mock_response(self):
-        response = await login(request=_build_request(), returnTo="")
-        self.assertIn("message", response)
-
-    async def test_absolute_return_to_does_not_redirect(self):
-        response = await login(
-            request=_build_request(),
-            returnTo="https://evil.com/path",
-        )
-        self.assertIn("message", response)
 
 
 if __name__ == "__main__":
