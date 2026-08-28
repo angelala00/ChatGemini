@@ -33,9 +33,11 @@ async def get_provider(request: Request) -> dict[str, dict[str, str]]:
     return {"provider": {"name": "MockSSO", "param": resolve_auth_provider(request)}}
 
 
-@router.get("/oauth-login/{provider}")
-async def oauth_login(provider: str, request: Request, returnTo: str = "") -> Response:
+def _login_entry_response(request: Request, return_to: str, provider: str) -> Response:
     # Contract for the production (intranet) OAuth implementation:
+    # - the frontend jumps to a single entry (`/api/auth/login?returnTo=...`);
+    #   the provider is resolved server-side from request context (UA/IP via
+    #   resolve_auth_provider), so sub-apps never need get-provider first,
     # - accept a `returnTo` query param that must be a same-site relative path
     #   (validated by _safe_return_to: starts with "/", no "//", no backslash,
     #   no scheme/netloc; query and fragment are allowed),
@@ -44,7 +46,7 @@ async def oauth_login(provider: str, request: Request, returnTo: str = "") -> Re
     # Do NOT build redirects from Referer in production; same-origin deployments
     # resolve relative targets correctly. The Referer handling below only exists
     # so the mock works across dev ports (frontend :3000 / backend :5008).
-    target = _safe_return_to(returnTo)
+    target = _safe_return_to(return_to)
     if target:
         origin = ""
         referer = request.headers.get("referer") or ""
@@ -55,11 +57,25 @@ async def oauth_login(provider: str, request: Request, returnTo: str = "") -> Re
     return {"message": f"mock redirect to {provider}"}
 
 
+
+@router.get("/oauth-login/{provider}")
+async def oauth_login(provider: str, request: Request, returnTo: str = "") -> Response:
+    # Kept for backward compatibility; prefer the `/api/auth/login` entry.
+    return _login_entry_response(request, returnTo, normalize_auth_provider(provider))
+
+
 @router.get("/oauth-callback/{provider}")
 async def oauth_callback(provider: str) -> dict[str, str]:
     # Production implementation: after the OAuth provider callback completes,
     # apply the same _safe_return_to validation and 302 back to that path.
     return {"message": f"mock callback from {provider}"}
+
+
+@router.get("/login")
+async def login(request: Request, returnTo: str = "") -> Response:
+    # Single login entry for sub-apps: provider resolution happens here based
+    # on request context, the browser navigates directly to this endpoint.
+    return _login_entry_response(request, returnTo, resolve_auth_provider(request))
 
 
 @router.post("/logout")

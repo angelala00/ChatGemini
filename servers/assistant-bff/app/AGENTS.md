@@ -67,8 +67,8 @@
 
 ### 2.3 共享登录 returnTo 回跳契约 (SSO returnTo)
 多个同域部署的前端子应用（assistant-web、developer-portal 及后续接入者）共用本服务的 SSO 登录态（同域 HttpOnly Cookie + `/api/auth/*`），“登录后回到登录前页面”统一按以下契约实现，新子应用接入只做两件事，不得各自发明机制：
-- **前端跳转**：登录失效时跳 `/api/auth/oauth-login/{provider}?returnTo=<encodeURIComponent(pathname+search+hash)>`，`returnTo` 只允许站内相对路径，禁止拼完整 URL。各子应用统一使用同款 helper `src/helpers/loginRedirect.ts`（`buildReturnTo`/`markLoginRetry`/`consumeLoginRetry`/`redirectToLoginIfPossible`）。**401 拦截禁止再写 `window.location.href = '/'` 之类丢路径的跳转**，必须走 `redirectToLoginIfPossible()`。
-- **后端回跳**：登录服务用 `_safe_return_to`（`app/auth/auth_routes.py`）校验 returnTo（以 `/` 开头、非 `//`、无反斜杠、无 scheme/netloc，允许 query/fragment），校验通过后在登录流程结束后 302 回该相对路径；非法或缺失不重定向。仓库内 `oauth-login` 为 mock 实现（会用 Referer origin 拼绝对地址以兼容前后端不同端口的本地开发），内网真实 OAuth 实现须在 callback 末尾做同样校验与回跳，且不要使用 Referer 构造跳转目标。
+- **前端跳转**：登录失效时直接整页跳 `/api/auth/login?returnTo=<encodeURIComponent(pathname+search+hash)>`，`returnTo` 只允许站内相对路径，禁止拼完整 URL。**不需要先调 get-provider**——provider 由该接口依据请求头（user-agent/来源 IP，`resolve_auth_provider`）自行解析。各子应用统一使用同款 helper `src/helpers/loginRedirect.ts`（`buildReturnTo`/`markLoginRetry`/`consumeLoginRetry`/`redirectToLoginIfPossible`）。**401 拦截禁止再写 `window.location.href = '/'` 之类丢路径的跳转**，必须走 `redirectToLoginIfPossible()`。
+- **后端回跳**：登录服务用 `_safe_return_to`（`app/auth/auth_routes.py`）校验 returnTo（以 `/` 开头、非 `//`、无反斜杠、无 scheme/netloc，允许 query/fragment），校验通过后在登录流程结束后 302 回该相对路径；非法或缺失不重定向。仓库内 `/api/auth/login` 与 `/api/auth/oauth-login/{provider}`（兼容保留，推荐用前者）为 mock 实现（会用 Referer origin 拼绝对地址以兼容前后端不同端口的本地开发），内网真实 OAuth 实现须在 callback 末尾做同样校验与回跳，且不要使用 Referer 构造跳转目标。
 - **前端无需恢复逻辑**：浏览器被 302 回原 URL 后 SPA 原地重新引导即可。
 - **死循环保护**：跳转前写一次性 sessionStorage 标记 `sso.loginRetry`（读即删）；重新挂载仍未登录且标记存在 → 展示“无权限”不再跳转；登录成功（`/api/auth/status` ok）即清除标记。
 

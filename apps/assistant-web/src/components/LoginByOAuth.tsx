@@ -54,32 +54,10 @@ export const LoginByOAuth = (props: LoginByOAuthProps) => {
             return false;
         }
 
-        // const providerResponseJson = await handleRequest('GET', '/api/auth/get-provider');
-        // if (providerResponseJson) {
-        //     window.location.href = domain + path + `/api/auth/oauth-login/` + providerResponseJson.provider.param;
-        // }
-
+        // Single login entry: the backend resolves the provider itself.
         markLoginRetry();
-        const response = await fetch(getFullPath('/api/auth/get-provider'), {
-            method: 'GET'
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Network response was not ok');
-            }
-            return response.json();
-        })
-        .then(data => {
-            // setSsoProvider(data.provider);
-            // handleLogin()
-            window.location.href =
-                getFullPath("/api/auth/oauth-login/" + data.provider.param) +
-                "?returnTo=" +
-                buildReturnTo();
-        })
-        .catch(error => {
-            console.error('请求失败:', error);
-        });
+        window.location.href =
+            getFullPath("/api/auth/login") + "?returnTo=" + buildReturnTo();
         return false
     }, [onNoAuthorized]);
 

@@ -40,22 +40,15 @@ export const consumeLoginRetry = (): boolean => {
     }
 };
 
-// For 401 interceptors: redirect to SSO login carrying the current path as
-// returnTo. Returns false without redirecting when a retry was already made.
-export const redirectToLoginIfPossible = async (): Promise<boolean> => {
+// For 401 interceptors and login components: redirect to the single SSO login
+// entry (the backend resolves the provider itself from request context).
+// Returns false without redirecting when a retry was already made.
+export const redirectToLoginIfPossible = (): boolean => {
     if (consumeLoginRetry()) {
         return false;
     }
     markLoginRetry();
-    try {
-        const response = await fetch(getFullPath("/api/auth/get-provider"), { method: "GET" });
-        const data = await response.json();
-        window.location.href =
-            getFullPath(`/api/auth/oauth-login/${data.provider.param}`) +
-            `?returnTo=${buildReturnTo()}`;
-        return true;
-    } catch (error) {
-        console.error("请求失败:", error);
-        return false;
-    }
+    window.location.href =
+        getFullPath("/api/auth/login") + `?returnTo=${buildReturnTo()}`;
+    return true;
 };
