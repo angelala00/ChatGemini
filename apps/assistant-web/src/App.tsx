@@ -1986,6 +1986,7 @@ const App = () => {
                         logo={siteLogo}
                         isNoAuthorized={isNoAuthorized}
                         onLogined={(uname) => {setHasLogined(true);setUserName(uname)}}
+                        onNoAuthorized={() => setIsNoAuthorized(true)}
                     />
                 )}
             </Container>

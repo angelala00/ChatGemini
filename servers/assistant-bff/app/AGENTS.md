@@ -65,6 +65,13 @@
   - **V2 (摘要)**：为超出窗口的旧历史生成摘要，保留核心目标与结论。
 - **并发保护**：在上传和解析入口增加了并发数和超时（60s）限制。
 
+### 2.3 共享登录 returnTo 回跳契约 (SSO returnTo)
+多个同域部署的前端子应用（assistant-web、developer-portal 及后续接入者）共用本服务的 SSO 登录态（同域 HttpOnly Cookie + `/api/auth/*`），“登录后回到登录前页面”统一按以下契约实现，新子应用接入只做两件事，不得各自发明机制：
+- **前端跳转**：登录失效时跳 `/api/auth/oauth-login/{provider}?returnTo=<encodeURIComponent(pathname+search+hash)>`，`returnTo` 只允许站内相对路径，禁止拼完整 URL。各子应用统一使用同款 helper `src/helpers/loginRedirect.ts`（`buildReturnTo`/`markLoginRetry`/`consumeLoginRetry`/`redirectToLoginIfPossible`）。**401 拦截禁止再写 `window.location.href = '/'` 之类丢路径的跳转**，必须走 `redirectToLoginIfPossible()`。
+- **后端回跳**：登录服务用 `_safe_return_to`（`app/auth/auth_routes.py`）校验 returnTo（以 `/` 开头、非 `//`、无反斜杠、无 scheme/netloc，允许 query/fragment），校验通过后在登录流程结束后 302 回该相对路径；非法或缺失不重定向。仓库内 `oauth-login` 为 mock 实现（会用 Referer origin 拼绝对地址以兼容前后端不同端口的本地开发），内网真实 OAuth 实现须在 callback 末尾做同样校验与回跳，且不要使用 Referer 构造跳转目标。
+- **前端无需恢复逻辑**：浏览器被 302 回原 URL 后 SPA 原地重新引导即可。
+- **死循环保护**：跳转前写一次性 sessionStorage 标记 `sso.loginRetry`（读即删）；重新挂载仍未登录且标记存在 → 展示“无权限”不再跳转；登录成功（`/api/auth/status` ok）即清除标记。
+
 ## 3. 存储语义
 - **存储模块分层**：`app/storage/business_store.py` 继续作为兼容聚合入口与底层初始化/连接层；GPT/Pin 状态逻辑已拆到 `app/storage/gpts_store.py`，文件映射与上传预留逻辑拆到 `app/storage/file_store.py`，管理员模型/权限/开关/审计逻辑拆到 `app/storage/admin_store.py`。新增同类能力时优先写入对应分层模块，而不是继续回填到 `business_store.py`。
 - **普通附件 (Session Attachment)**：属于特定会话，随会话生命周期管理（默认 7 天过期）。

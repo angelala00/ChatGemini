@@ -3,16 +3,23 @@ import { useTranslation } from "react-i18next";
 
 import { useLocation } from "react-router-dom";
 import { getFullPath } from "../helpers/getDomainAndPath";
+import {
+    buildReturnTo,
+    clearLoginRetry,
+    consumeLoginRetry,
+    markLoginRetry,
+} from "../helpers/loginRedirect";
 
 interface LoginByOAuthProps {
     readonly logo: string;
     readonly title: string;
     readonly isNoAuthorized: boolean;
     readonly onLogined: (uname: string) => void;
+    readonly onNoAuthorized?: () => void;
 }
 
 export const LoginByOAuth = (props: LoginByOAuthProps) => {
-    const { logo, title, isNoAuthorized, onLogined } = props;
+    const { logo, title, isNoAuthorized, onLogined, onNoAuthorized } = props;
     const { t } = useTranslation();
 
     const react_location = useLocation();
@@ -36,14 +43,23 @@ export const LoginByOAuth = (props: LoginByOAuthProps) => {
         if (resp.ok) {
             const user = await resp.json();
             // console.log("user:"+user.name)
+            clearLoginRetry();
             return user.name;
+        }
+
+        if (consumeLoginRetry()) {
+            // A login redirect already happened and we are still unauthenticated:
+            // stop redirecting (loop guard) and surface the no-authorized state.
+            onNoAuthorized?.();
+            return false;
         }
 
         // const providerResponseJson = await handleRequest('GET', '/api/auth/get-provider');
         // if (providerResponseJson) {
-        //     window.location.href = domain + path + `/api/auth/oauth-login/` + providerResponseJson.provider.param; 
+        //     window.location.href = domain + path + `/api/auth/oauth-login/` + providerResponseJson.provider.param;
         // }
 
+        markLoginRetry();
         const response = await fetch(getFullPath('/api/auth/get-provider'), {
             method: 'GET'
         })
@@ -56,13 +72,16 @@ export const LoginByOAuth = (props: LoginByOAuthProps) => {
         .then(data => {
             // setSsoProvider(data.provider);
             // handleLogin()
-            window.location.href = getFullPath("/api/auth/oauth-login/" + data.provider.param); 
+            window.location.href =
+                getFullPath("/api/auth/oauth-login/" + data.provider.param) +
+                "?returnTo=" +
+                buildReturnTo();
         })
         .catch(error => {
             console.error('请求失败:', error);
         });
         return false
-    }, []);
+    }, [onNoAuthorized]);
 
     // console.log("111111111")
 
