@@ -7,6 +7,29 @@ import { getFullPath } from "../helpers/getDomainAndPath";
 const isSafeReturnTo = (value: string): boolean =>
     value.startsWith("/") && !value.startsWith("//") && !value.includes("\\");
 
+// Fallback used ONLY when the returnTo param is absent; a present but invalid
+// value still degrades to "/" without rescue. Same-origin referrers only -
+// cross-origin ones lose the path anyway under the default
+// strict-origin-when-cross-origin policy - and the referrer's own page (a
+// self-referential /login) is skipped to avoid feeding the login round-trip
+// its own URL. The origin is stripped and the remainder must pass the same
+// isSafeReturnTo guard before it can be used as a target.
+const referrerReturnTo = (): string => {
+    if (!document.referrer) {
+        return "";
+    }
+    try {
+        const ref = new URL(document.referrer);
+        if (ref.origin !== window.location.origin || ref.pathname === window.location.pathname) {
+            return "";
+        }
+        const rel = ref.pathname + ref.search + ref.hash;
+        return isSafeReturnTo(rel) ? rel : "";
+    } catch {
+        return "";
+    }
+};
+
 // Single login entry shared by all same-domain sub-apps: sub-apps redirect to
 // `/login?returnTo=<their current path>`; this page resolves the provider via
 // get-provider and forwards the (validated) returnTo to oauth-login. It never
@@ -18,7 +41,14 @@ export const LoginGateway = () => {
 
     useEffect(() => {
         const rawReturnTo = new URLSearchParams(window.location.search).get("returnTo") || "";
-        const target = isSafeReturnTo(rawReturnTo) ? rawReturnTo : "/";
+        // Absent returnTo: fall back to a validated same-origin referrer path;
+        // present but invalid: degrade to "/" with no rescue.
+        let target: string;
+        if (rawReturnTo) {
+            target = isSafeReturnTo(rawReturnTo) ? rawReturnTo : "/";
+        } else {
+            target = referrerReturnTo() || "/";
+        }
 
         const proceed = async () => {
             try {
