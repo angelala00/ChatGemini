@@ -2,7 +2,7 @@
 
 适用于与 assistant-bff 同域部署的后端子应用：应用自己不做登录，而是复用 assistant-bff 持有的 SSO 会话来识别用户。
 
-本文档描述 `/api/auth/*` 认证接口的对外接入方式；登录回跳机制的完整契约见 `app/AGENTS.md` 2.3（共享登录 returnTo 回跳契约）。
+本文档描述 `/api/auth/*` 认证接口的对外接入方式；登录回跳机制的完整契约见 `servers/assistant-bff/app/AGENTS.md` 2.3（共享登录 returnTo 回跳契约）。
 
 ## 原理
 
@@ -98,7 +98,7 @@ async def get_current_user(request: Request) -> dict:
 - 登录页负责查登录态、解析 provider 并转发到 `/api/auth/oauth-login/{provider}?returnTo=`，登录完成后由后端 302 回原页面；子应用前端无需任何恢复逻辑。
 - 死循环保护：跳转前写一次性 sessionStorage 标记 `sso.loginRetry`，重试仍未登录则展示无权限态，不再跳转。
 
-完整契约见 `app/AGENTS.md` 2.3。
+完整契约见 `servers/assistant-bff/app/AGENTS.md` 2.3。
 
 ## userinfo 返回字段
 
