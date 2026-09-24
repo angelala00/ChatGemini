@@ -3,7 +3,6 @@
 - **模型能力远端依赖收尾**：主聊天助手的模型能力主配置已迁入本地/后台；后续需要移除 `servers/assistant-bff/app/gpts/model_metadata.py` 对 `OPENAI_BASE_URL/v1/models` 扩展能力字段的合并依赖，彻底切到本地配置。
 - **前后端协议重构**：参考 `docs/chat-streaming-protocol.md` 优化 GPT 助手的通信协议，提升数据传输效率，支持结构化思考与工具调用。
 - **能力扩展**：MCP智能，Skills智能，GPTs，多智能体协同。
-- **LLM Platform 模块拆分**：将 LLM Platform 从当前项目中拆分为独立前端和后端模块，明确平台控制台、网关管理、用量指标、访问控制等边界。
 - **能力优化**：问答智能，文件智能。重点用通用的能力解决具体问题。
 
 ## Agent Runtime v3 高级能力

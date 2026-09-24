@@ -17,7 +17,6 @@
 - `apps/assistant-web`: main ChatGemini web client (React + Vite + Tailwind). Source in `apps/assistant-web/src`, static assets in `apps/assistant-web/public` and `apps/assistant-web/src/assets`.
 - `apps/assistant-web/template/assistai-ui`: static HTML client prototype (Tailwind Play CDN). Double-click index.html to view directly.
 - `apps/assistant-dashboard`: dashboard metrics console (React + Vite + Tailwind). Source in `apps/assistant-dashboard/src`.
-- `apps/llm-platform`: LLM platform console (React + Vite + Tailwind). Source in `apps/llm-platform/src`, static assets in `apps/llm-platform/public` (if present).
 - `servers/assistant-bff`: FastAPI backend for the assistant app. App entry in `servers/assistant-bff/app/main.py`.
 - `servers/assistant-metrics-api`: FastAPI service backing the dashboard. App entry in `servers/assistant-metrics-api/app/main.py`.
 - `changelog.md`: project timeline notes.
@@ -33,12 +32,6 @@
 - Dashboard (Vite dev server):
   ```bash
   cd apps/assistant-dashboard
-  npm install
-  npm run dev
-  ```
-- LLM platform console (Vite dev server):
-  ```bash
-  cd apps/llm-platform
   npm install
   npm run dev
   ```

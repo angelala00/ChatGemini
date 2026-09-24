@@ -25,7 +25,7 @@ Options:
   -h, --help                       Show this help
 
 Backends:  assistant-bff, assistant-metrics-api
-Frontends: assistant-web, assistant-dashboard, llm-platform
+Frontends: assistant-web, assistant-dashboard
 EOF
 }
 
@@ -59,7 +59,7 @@ add_backend() {
 add_frontend() {
   local name="$1"
   case "${name}" in
-    assistant-web|assistant-dashboard|llm-platform) ;;
+    assistant-web|assistant-dashboard) ;;
     *)
       echo "Unknown frontend: ${name}" >&2
       usage >&2
@@ -86,7 +86,6 @@ while (( $# )); do
       SELECTION_SPECIFIED=1
       add_frontend "assistant-web"
       add_frontend "assistant-dashboard"
-      add_frontend "llm-platform"
       shift
       ;;
     --backend|--frontend)
@@ -140,7 +139,6 @@ if [[ "${SELECTION_SPECIFIED}" -eq 0 ]]; then
   add_backend "assistant-metrics-api"
   add_frontend "assistant-web"
   add_frontend "assistant-dashboard"
-  add_frontend "llm-platform"
 fi
 
 require_cmd() {

@@ -21,10 +21,10 @@
 - `--backend <名称>`：部署指定后端，可重复传入
 - `--frontend <名称>`：部署指定前端，可重复传入
 - 后端名称：`assistant-bff`、`assistant-metrics-api`
-- 前端名称：`assistant-web`、`assistant-dashboard`、`llm-platform`
+- 前端名称：`assistant-web`、`assistant-dashboard`
 - 不同范围参数可以组合，例如 `./deploy.sh dev --backend assistant-bff --frontend assistant-web`
 - `--install` 会安装依赖（前端 `npm install` / 后端 `pip install -r requirements.txt`）
-- 部署脚本会构建前端：`apps/assistant-web`、`apps/assistant-dashboard`、`apps/llm-platform`
+- 部署脚本会构建前端：`apps/assistant-web`、`apps/assistant-dashboard`
 
 ### 状态检查
 

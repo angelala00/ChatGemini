@@ -8,6 +8,9 @@
 - 更大的升级、架构级调整或产品级变化升级第一位，例如 `v1.0.1` -> `v2.0.0`。
 - 正式发布时应同步更新 Sidebar 当前版本、Sidebar 发布记录和本文件中的版本标记。
 
+## [2026.09.24] LLM Platform 迁出
+- **独立仓库维护**：移除已迁移的 `apps/llm-platform` 前端，以及 Assistant BFF 中专用的 `/api/platform` 路由、Portal 配置和测试。
+- **部署入口清理**：移除 LLM Platform 的部署、状态检查和仓库文档入口。
 
 ## [2026.07.30] LLM Platform API Key 额度按 Space 计算
 - **空间额度独立**：个人和项目的 API Key 数量上限改为在每个 Space 内分别计算，默认空间额度用满后仍可在其他已授权空间创建。
