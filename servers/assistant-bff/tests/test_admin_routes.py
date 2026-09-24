@@ -131,6 +131,10 @@ class AdminRoutesTests(unittest.IsolatedAsyncioTestCase):
             flags["external_assistant_visible_users"]["config_value"],
             [],
         )
+        self.assertEqual(
+            flags["external_assistant_visible_groups"]["config_value"],
+            [],
+        )
         self.assertIsInstance(
             flags["external_assistant_base_url"]["config_value"],
             str,
@@ -181,6 +185,7 @@ class AdminRoutesTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("external_assistant_feature_enabled", flags)
         self.assertIn("external_assistant_visible_scope", flags)
         self.assertIn("external_assistant_visible_users", flags)
+        self.assertIn("external_assistant_visible_groups", flags)
         self.assertIn("external_assistant_base_url", flags)
         self.assertIn("external_assistant_menus", flags)
         self.assertNotIn("default_model", flags)

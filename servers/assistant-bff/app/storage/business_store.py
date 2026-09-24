@@ -1955,6 +1955,12 @@ def _load_seed_admin_feature_flags() -> list[dict[str, Any]]:
             "description": "List of user identifiers that can see the external assistant workspace when visibility is restricted.",
         },
         {
+            "config_key": "external_assistant_visible_groups",
+            "config_value": [],
+            "value_type": "json",
+            "description": "List of exact LDAP OU names that can see the external assistant workspace when visibility is restricted.",
+        },
+        {
             "config_key": "external_assistant_base_url",
             "config_value": model_config.EXTERNAL_ASSISTANT_URL,
             "value_type": "string",
@@ -2007,6 +2013,8 @@ def _should_backfill_feature_flag(
             and current_value.strip().lower() in {"all", "restricted"}
         )
     if config_key == "external_assistant_visible_users":
+        return not isinstance(current_value, list)
+    if config_key == "external_assistant_visible_groups":
         return not isinstance(current_value, list)
     if config_key == "external_assistant_base_url":
         return not isinstance(current_value, str)

@@ -9,7 +9,7 @@ from app.admin.access_control import (
     get_feature_flag_value,
     is_external_assistant_visible_to_user,
 )
-from app.auth.auth_routes import get_current_user
+from app.auth.auth_routes import get_current_auth_provider, get_current_user
 from app.base_config import model_config
 
 
@@ -17,13 +17,17 @@ router = APIRouter(prefix="/api/external-assistant", tags=["external-assistant"]
 
 EXTERNAL_ASSISTANT_BASE_URL_KEY = "external_assistant_base_url"
 EXTERNAL_ASSISTANT_MENUS_KEY = "external_assistant_menus"
+EXTERNAL_ASSISTANT_AUTH_PROVIDER = "office"
 MAX_EXTERNAL_ASSISTANT_MENUS = 30
 _MENU_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 _MENU_ICON_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 
 
 def is_external_assistant_allowed(user: dict[str, object]) -> bool:
-    return is_external_assistant_visible_to_user(user)
+    return (
+        get_current_auth_provider(user) == EXTERNAL_ASSISTANT_AUTH_PROVIDER
+        and is_external_assistant_visible_to_user(user)
+    )
 
 
 def ensure_external_assistant_allowed(user: dict[str, object]) -> None:

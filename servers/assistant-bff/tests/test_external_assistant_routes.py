@@ -114,9 +114,33 @@ class ExternalAssistantRoutesTests(unittest.IsolatedAsyncioTestCase):
             updated_by="test",
         )
 
+    def _set_visible_groups(self, groups: list[str]) -> None:
+        business_store.upsert_admin_feature_flag(
+            config_key="external_assistant_visible_groups",
+            config_value=groups,
+            value_type="json",
+            description="Smart Office visible LDAP organizational units",
+            updated_by="test",
+        )
+
+    @staticmethod
+    def _user(
+        *,
+        email: str = "pilot@example.com",
+        sub: str = "pilot-sub",
+        auth_provider: str = "office",
+        group: str = "",
+    ) -> dict[str, str]:
+        return {
+            "email": email,
+            "sub": sub,
+            "auth_provider": auth_provider,
+            "group": group,
+        }
+
     async def test_permission_is_disabled_by_default(self):
         result = await external_assistant_routes.external_assistant_permission(
-            {"email": "pilot@example.com", "sub": "pilot-sub"}
+            self._user()
         )
         self.assertEqual(result, {"allowed": False})
 
@@ -127,13 +151,13 @@ class ExternalAssistantRoutesTests(unittest.IsolatedAsyncioTestCase):
         )
 
         email_result = await external_assistant_routes.external_assistant_permission(
-            {"email": "pilot@example.com", "sub": "pilot-sub"}
+            self._user()
         )
         sub_result = await external_assistant_routes.external_assistant_permission(
-            {"email": "other@example.com", "sub": "allowed-sub"}
+            self._user(email="other@example.com", sub="allowed-sub")
         )
         denied_result = await external_assistant_routes.external_assistant_permission(
-            {"email": "other@example.com", "sub": "other-sub"}
+            self._user(email="other@example.com", sub="other-sub")
         )
 
         self.assertTrue(email_result["allowed"])
@@ -142,18 +166,69 @@ class ExternalAssistantRoutesTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_global_switch_overrides_allowlist(self):
         self._set_visibility(enabled=False, users=["pilot@example.com"])
+        self._set_visible_groups(["平台运维"])
         result = await external_assistant_routes.external_assistant_permission(
-            {"email": "pilot@example.com", "sub": "pilot-sub"}
+            self._user(group="CN=jc,OU=平台运维,DC=nu,DC=com")
         )
         self.assertFalse(result["allowed"])
+
+    async def test_permission_matches_exact_organizational_unit(self):
+        self._set_visibility(enabled=True, users=[])
+        self._set_visible_groups(["平台运维", "开发测试"])
+
+        operations_result = await external_assistant_routes.external_assistant_permission(
+            self._user(group="CN=jc,OU=平台组,OU=平台运维,OU=nuuser,DC=nu,DC=com")
+        )
+        development_result = await external_assistant_routes.external_assistant_permission(
+            self._user(group="CN=test,OU=开发测试,OU=nuuser,DC=nu,DC=com")
+        )
+        substring_result = await external_assistant_routes.external_assistant_permission(
+            self._user(group="CN=test,OU=平台运维测试,OU=nuuser,DC=nu,DC=com")
+        )
+        denied_result = await external_assistant_routes.external_assistant_permission(
+            self._user(group="CN=test,OU=产品研发,OU=nuuser,DC=nu,DC=com")
+        )
+
+        self.assertTrue(operations_result["allowed"])
+        self.assertTrue(development_result["allowed"])
+        self.assertFalse(substring_result["allowed"])
+        self.assertFalse(denied_result["allowed"])
+
+    async def test_permission_is_limited_to_office_provider(self):
+        self._set_visibility(enabled=True, users=[], scope="all")
+
+        office_result = await external_assistant_routes.external_assistant_permission(
+            self._user(auth_provider="office")
+        )
+        desktop_result = await external_assistant_routes.external_assistant_permission(
+            self._user(auth_provider="desktop")
+        )
+        wecom_result = await external_assistant_routes.external_assistant_permission(
+            self._user(auth_provider="wecom")
+        )
+
+        self.assertTrue(office_result["allowed"])
+        self.assertFalse(desktop_result["allowed"])
+        self.assertFalse(wecom_result["allowed"])
 
     async def test_bootstrap_rejects_non_allowlisted_user(self):
         self._set_visibility(enabled=True, users=["pilot@example.com"])
         with self.assertRaises(HTTPException) as ctx:
             await external_assistant_routes.external_assistant_bootstrap(
-                {"email": "other@example.com", "sub": "other-sub"}
+                self._user(email="other@example.com", sub="other-sub")
             )
         self.assertEqual(ctx.exception.status_code, 403)
+
+    async def test_bootstrap_rejects_non_office_provider(self):
+        self._set_visibility(enabled=True, users=[], scope="all")
+
+        for auth_provider in ("desktop", "wecom"):
+            with self.subTest(auth_provider=auth_provider):
+                with self.assertRaises(HTTPException) as ctx:
+                    await external_assistant_routes.external_assistant_bootstrap(
+                        self._user(auth_provider=auth_provider)
+                    )
+                self.assertEqual(ctx.exception.status_code, 403)
 
     async def test_bootstrap_returns_configured_iframe_for_allowed_user(self):
         self._set_visibility(enabled=True, users=["pilot@example.com"])
@@ -164,7 +239,7 @@ class ExternalAssistantRoutesTests(unittest.IsolatedAsyncioTestCase):
                 {"id": "history", "label": "历史会话", "path": "chat/history"},
             ],
         )
-        user = {"email": "pilot@example.com", "sub": "pilot-sub"}
+        user = self._user()
         with patch.object(
             external_assistant_routes.model_config,
             "EXTERNAL_ASSISTANT_TITLE",
@@ -203,7 +278,7 @@ class ExternalAssistantRoutesTests(unittest.IsolatedAsyncioTestCase):
             menus=[{"id": "home", "label": "首页", "path": ""}],
         )
         result = await external_assistant_routes.external_assistant_bootstrap(
-            {"email": "pilot@example.com", "sub": "pilot-sub"}
+            self._user()
         )
 
         self.assertEqual(result["iframe_url"], "")
@@ -222,7 +297,7 @@ class ExternalAssistantRoutesTests(unittest.IsolatedAsyncioTestCase):
             ],
         )
         result = await external_assistant_routes.external_assistant_bootstrap(
-            {"email": "pilot@example.com", "sub": "pilot-sub"}
+            self._user()
         )
 
         self.assertEqual(
@@ -253,7 +328,7 @@ class ExternalAssistantRoutesTests(unittest.IsolatedAsyncioTestCase):
             ],
         )
         result = await external_assistant_routes.external_assistant_bootstrap(
-            {"email": "pilot@example.com", "sub": "pilot-sub"}
+            self._user()
         )
 
         self.assertEqual(
@@ -292,7 +367,7 @@ class ExternalAssistantRoutesTests(unittest.IsolatedAsyncioTestCase):
                     menus=[{"id": "history", "label": "历史会话", "path": "chat/history", "icon": icon}],
                 )
                 result = await external_assistant_routes.external_assistant_bootstrap(
-                    {"email": "pilot@example.com", "sub": "pilot-sub"}
+                    self._user()
                 )
 
                 self.assertEqual(

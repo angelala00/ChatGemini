@@ -8,6 +8,10 @@
 - 更大的升级、架构级调整或产品级变化升级第一位，例如 `v1.0.1` -> `v2.0.0`。
 - 正式发布时应同步更新 Sidebar 当前版本、Sidebar 发布记录和本文件中的版本标记。
 
+## [2026.09.24] 智能办公登录端限制
+- **登录端门控**：智能办公入口及 bootstrap 仅允许 `office` 登录端访问，`desktop` 与 `wecom` 端不再展示入口，且无法直接获取智能办公配置。
+- **部门白名单**：限制模式新增 `external_assistant_visible_groups` 配置，可按登录用户 `group` DN 中精确匹配的 `OU` 部门开放智能办公；个人账号与部门任一命中即可访问。
+
 ## [2026.09.24] LLM Platform 迁出
 - **独立仓库维护**：移除已迁移的 `apps/llm-platform` 前端，以及 Assistant BFF 中专用的 `/api/platform` 路由、Portal 配置和测试。
 - **部署入口清理**：移除 LLM Platform 的部署、状态检查和仓库文档入口。

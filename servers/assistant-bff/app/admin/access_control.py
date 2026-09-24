@@ -37,6 +37,7 @@ EXTERNAL_ASSISTANT_VISIBILITY_POLICY = VisibilityPolicyConfig(
     fallback_users_provider=lambda: model_config.EXTERNAL_ASSISTANT_WHITE_LIST,
     empty_fallback_scope="restricted",
 )
+EXTERNAL_ASSISTANT_VISIBLE_GROUPS_KEY = "external_assistant_visible_groups"
 
 
 def user_keys(user: dict[str, object]) -> list[str]:
@@ -46,6 +47,52 @@ def user_keys(user: dict[str, object]) -> list[str]:
         if isinstance(value, str) and value.strip():
             keys.append(value.strip())
     return keys
+
+
+def _split_distinguished_name(value: str) -> list[str]:
+    components: list[str] = []
+    current: list[str] = []
+    escaped = False
+    quoted = False
+    for character in value:
+        if escaped:
+            current.append(character)
+            escaped = False
+            continue
+        if character == "\\":
+            escaped = True
+            continue
+        if character == '"':
+            quoted = not quoted
+            continue
+        if character == "," and not quoted:
+            components.append("".join(current).strip())
+            current = []
+            continue
+        current.append(character)
+    if escaped:
+        current.append("\\")
+    components.append("".join(current).strip())
+    return components
+
+
+def user_organizational_units(user: dict[str, object]) -> list[str]:
+    group = user.get("group")
+    if not isinstance(group, str) or not group.strip():
+        return []
+
+    organizational_units: list[str] = []
+    for component in _split_distinguished_name(group):
+        attribute, separator, value = component.partition("=")
+        normalized_value = value.strip()
+        if (
+            separator
+            and attribute.strip().casefold() == "ou"
+            and normalized_value
+            and normalized_value not in organizational_units
+        ):
+            organizational_units.append(normalized_value)
+    return organizational_units
 
 
 def fallback_permissions_for_user(user: dict[str, object]) -> set[str]:
@@ -134,16 +181,29 @@ def is_external_assistant_visible_to_user(user: dict[str, object]) -> bool:
     scope, users, _using_fallback = get_visibility_config(
         EXTERNAL_ASSISTANT_VISIBILITY_POLICY
     )
-    return is_user_allowed(
+    feature_enabled = get_feature_enabled(EXTERNAL_ASSISTANT_VISIBILITY_POLICY)
+    user_allowed = is_user_allowed(
         user_keys(user),
-        feature_enabled=get_feature_enabled(EXTERNAL_ASSISTANT_VISIBILITY_POLICY),
+        feature_enabled=feature_enabled,
         visible_scope=scope,
         visible_users=users,
+    )
+    if user_allowed or not feature_enabled or scope != "restricted":
+        return user_allowed
+
+    visible_groups = {
+        item.casefold()
+        for item in get_feature_flag_string_list(EXTERNAL_ASSISTANT_VISIBLE_GROUPS_KEY)
+    }
+    return bool(
+        visible_groups
+        & {item.casefold() for item in user_organizational_units(user)}
     )
 
 
 __all__ = [
     "fallback_permissions_for_user",
+    "EXTERNAL_ASSISTANT_VISIBLE_GROUPS_KEY",
     "EXTERNAL_ASSISTANT_VISIBILITY_POLICY",
     "GPTS_VISIBILITY_POLICY",
     "LIBRARY_VISIBILITY_POLICY",
@@ -159,4 +219,5 @@ __all__ = [
     "is_library_visible_to_user",
     "resolve_user_permissions",
     "user_keys",
+    "user_organizational_units",
 ]
