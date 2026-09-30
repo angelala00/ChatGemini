@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { globalConfig } from "../config/global";
 import { RouterComponentProps } from "../config/router";
 import { fillTextAreaValue } from "../helpers/fillTextAreaValue";
-const regulationIcon = "/gpts/policy.svg";
+import regulationIcon from "../assets/icons/zhidu_logo.svg";
 import { normalizeAssetPath } from "../helpers/normalizeAssetPath";
 
 

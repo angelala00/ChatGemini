@@ -1,7 +1,7 @@
 import submitIcon from "../assets/icons/circle-check-solid.svg";
 import emptyIcon from "../assets/icons/folder-open-solid.svg";
 import closeIcon from "../assets/icons/xmark-solid.svg";
-const regulationIcon = "/gpts/policy.svg";
+import regulationIcon from "../assets/icons/zhidu_logo.svg";
 import wandIcon from "../assets/icons/ds-logo.svg";
 import appsIcon from "../assets/icons/apps.svg";
 import {

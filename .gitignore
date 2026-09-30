@@ -33,3 +33,4 @@ apps/assistant-web/build
 **.log
 
 **nohup.out
+.idea/*
