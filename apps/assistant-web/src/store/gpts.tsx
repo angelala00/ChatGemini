@@ -4,6 +4,8 @@ export interface PinnedGpt {
     readonly gid: string;
     readonly name: string;
     readonly logo?: string;
+    readonly assistant_kind?: string;
+    readonly redirect_path?: string;
 }
 
 export type PinnedGpts = PinnedGpt[];

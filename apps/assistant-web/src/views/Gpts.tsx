@@ -16,6 +16,7 @@ import unpinnedIcon from "../assets/icons/map-pin-solid.svg";
 import { getFullPath } from "../helpers/getDomainAndPath";
 import { onUpdate as updatePinnedGpts } from "../store/gpts";
 import { normalizeAssetPath } from "../helpers/normalizeAssetPath";
+import { openGptEntry } from "../helpers/openGptEntry";
 
 interface GptsItem {
     readonly gid: string;
@@ -26,6 +27,8 @@ interface GptsItem {
     readonly owner?: string;
     readonly usage_count?: number;
     readonly pinned_user_count?: number;
+    readonly assistant_kind?: string;
+    readonly redirect_path?: string;
 }
 
 interface SectionProps {
@@ -64,11 +67,11 @@ const Section = ({ title, description, items, onToggle }: SectionProps) => {
                         role="button"
                         tabIndex={0}
                         className="group relative flex min-h-[208px] cursor-pointer flex-col overflow-hidden rounded-[22px] border border-[var(--assist-line)] bg-[rgba(252,253,254,0.92)] p-5 shadow-[var(--assist-shadow-sm)] transition duration-200 ease-out hover:-translate-y-0.5 hover:border-[var(--assist-line-strong)] hover:shadow-[var(--assist-shadow-md)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--assist-accent)]/40"
-                        onClick={() => navigate(`/g/${item.gid}`)}
+                        onClick={() => openGptEntry(item, navigate)}
                         onKeyDown={(event) => {
                             if (event.key === "Enter" || event.key === " ") {
                                 event.preventDefault();
-                                navigate(`/g/${item.gid}`);
+                                openGptEntry(item, navigate);
                             }
                         }}
                     >

@@ -28,6 +28,7 @@ import { handleRequest } from "../helpers/handleRequest";
 import { getFullPath } from "../helpers/getDomainAndPath";
 import { globalConfig } from "../config/global";
 import { normalizeAssetPath } from "../helpers/normalizeAssetPath";
+import { openGptEntry } from "../helpers/openGptEntry";
 import { SessionSummary } from "../types/sessionHistory";
 import { WorkspaceMode } from "../types/externalAssistant";
 import { WorkspaceSidebarHeader } from "./WorkspaceSidebarHeader";
@@ -784,13 +785,14 @@ export const Sidebar = (props: SidebarProps) => {
             <div
                 className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain ${assistantSectionOffset}`}
             >
-            {visiblePinnedGpts.map(({ gid, name, logo }, index) => {
+            {visiblePinnedGpts.map((item, index) => {
+                const { gid, name, logo } = item;
                 return (
                     <div
                         key={gid}
                         className={`${index === 0 ? "mt-0 mb-0" : "my-0"} flex min-h-[34px] cursor-pointer items-center justify-start rounded-[10px] px-0 py-0 text-left text-[14px] font-normal text-[#2f3a46] transition-all hover:bg-[rgba(229,234,239,0.82)]`}
                         onClick={() => {
-                            navigate("/g/"+gid)
+                            openGptEntry(item, navigate)
                         }}
                     >
                         <span className="inline-flex items-center gap-1">

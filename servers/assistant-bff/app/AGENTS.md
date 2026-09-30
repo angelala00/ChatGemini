@@ -22,6 +22,13 @@
 - v3 为会话附件提供 `document_list/document_read_text`，为智能体知识提供独立 `knowledge_list/knowledge_read_text`；两类文件 ID 和授权策略分离。v3 历史键为 `agent_runtime_v3:{gid}:{conversation_id}`，不同 Agent 不共享历史。
 - 高风险确认令牌使用 `AGENT_CONFIRMATION_SECRET`；多节点部署必须配置相同值。未配置时回退到 `SESSION_HISTORY_ENCRYPTION_KEY`，本地两者均为空时仅使用进程级临时密钥。
 
+### 路径跳转智能体
+
+- 自定义智能体支持 `assistant_kind=path_redirect`，配置只要求 `name`、`desc`、`redirect_path` 及既有 `auth` / owner / admins / viewers 权限字段；该类型不设置 `handler_key`，也不补充 Runtime v3、模型或能力默认配置。
+- `redirect_path` 保存为不带首尾斜杠的站内相对路径，只允许安全的字母、数字、点、下划线、波浪号和连字符路径段；禁止域名、查询参数、锚点、空路径及 `.` / `..` 路径段。
+- `GET /api/gpts` 和 `GET /api/gpts/pined` 仅向按现有 `auth_ok` 规则可见的用户返回该类型；列表项同时返回 `assistant_kind` 和 `redirect_path` 供前端分流。
+- 此处权限只控制 ChatGemini 中的入口可见性。用户直接访问目标路径时的授权仍由目标应用或反向代理负责。
+
 ### 1.1 执行序列
 1. **加载与裁剪历史**：从数据库读取会话历史，执行裁剪逻辑以适配模型窗口。
 2. **构建用户消息**：

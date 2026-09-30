@@ -58,3 +58,8 @@ apps/assistant-web/template/assistai-ui/
     ├── automation-workspace.js # 定时任务渲染器 (已重构 HTML 模板 of Tailwind 样式类)
     └── explore-workspace.js   # 技能探索渲染器 (已重构 HTML 模板 of Tailwind 样式类)
 ```
+
+## 5. 路径跳转模式原型
+
+- 创建智能体原型提供“对话智能体 / 路径跳转模式”切换。
+- 路径跳转模式只保留智能体档案、站内相对路径和权限区域，并隐藏指令、知识、能力与对话预览。

@@ -16,6 +16,7 @@ import { Container } from "../components/Container";
 import { Topbar } from "../components/Topbar";
 import { getFullPath } from "../helpers/getDomainAndPath";
 import { handleRequest } from "../helpers/handleRequest";
+import { normalizeGptRedirectPath } from "../helpers/openGptEntry";
 import { UploadCategory } from "../types/models";
 
 interface KnowledgeFile {
@@ -166,7 +167,11 @@ interface CreateGptProps {
     readonly sidebarExpand?: boolean;
 }
 
+type AssistantKind = "custom" | "path_redirect";
+
 const CreateGpt = ({ onToggleSidebar, sidebarExpand }: CreateGptProps) => {
+    const [assistantKind, setAssistantKind] = useState<AssistantKind>("custom");
+    const [redirectPath, setRedirectPath] = useState("");
     const [name, setName] = useState("");
     const [desc, setDesc] = useState("");
     const [systemPrompt, setSystemPrompt] = useState("");
@@ -195,6 +200,7 @@ const CreateGpt = ({ onToggleSidebar, sidebarExpand }: CreateGptProps) => {
     const gid = searchParams.get("gid");
     const { t } = useTranslation();
     const MAX_SAMPLES = 5;
+    const normalizedRedirectPath = normalizeGptRedirectPath(redirectPath);
 
     const handleSampleChange = (index: number, value: string) => {
         const previousValue = samples[index];
@@ -228,6 +234,12 @@ const CreateGpt = ({ onToggleSidebar, sidebarExpand }: CreateGptProps) => {
         fetch(getFullPath(`/api/gpts/detail/${gid}`), {})
             .then((res) => res.json())
             .then((data) => {
+                setAssistantKind(
+                    data.assistant_kind === "path_redirect" ? "path_redirect" : "custom",
+                );
+                setRedirectPath(
+                    typeof data.redirect_path === "string" ? data.redirect_path : "",
+                );
                 setName(data.name ?? "");
                 setDesc(data.desc ?? "");
                 setSystemPrompt(data.system_prompt ?? "");
@@ -376,17 +388,22 @@ const CreateGpt = ({ onToggleSidebar, sidebarExpand }: CreateGptProps) => {
         const body: Record<string, any> = {
             name,
             desc,
-            system_prompt: systemPrompt,
-            default_model: nextPreferredModel,
-            visible_model_ids: normalizedVisibleModelIds,
-            upload_file_types: uploadFileTypes,
-            enabled_capabilities: enabledCapabilityIds.filter((id) =>
-                availableCapabilities.some((capability) => capability.id === id),
-            ),
+            assistant_kind: assistantKind,
         };
-        const sanitizedSamples = samples.map((sample) => sample.trim()).filter(Boolean);
-        if (sanitizedSamples.length > 0) {
-            body.samples = sanitizedSamples;
+        if (assistantKind === "path_redirect") {
+            body.redirect_path = normalizedRedirectPath;
+        } else {
+            body.system_prompt = systemPrompt;
+            body.default_model = nextPreferredModel;
+            body.visible_model_ids = normalizedVisibleModelIds;
+            body.upload_file_types = uploadFileTypes;
+            body.enabled_capabilities = enabledCapabilityIds.filter((id) =>
+                availableCapabilities.some((capability) => capability.id === id),
+            );
+            const sanitizedSamples = samples.map((sample) => sample.trim()).filter(Boolean);
+            if (sanitizedSamples.length > 0) {
+                body.samples = sanitizedSamples;
+            }
         }
         if (gid && ownerUser.trim()) {
             body.owner = ownerUser.trim();
@@ -407,7 +424,7 @@ const CreateGpt = ({ onToggleSidebar, sidebarExpand }: CreateGptProps) => {
         const url = gid ? getFullPath(`/api/gpts/${gid}`) : getFullPath("/api/gpts");
         handleRequest(method, url, JSON.stringify(body), { "Content-Type": "application/json" })
             .then((data) => {
-                if (gid) {
+                if (gid || assistantKind === "path_redirect") {
                     navigate("/my-gpts");
                 } else {
                     navigate(`/gpts/create?gid=${data.gid}`, { replace: true });
@@ -417,6 +434,13 @@ const CreateGpt = ({ onToggleSidebar, sidebarExpand }: CreateGptProps) => {
             .catch(() => setMessage(t("views.CreateGpt.submit_failed")))
             .finally(() => setIsSubmitting(false));
     };
+
+    const isPathRedirect = assistantKind === "path_redirect";
+    const submitDisabled =
+        isSubmitting ||
+        (isPathRedirect
+            ? !normalizedRedirectPath
+            : !preferredModel || !capabilitiesLoaded);
 
     const topbarTitle = (
         <div className="flex items-center gap-2">
@@ -436,7 +460,7 @@ const CreateGpt = ({ onToggleSidebar, sidebarExpand }: CreateGptProps) => {
         <button
             type="submit"
             form="create-gpt-form"
-            disabled={isSubmitting || !preferredModel || !capabilitiesLoaded}
+            disabled={submitDisabled}
             className="inline-flex h-9 items-center gap-2 rounded-[10px] border border-transparent bg-[var(--assist-accent-strong)] px-4 text-[13px] font-semibold text-white shadow-[0_6px_16px_rgba(39,154,179,0.16)] transition duration-160 ease-out hover:-translate-y-0.5 hover:bg-[var(--assist-accent)] disabled:cursor-not-allowed disabled:opacity-50"
         >
             {isSubmitting ? t("views.CreateGpt.submitting") : (gid ? t("common.save") : t("common.create"))}
@@ -564,12 +588,54 @@ const CreateGpt = ({ onToggleSidebar, sidebarExpand }: CreateGptProps) => {
                         {gid ? t("views.CreateGpt.edit_title") : t("views.CreateGpt.create_title")}
                     </h1>
                     <p className="mt-2 text-[15px] leading-relaxed text-[var(--assist-text-soft)]">
-                        {t("views.CreateGpt.page_subtitle")}
+                        {t(
+                            isPathRedirect
+                                ? "views.CreateGpt.path_page_subtitle"
+                                : "views.CreateGpt.page_subtitle",
+                        )}
                     </p>
                 </header>
 
                 <form id="create-gpt-form" onSubmit={handleSubmit} className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_330px] lg:items-start">
                     <div className="mx-auto w-full max-w-[780px] space-y-6 lg:col-span-2">
+                        <section className="rounded-[24px] border border-[var(--assist-line)] bg-[rgba(252,253,254,0.92)] p-5 shadow-[var(--assist-shadow-sm)] sm:p-6">
+                            <div className="mb-4">
+                                <h2 className="text-[17px] font-semibold tracking-[-0.01em]">
+                                    {t("views.CreateGpt.mode_title")}
+                                </h2>
+                                <p className="mt-1 text-sm text-[var(--assist-text-faint)]">
+                                    {gid
+                                        ? t("views.CreateGpt.mode_edit_hint")
+                                        : t("views.CreateGpt.mode_description")}
+                                </p>
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                                {(["custom", "path_redirect"] as AssistantKind[]).map((kind) => {
+                                    const active = assistantKind === kind;
+                                    return (
+                                        <button
+                                            key={kind}
+                                            type="button"
+                                            disabled={Boolean(gid)}
+                                            onClick={() => setAssistantKind(kind)}
+                                            className={`rounded-[16px] border p-4 text-left transition ${
+                                                active
+                                                    ? "border-[var(--assist-accent)] bg-[var(--assist-accent-soft)]"
+                                                    : "border-[var(--assist-line)] bg-white hover:border-[var(--assist-line-strong)]"
+                                            } disabled:cursor-not-allowed disabled:opacity-70`}
+                                        >
+                                            <span className="block text-sm font-semibold text-[var(--assist-text)]">
+                                                {t(`views.CreateGpt.mode_${kind}`)}
+                                            </span>
+                                            <span className="mt-1 block text-xs leading-5 text-[var(--assist-text-faint)]">
+                                                {t(`views.CreateGpt.mode_${kind}_description`)}
+                                            </span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </section>
+
                         <section className="rounded-[24px] border border-[var(--assist-line)] bg-[rgba(252,253,254,0.92)] p-5 shadow-[var(--assist-shadow-sm)] sm:p-6">
                             <div className="mb-6">
                                 <h2 className="text-[17px] font-semibold tracking-[-0.01em]">
@@ -599,11 +665,49 @@ const CreateGpt = ({ onToggleSidebar, sidebarExpand }: CreateGptProps) => {
                                         onChange={(event) => setDesc(event.target.value)}
                                         className={fieldClassName}
                                         placeholder={t("views.CreateGpt.desc_placeholder")}
+                                        required
                                     />
                                 </label>
                             </div>
                         </section>
 
+                        {isPathRedirect && (
+                            <section className="rounded-[24px] border border-[var(--assist-line)] bg-[rgba(252,253,254,0.92)] p-5 shadow-[var(--assist-shadow-sm)] sm:p-6">
+                                <div className="mb-5">
+                                    <h2 className="text-[17px] font-semibold tracking-[-0.01em]">
+                                        {t("views.CreateGpt.redirect_title")}
+                                    </h2>
+                                    <p className="mt-1 text-sm text-[var(--assist-text-faint)]">
+                                        {t("views.CreateGpt.redirect_description")}
+                                    </p>
+                                </div>
+                                <label className="text-sm font-medium text-[var(--assist-text-soft)]">
+                                    {t("views.CreateGpt.redirect_path_label")}
+                                    <input
+                                        type="text"
+                                        value={redirectPath}
+                                        onChange={(event) => setRedirectPath(event.target.value)}
+                                        className={fieldClassName}
+                                        placeholder="apps/policy-agent"
+                                        required
+                                    />
+                                </label>
+                                <p className={`mt-3 text-xs leading-5 ${
+                                    redirectPath.trim() && !normalizedRedirectPath
+                                        ? "text-red-500"
+                                        : "text-[var(--assist-text-faint)]"
+                                }`}>
+                                    {redirectPath.trim() && !normalizedRedirectPath
+                                        ? t("views.CreateGpt.redirect_path_invalid")
+                                        : t("views.CreateGpt.redirect_path_hint", {
+                                              path: normalizedRedirectPath || "apps/policy-agent",
+                                          })}
+                                </p>
+                            </section>
+                        )}
+
+                        {!isPathRedirect && (
+                        <>
                         <section className="rounded-[24px] border border-[var(--assist-line)] bg-[rgba(252,253,254,0.92)] p-5 shadow-[var(--assist-shadow-sm)] sm:p-6">
                             <div className="mb-6">
                                 <h2 className="text-[17px] font-semibold tracking-[-0.01em]">
@@ -988,6 +1092,8 @@ const CreateGpt = ({ onToggleSidebar, sidebarExpand }: CreateGptProps) => {
                                 </div>
                             )}
                         </section>
+                        </>
+                        )}
 
                         <section className="rounded-[24px] border border-[var(--assist-line)] bg-[rgba(252,253,254,0.92)] p-5 shadow-[var(--assist-shadow-sm)]">
                             <h2 className="text-sm font-semibold">{t("views.CreateGpt.permission_label")}</h2>
@@ -1064,7 +1170,7 @@ const CreateGpt = ({ onToggleSidebar, sidebarExpand }: CreateGptProps) => {
 
                         <button
                             type="submit"
-                            disabled={isSubmitting || !preferredModel}
+                            disabled={submitDisabled}
                             className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-[14px] bg-[var(--assist-accent-strong)] px-5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(39,154,179,0.2)] transition hover:-translate-y-0.5 hover:bg-[var(--assist-accent)] disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             {isSubmitting ? t("views.CreateGpt.submitting") : t("views.CreateGpt.submit")}

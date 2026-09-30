@@ -146,6 +146,20 @@
             </div>
 
             <div class="gpt-create-layout grid grid-cols-1 md:grid-cols-2 gap-6 max-w-[1200px] mx-auto pb-[60px]">
+              <div class="form-card md:col-span-2 p-5 rounded-[24px] border border-[rgba(232,236,240,0.98)] bg-[rgba(252,253,254,0.92)] shadow-sm">
+                <h3 class="m-0 text-[15px] font-semibold text-[var(--text)]">创建模式</h3>
+                <p class="mt-1 mb-4 text-xs leading-5 text-[var(--text-soft)]">选择智能体在平台中的打开方式。</p>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button type="button" data-gpt-mode-button="custom" class="rounded-2xl border border-[var(--accent)] bg-[var(--accent-soft)] p-4 text-left transition-all">
+                    <span class="block text-sm font-semibold text-[var(--text)]">对话智能体</span>
+                    <span class="mt-1 block text-xs leading-5 text-[var(--text-soft)]">使用模型、提示词和能力配置提供智能对话。</span>
+                  </button>
+                  <button type="button" data-gpt-mode-button="path_redirect" class="rounded-2xl border border-[var(--line)] bg-white p-4 text-left transition-all hover:border-[var(--line-strong)]">
+                    <span class="block text-sm font-semibold text-[var(--text)]">路径跳转模式</span>
+                    <span class="mt-1 block text-xs leading-5 text-[var(--text-soft)]">点击后跳转到当前域名下已有的独立页面。</span>
+                  </button>
+                </div>
+              </div>
               <div class="form-column flex flex-col gap-6">
                 <div class="form-card p-5 rounded-[24px] border border-[rgba(232,236,240,0.98)] bg-[rgba(252,253,254,0.92)] shadow-sm">
                   <h3 class="form-section-title m-0 mb-4 text-[rgba(38,49,61,0.98)] text-[15px] font-semibold flex items-center gap-2.5">
@@ -171,7 +185,17 @@
                   </div>
                 </div>
 
-                <div class="form-card p-5 rounded-[24px] border border-[rgba(232,236,240,0.98)] bg-[rgba(252,253,254,0.92)] shadow-sm">
+                <div data-gpt-mode-panel="path_redirect" class="hidden form-card p-5 rounded-[24px] border border-[rgba(232,236,240,0.98)] bg-[rgba(252,253,254,0.92)] shadow-sm">
+                  <h3 class="m-0 mb-2 text-[15px] font-semibold text-[var(--text)]">页面路径</h3>
+                  <p class="mb-4 text-xs leading-5 text-[var(--text-soft)]">只填写站内相对路径，不包含域名、查询参数或锚点。</p>
+                  <label class="form-item flex flex-col gap-2">
+                    <span class="form-label text-[13px] font-medium text-[var(--text-soft)]">跳转路径</span>
+                    <input type="text" value="apps/policy-agent" class="form-input w-full rounded-xl border border-[var(--line)] bg-white p-[11px_14px] text-sm outline-none focus:border-[var(--accent)]">
+                  </label>
+                  <p class="mt-3 text-xs text-[var(--text-faint)]">点击后打开：当前域名/apps/policy-agent</p>
+                </div>
+
+                <div data-gpt-chat-only class="form-card p-5 rounded-[24px] border border-[rgba(232,236,240,0.98)] bg-[rgba(252,253,254,0.92)] shadow-sm">
                   <h3 class="form-section-title m-0 mb-4 text-[rgba(38,49,61,0.98)] text-[15px] font-semibold flex items-center gap-2.5">
                     <svg class="icon icon-sm text-[var(--accent)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
                     指令 (Instructions)
@@ -181,7 +205,7 @@
                   </div>
                 </div>
 
-                <div class="form-card p-5 rounded-[24px] border border-[rgba(232,236,240,0.98)] bg-[rgba(252,253,254,0.92)] shadow-sm">
+                <div data-gpt-chat-only class="form-card p-5 rounded-[24px] border border-[rgba(232,236,240,0.98)] bg-[rgba(252,253,254,0.92)] shadow-sm">
                   <h3 class="form-section-title m-0 mb-4 text-[rgba(38,49,61,0.98)] text-[15px] font-semibold flex items-center gap-2.5">
                     <svg class="icon icon-sm text-[var(--accent)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
                     知识库 (Knowledge)
@@ -191,7 +215,7 @@
                   </div>
                 </div>
 
-                <div class="form-card p-5 rounded-[24px] border border-[rgba(232,236,240,0.98)] bg-[rgba(252,253,254,0.92)] shadow-sm">
+                <div data-gpt-chat-only class="form-card p-5 rounded-[24px] border border-[rgba(232,236,240,0.98)] bg-[rgba(252,253,254,0.92)] shadow-sm">
                   <h3 class="form-section-title m-0 mb-4 text-[rgba(38,49,61,0.98)] text-[15px] font-semibold flex items-center gap-2.5">
                     <svg class="icon icon-sm text-[var(--accent)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"></path></svg>
                     能力 (Capabilities)
@@ -219,7 +243,15 @@
               </div>
 
               <div class="form-column flex flex-col gap-6">
-                <div class="preview-panel flex flex-col rounded-[24px] border border-[rgba(232,236,240,0.98)] bg-white overflow-hidden h-full min-h-[600px] shadow-sm">
+                <div class="form-card p-5 rounded-[24px] border border-[rgba(232,236,240,0.98)] bg-[rgba(252,253,254,0.92)] shadow-sm">
+                  <h3 class="m-0 mb-4 text-[15px] font-semibold text-[var(--text)]">权限</h3>
+                  <div class="grid gap-2 text-sm">
+                    <label class="rounded-xl border border-[var(--accent)] bg-[var(--accent-soft)] px-3 py-2.5"><input type="radio" name="prototype-auth" checked> <span class="ml-2">仅自己可见</span></label>
+                    <label class="rounded-xl border border-[var(--line)] bg-white px-3 py-2.5"><input type="radio" name="prototype-auth"> <span class="ml-2">部分人可见</span></label>
+                    <label class="rounded-xl border border-[var(--line)] bg-white px-3 py-2.5"><input type="radio" name="prototype-auth"> <span class="ml-2">所有人可见</span></label>
+                  </div>
+                </div>
+                <div data-gpt-chat-only class="preview-panel flex flex-col rounded-[24px] border border-[rgba(232,236,240,0.98)] bg-white overflow-hidden h-full min-h-[600px] shadow-sm">
                   <div class="preview-header px-5 py-3.5 border-b border-[var(--line)] flex items-center justify-between">
                     <span class="preview-title text-sm font-semibold text-[var(--text)]">Preview / 预览</span>
                   </div>
@@ -241,6 +273,23 @@
             </div>
           </div>
         `;
+        const modeButtons = workspaceView.querySelectorAll('[data-gpt-mode-button]');
+        const pathPanel = workspaceView.querySelector('[data-gpt-mode-panel="path_redirect"]');
+        const chatOnlyPanels = workspaceView.querySelectorAll('[data-gpt-chat-only]');
+        modeButtons.forEach((button) => {
+          button.addEventListener('click', () => {
+            const isPathRedirect = button.dataset.gptModeButton === 'path_redirect';
+            modeButtons.forEach((item) => {
+              const active = item === button;
+              item.classList.toggle('border-[var(--accent)]', active);
+              item.classList.toggle('bg-[var(--accent-soft)]', active);
+              item.classList.toggle('border-[var(--line)]', !active);
+              item.classList.toggle('bg-white', !active);
+            });
+            pathPanel?.classList.toggle('hidden', !isPathRedirect);
+            chatOnlyPanels.forEach((item) => item.classList.toggle('hidden', isPathRedirect));
+          });
+        });
         crumbTitle.textContent = gid ? "编辑智能体" : "创建智能体";
         mainLayout.classList.add("is-workspace");
         scrollToTop();

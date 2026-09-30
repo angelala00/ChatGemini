@@ -1,3 +1,4 @@
+import re
 import time
 import uuid
 from typing import Optional
@@ -40,6 +41,23 @@ GPT_PROVIDER_SCOPE_GLOBAL = "global"
 REGULATION_GPT_ID = "regulationassistant"
 GPTASSISTANT_GPT_ID = "gptassistant"
 AGENT_RUNTIME_V3_HANDLER_KEY = "agent_runtime_v3"
+CUSTOM_ASSISTANT_KIND = "custom"
+PATH_REDIRECT_ASSISTANT_KIND = "path_redirect"
+MAX_REDIRECT_PATH_CHARS = 500
+REDIRECT_PATH_PATTERN = re.compile(
+    r"^[A-Za-z0-9][A-Za-z0-9._~-]*(?:/[A-Za-z0-9][A-Za-z0-9._~-]*)*$"
+)
+PATH_REDIRECT_CHAT_FIELDS = {
+    "context_policy",
+    "default_model",
+    "enabled_capabilities",
+    "models",
+    "runtime_limits",
+    "samples",
+    "system_prompt",
+    "upload_file_types",
+    "visible_model_ids",
+}
 ALLOWED_AGENT_UPLOAD_TYPES = {"document", "image"}
 AGENT_RUNTIME_V3_CONFIG_FIELDS = {
     "enabled_capabilities",
@@ -66,8 +84,47 @@ def _validate_agent_runtime_v3_config(gid: str, config: dict) -> None:
         )
 
 
-def _apply_new_agent_runtime_defaults(config: dict) -> None:
-    config["assistant_kind"] = "custom"
+def _normalize_redirect_path(value: object) -> str:
+    if not isinstance(value, str):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "redirect_path required")
+    normalized = value.strip().strip("/")
+    if not normalized:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "redirect_path required")
+    if len(normalized) > MAX_REDIRECT_PATH_CHARS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "redirect_path too long")
+    segments = normalized.split("/")
+    if (
+        not REDIRECT_PATH_PATTERN.fullmatch(normalized)
+        or any(segment in {".", ".."} for segment in segments)
+    ):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "redirect_path must be a safe relative path",
+        )
+    return normalized
+
+
+def _is_path_redirect_gpt(config: dict) -> bool:
+    return str(config.get("assistant_kind") or "").strip() == PATH_REDIRECT_ASSISTANT_KIND
+
+
+def _normalize_path_redirect_config(config: dict) -> None:
+    config["assistant_kind"] = PATH_REDIRECT_ASSISTANT_KIND
+    config.pop("handler_key", None)
+    for field in PATH_REDIRECT_CHAT_FIELDS:
+        config.pop(field, None)
+    config["redirect_path"] = _normalize_redirect_path(config.get("redirect_path"))
+
+
+def _apply_new_agent_defaults(config: dict) -> None:
+    requested_kind = str(config.get("assistant_kind") or CUSTOM_ASSISTANT_KIND).strip()
+    if requested_kind == PATH_REDIRECT_ASSISTANT_KIND:
+        _normalize_path_redirect_config(config)
+        return
+    if requested_kind != CUSTOM_ASSISTANT_KIND:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid assistant_kind")
+
+    config["assistant_kind"] = CUSTOM_ASSISTANT_KIND
     config["handler_key"] = AGENT_RUNTIME_V3_HANDLER_KEY
     config.setdefault("enabled_capabilities", list(DEFAULT_AGENT_CAPABILITY_IDS))
     config.setdefault(
@@ -344,6 +401,9 @@ def get_sidebar_gpts(user: dict) -> list[dict]:
             }
             if "logo" in value:
                 item["logo"] = value["logo"]
+            if _is_path_redirect_gpt(value):
+                item["assistant_kind"] = PATH_REDIRECT_ASSISTANT_KIND
+                item["redirect_path"] = value.get("redirect_path", "")
             pinned.append(item)
             fallback_order += 1
 
@@ -862,7 +922,11 @@ async def delete_gpt_knowledge_file(gid: str, file_id: str, user: dict = Depends
 async def create_gpt(request: Request, user: dict = Depends(get_current_user)):
     ensure_gpts_manage_allowed(user)
     body = await request.json()
-    for field in ("name", "desc", "system_prompt"):
+    requested_kind = str(body.get("assistant_kind") or CUSTOM_ASSISTANT_KIND).strip()
+    required_fields = ("name", "desc")
+    if requested_kind != PATH_REDIRECT_ASSISTANT_KIND:
+        required_fields += ("system_prompt",)
+    for field in required_fields:
         if not body.get(field):
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"{field} required")
     samples = body.get("samples", [])
@@ -876,7 +940,7 @@ async def create_gpt(request: Request, user: dict = Depends(get_current_user)):
         gid = uuid.uuid4().hex
     body["gid"] = gid
     body["owner"] = user['sub']
-    _apply_new_agent_runtime_defaults(body)
+    _apply_new_agent_defaults(body)
     current_provider = get_current_auth_provider(user)
     provider_scope = _normalize_provider_scope(body.get("provider_scope") or GPT_PROVIDER_SCOPE_PROVIDER)
     body["provider_scope"] = provider_scope
@@ -893,11 +957,12 @@ async def create_gpt(request: Request, user: dict = Depends(get_current_user)):
     body["owner"] = owner or user["sub"]
     body["admins"] = admins
     body["viewers"] = viewers
-    normalize_upload_file_types(body)
-    normalize_preferred_model(body)
-    normalize_visible_models(body)
-    body["models"] = _assistant_model_catalog(body)
-    _validate_agent_runtime_v3_config(gid, body)
+    if not _is_path_redirect_gpt(body):
+        normalize_upload_file_types(body)
+        normalize_preferred_model(body)
+        normalize_visible_models(body)
+        body["models"] = _assistant_model_catalog(body)
+        _validate_agent_runtime_v3_config(gid, body)
     insert_custom_gpt(gid, body)
     refresh_gpts()
     return {"gid": gid}
@@ -960,6 +1025,14 @@ async def update_gpt(gid: str, request: Request, user: dict = Depends(get_curren
     body["owner"] = owner or current_owner or user["sub"]
     body["admins"] = admins
     body["viewers"] = viewers
+    if _is_path_redirect_gpt(body):
+        for field in ("name", "desc"):
+            if not body.get(field):
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, f"{field} required")
+        _normalize_path_redirect_config(body)
+        update_custom_gpt(gid, body)
+        refresh_gpts()
+        return {"gid": gid}
     samples = body.get("samples", [])
     if not isinstance(samples, list) or any(not isinstance(s, str) for s in samples):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "samples must be list of strings")
