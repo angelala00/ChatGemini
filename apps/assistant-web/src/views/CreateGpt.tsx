@@ -16,7 +16,9 @@ import { Container } from "../components/Container";
 import { Topbar } from "../components/Topbar";
 import { getFullPath } from "../helpers/getDomainAndPath";
 import { handleRequest } from "../helpers/handleRequest";
+import { normalizeAssetPath } from "../helpers/normalizeAssetPath";
 import { normalizeGptRedirectPath } from "../helpers/openGptEntry";
+import { AgentIconError, prepareAgentIcon } from "../helpers/prepareAgentIcon";
 import { UploadCategory } from "../types/models";
 
 interface KnowledgeFile {
@@ -174,6 +176,11 @@ const CreateGpt = ({ onToggleSidebar, sidebarExpand }: CreateGptProps) => {
     const [redirectPath, setRedirectPath] = useState("");
     const [name, setName] = useState("");
     const [desc, setDesc] = useState("");
+    const [logo, setLogo] = useState("");
+    const [logoChanged, setLogoChanged] = useState(false);
+    const [logoError, setLogoError] = useState("");
+    const [isProcessingLogo, setIsProcessingLogo] = useState(false);
+    const logoInputRef = useRef<HTMLInputElement | null>(null);
     const [systemPrompt, setSystemPrompt] = useState("");
     const [samples, setSamples] = useState<string[]>([""]);
     const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -242,6 +249,8 @@ const CreateGpt = ({ onToggleSidebar, sidebarExpand }: CreateGptProps) => {
                 );
                 setName(data.name ?? "");
                 setDesc(data.desc ?? "");
+                setLogo(typeof data.logo === "string" ? data.logo : "");
+                setLogoChanged(false);
                 setSystemPrompt(data.system_prompt ?? "");
                 const nextModels = Array.isArray(data.model_options)
                     ? data.model_options
@@ -374,9 +383,33 @@ const CreateGpt = ({ onToggleSidebar, sidebarExpand }: CreateGptProps) => {
         }
     };
 
+    const handleLogoSelect = async (file?: File) => {
+        if (!file || isProcessingLogo) return;
+        setLogoError("");
+        setIsProcessingLogo(true);
+        try {
+            setLogo(await prepareAgentIcon(file));
+            setLogoChanged(true);
+        } catch (error) {
+            const reason = error instanceof AgentIconError ? error.reason : "processing";
+            setLogoError(t(`views.CreateGpt.logo_error_${reason}`));
+        } finally {
+            setIsProcessingLogo(false);
+            if (logoInputRef.current) {
+                logoInputRef.current.value = "";
+            }
+        }
+    };
+
+    const handleLogoRemove = () => {
+        setLogo("");
+        setLogoChanged(true);
+        setLogoError("");
+    };
+
     const handleSubmit = (event: React.FormEvent) => {
         event.preventDefault();
-        if (isSubmitting) return;
+        if (isSubmitting || isProcessingLogo) return;
         setIsSubmitting(true);
         const normalizedVisibleModelIds = visibleModelIds.filter((item) =>
             availableModels.some((model) => model.id === item),
@@ -390,6 +423,9 @@ const CreateGpt = ({ onToggleSidebar, sidebarExpand }: CreateGptProps) => {
             desc,
             assistant_kind: assistantKind,
         };
+        if (!gid || logoChanged) {
+            body.logo = logo;
+        }
         if (assistantKind === "path_redirect") {
             body.redirect_path = normalizedRedirectPath;
         } else {
@@ -438,6 +474,7 @@ const CreateGpt = ({ onToggleSidebar, sidebarExpand }: CreateGptProps) => {
     const isPathRedirect = assistantKind === "path_redirect";
     const submitDisabled =
         isSubmitting ||
+        isProcessingLogo ||
         (isPathRedirect
             ? !normalizedRedirectPath
             : !preferredModel || !capabilitiesLoaded);
@@ -646,6 +683,58 @@ const CreateGpt = ({ onToggleSidebar, sidebarExpand }: CreateGptProps) => {
                                 </p>
                             </div>
                             <div className="grid gap-5">
+                                <div className="text-sm font-medium text-[var(--assist-text-soft)]">
+                                    {t("views.CreateGpt.logo_label")}
+                                    <div className="mt-2 flex flex-wrap items-center gap-4">
+                                        <div className="grid size-16 shrink-0 place-items-center overflow-hidden rounded-[18px] border border-[var(--assist-line-strong)] bg-[var(--assist-panel-soft)] text-xl font-semibold text-[var(--assist-accent-strong)]">
+                                            {logo ? (
+                                                <img
+                                                    src={normalizeAssetPath(logo)}
+                                                    alt=""
+                                                    className="size-12 object-contain"
+                                                />
+                                            ) : (
+                                                name.trim().slice(0, 1) || "?"
+                                            )}
+                                        </div>
+                                        <div className="min-w-[15rem] flex-1">
+                                            <input
+                                                ref={logoInputRef}
+                                                type="file"
+                                                accept="image/png,image/jpeg,image/webp"
+                                                className="hidden"
+                                                onChange={(event) => handleLogoSelect(event.target.files?.[0])}
+                                            />
+                                            <div className="flex flex-wrap gap-2">
+                                                <button
+                                                    type="button"
+                                                    disabled={isProcessingLogo}
+                                                    onClick={() => logoInputRef.current?.click()}
+                                                    className="inline-flex h-9 items-center rounded-[10px] border border-[var(--assist-line-strong)] bg-white px-3 text-xs font-semibold text-[var(--assist-text)] transition hover:border-[var(--assist-accent)] disabled:cursor-not-allowed disabled:opacity-50"
+                                                >
+                                                    {isProcessingLogo
+                                                        ? t("views.CreateGpt.logo_processing")
+                                                        : t("views.CreateGpt.logo_choose")}
+                                                </button>
+                                                {logo && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleLogoRemove}
+                                                        className="inline-flex h-9 items-center rounded-[10px] border border-[var(--assist-line)] bg-white px-3 text-xs font-medium text-[var(--assist-text-soft)] transition hover:border-red-200 hover:text-red-500"
+                                                    >
+                                                        {t("views.CreateGpt.logo_remove")}
+                                                    </button>
+                                                )}
+                                            </div>
+                                            <p className="mt-2 text-xs leading-5 text-[var(--assist-text-faint)]">
+                                                {t("views.CreateGpt.logo_hint")}
+                                            </p>
+                                            {logoError && (
+                                                <p className="mt-1 text-xs leading-5 text-red-500">{logoError}</p>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
                                 <label className="text-sm font-medium text-[var(--assist-text-soft)]">
                                     {t("views.CreateGpt.name_label")}
                                     <input

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -7,6 +8,11 @@ from unittest.mock import AsyncMock, patch
 from fastapi import HTTPException
 
 from app.routes import gpts_routes
+
+VALID_LOGO_DATA_URL = (
+    "data:image/png;base64,"
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl2QAAAAASUVORK5CYII="
+)
 
 
 class GPTOwnerCompatibilityTests(unittest.IsolatedAsyncioTestCase):
@@ -64,6 +70,7 @@ class GPTOwnerCompatibilityTests(unittest.IsolatedAsyncioTestCase):
                     "desc": "制度管理平台",
                     "assistant_kind": "path_redirect",
                     "redirect_path": "/apps/policy-agent/",
+                    "logo": VALID_LOGO_DATA_URL,
                     "system_prompt": "must not be stored",
                     "enabled_capabilities": ["attachment.document_list"],
                     "auth": {"type": "white", "user": ["viewer@example.com"]},
@@ -95,6 +102,7 @@ class GPTOwnerCompatibilityTests(unittest.IsolatedAsyncioTestCase):
         assert isinstance(config, dict)
         self.assertEqual(config["assistant_kind"], "path_redirect")
         self.assertEqual(config["redirect_path"], "apps/policy-agent")
+        self.assertEqual(config["logo"], VALID_LOGO_DATA_URL)
         self.assertNotIn("handler_key", config)
         self.assertNotIn("models", config)
         self.assertNotIn("enabled_capabilities", config)
@@ -125,6 +133,39 @@ class GPTOwnerCompatibilityTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(ctx.exception.status_code, 400)
         self.assertEqual(ctx.exception.detail, "redirect_path must be a safe relative path")
+
+    async def test_create_path_redirect_gpt_rejects_invalid_logo(self):
+        request = SimpleNamespace(
+            json=AsyncMock(
+                return_value={
+                    "name": "Policy Agent",
+                    "desc": "制度管理平台",
+                    "assistant_kind": "path_redirect",
+                    "redirect_path": "apps/policy-agent",
+                    "logo": "https://example.com/logo.png",
+                }
+            )
+        )
+
+        with patch.object(gpts_routes, "ensure_gpts_manage_allowed", lambda user: None):
+            with self.assertRaises(HTTPException) as ctx:
+                await gpts_routes.create_gpt(
+                    request,
+                    {"email": "owner@example.com", "sub": "owner-user-id"},
+                )
+
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertEqual(ctx.exception.detail, "invalid agent logo")
+
+    def test_agent_logo_validation_rejects_oversized_decoded_content(self):
+        oversized_content = b"\x89PNG\r\n\x1a\n" + b"x" * gpts_routes.MAX_AGENT_LOGO_BYTES
+        oversized_logo = "data:image/png;base64," + base64.b64encode(oversized_content).decode("ascii")
+
+        with self.assertRaises(HTTPException) as ctx:
+            gpts_routes._normalize_submitted_logo(oversized_logo)
+
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertEqual(ctx.exception.detail, "invalid agent logo")
 
     async def test_update_path_redirect_gpt_keeps_kind_and_normalizes_path(self):
         request = SimpleNamespace(
@@ -157,6 +198,7 @@ class GPTOwnerCompatibilityTests(unittest.IsolatedAsyncioTestCase):
                         "desc": "制度管理平台",
                         "assistant_kind": "path_redirect",
                         "redirect_path": "apps/policy-agent",
+                        "logo": "/legacy/custom-agent.svg",
                         "owner": "owner-user-id",
                         "auth": {"type": "all"},
                     }
@@ -175,6 +217,56 @@ class GPTOwnerCompatibilityTests(unittest.IsolatedAsyncioTestCase):
         assert isinstance(config, dict)
         self.assertEqual(config["assistant_kind"], "path_redirect")
         self.assertEqual(config["redirect_path"], "apps/policy-agent/overview")
+        self.assertEqual(config["logo"], "/legacy/custom-agent.svg")
+
+    async def test_update_path_redirect_gpt_can_remove_logo(self):
+        request = SimpleNamespace(
+            json=AsyncMock(
+                return_value={
+                    "name": "Policy Agent",
+                    "desc": "制度管理平台",
+                    "redirect_path": "apps/policy-agent",
+                    "logo": "",
+                }
+            )
+        )
+        captured: dict[str, object] = {}
+
+        with (
+            patch.object(gpts_routes, "ensure_gpts_manage_allowed", lambda user: None),
+            patch.object(gpts_routes, "refresh_gpts", lambda: None),
+            patch.object(gpts_routes, "get_current_auth_provider", return_value="local"),
+            patch.object(
+                gpts_routes,
+                "update_custom_gpt",
+                side_effect=lambda _gid, config: captured.update(config=config),
+            ),
+            patch.dict(
+                gpts_routes.gpts,
+                {
+                    "path-agent": {
+                        "gid": "path-agent",
+                        "name": "Policy Agent",
+                        "desc": "制度管理平台",
+                        "assistant_kind": "path_redirect",
+                        "redirect_path": "apps/policy-agent",
+                        "logo": VALID_LOGO_DATA_URL,
+                        "owner": "owner-user-id",
+                        "auth": {"type": "self"},
+                    }
+                },
+                clear=True,
+            ),
+        ):
+            await gpts_routes.update_gpt(
+                "path-agent",
+                request,
+                {"email": "owner@example.com", "sub": "owner-user-id"},
+            )
+
+        config = captured["config"]
+        assert isinstance(config, dict)
+        self.assertNotIn("logo", config)
 
     async def test_email_owner_can_transfer_when_user_sub_differs(self):
         request = SimpleNamespace(

@@ -1,3 +1,5 @@
+import base64
+import binascii
 import re
 import time
 import uuid
@@ -36,6 +38,11 @@ router = APIRouter(prefix="/api", tags=["gpts"])
 
 MAX_SAMPLES = 5
 MAX_MODEL_ID_CHARS = 200
+MAX_AGENT_LOGO_BYTES = 100 * 1024
+MAX_AGENT_LOGO_DATA_URL_CHARS = 137_000
+AGENT_LOGO_DATA_URL_PATTERN = re.compile(
+    r"^data:(image/(?:png|jpeg|webp));base64,([A-Za-z0-9+/]+={0,2})$"
+)
 GPT_PROVIDER_SCOPE_PROVIDER = "provider"
 GPT_PROVIDER_SCOPE_GLOBAL = "global"
 REGULATION_GPT_ID = "regulationassistant"
@@ -82,6 +89,39 @@ def _validate_agent_runtime_v3_config(gid: str, config: dict) -> None:
             status.HTTP_400_BAD_REQUEST,
             f"unknown enabled_capabilities: {', '.join(unknown_ids)}",
         )
+
+
+def _normalize_submitted_logo(value: object) -> str | None:
+    if value is None or value == "":
+        return None
+    if not isinstance(value, str) or len(value) > MAX_AGENT_LOGO_DATA_URL_CHARS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid agent logo")
+
+    match = AGENT_LOGO_DATA_URL_PATTERN.fullmatch(value)
+    if not match:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid agent logo")
+
+    mime_type, encoded = match.groups()
+    try:
+        content = base64.b64decode(encoded, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid agent logo") from exc
+    if not content or len(content) > MAX_AGENT_LOGO_BYTES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid agent logo")
+
+    valid_signature = (
+        (mime_type == "image/png" and content.startswith(b"\x89PNG\r\n\x1a\n"))
+        or (mime_type == "image/jpeg" and content.startswith(b"\xff\xd8\xff"))
+        or (
+            mime_type == "image/webp"
+            and len(content) >= 12
+            and content.startswith(b"RIFF")
+            and content[8:12] == b"WEBP"
+        )
+    )
+    if not valid_signature:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid agent logo")
+    return value
 
 
 def _normalize_redirect_path(value: object) -> str:
@@ -922,6 +962,12 @@ async def delete_gpt_knowledge_file(gid: str, file_id: str, user: dict = Depends
 async def create_gpt(request: Request, user: dict = Depends(get_current_user)):
     ensure_gpts_manage_allowed(user)
     body = await request.json()
+    if "logo" in body:
+        normalized_logo = _normalize_submitted_logo(body.get("logo"))
+        if normalized_logo is None:
+            body.pop("logo", None)
+        else:
+            body["logo"] = normalized_logo
     requested_kind = str(body.get("assistant_kind") or CUSTOM_ASSISTANT_KIND).strip()
     required_fields = ("name", "desc")
     if requested_kind != PATH_REDIRECT_ASSISTANT_KIND:
@@ -986,12 +1032,22 @@ async def update_gpt(gid: str, request: Request, user: dict = Depends(get_curren
     if not is_manageable_system_gpt(gid, gpts[gid]) and not _gpt_can_manage(user, gpts[gid]):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "No Authorized")
     submitted_body = await request.json()
+    remove_submitted_logo = False
+    if "logo" in submitted_body:
+        normalized_logo = _normalize_submitted_logo(submitted_body.get("logo"))
+        if normalized_logo is None:
+            submitted_body.pop("logo", None)
+            remove_submitted_logo = True
+        else:
+            submitted_body["logo"] = normalized_logo
     existing_config = {
         key: value
         for key, value in gpts[gid].items()
         if key != "chat_function" and not callable(value)
     }
     body = {**existing_config, **submitted_body}
+    if remove_submitted_logo:
+        body.pop("logo", None)
     for protected_field in ("gid", "assistant_kind", "handler_key"):
         if protected_field in existing_config:
             body[protected_field] = existing_config[protected_field]

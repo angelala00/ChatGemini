@@ -23,7 +23,7 @@ interface GptsItem {
     readonly name: string;
     readonly desc: string;
     readonly is_pinned: boolean;
-    readonly logo: string;
+    readonly logo?: string;
     readonly owner?: string;
     readonly usage_count?: number;
     readonly pinned_user_count?: number;

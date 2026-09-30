@@ -26,7 +26,11 @@ export const openGptEntry = (
         target.assistant_kind === "path_redirect" &&
         redirectPath
     ) {
-        window.location.assign(`${window.location.origin}/${redirectPath}`);
+        window.open(
+            `${window.location.origin}/${redirectPath}`,
+            "_blank",
+            "noopener,noreferrer",
+        );
         return;
     }
     navigate(`/g/${target.gid}`);

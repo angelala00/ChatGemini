@@ -1,7 +1,6 @@
 import submitIcon from "../assets/icons/circle-check-solid.svg";
 import emptyIcon from "../assets/icons/folder-open-solid.svg";
 import closeIcon from "../assets/icons/xmark-solid.svg";
-import regulationIcon from "../assets/icons/zhidu_logo.svg";
 import wandIcon from "../assets/icons/ds-logo.svg";
 import appsIcon from "../assets/icons/apps.svg";
 import {
@@ -797,10 +796,17 @@ export const Sidebar = (props: SidebarProps) => {
                     >
                         <span className="inline-flex items-center gap-1">
                             <span className="grid size-8 shrink-0 place-items-center">
-                                <img
-                                    src={logo ? normalizeAssetPath(logo) : regulationIcon}
-                                    className="size-[26px] object-contain"
-                                />
+                                {logo ? (
+                                    <img
+                                        src={normalizeAssetPath(logo)}
+                                        alt=""
+                                        className="size-[26px] object-contain"
+                                    />
+                                ) : (
+                                    <span className="grid size-[26px] place-items-center rounded-[8px] border border-[rgba(212,221,229,0.9)] bg-[var(--assist-panel-soft)] text-xs font-semibold text-[var(--assist-accent-strong)]">
+                                        {name.trim().slice(0, 1) || "?"}
+                                    </span>
+                                )}
                             </span>
                             {name}
                         </span>
