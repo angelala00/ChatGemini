@@ -23,6 +23,7 @@
 
 ```bash
 .venv/bin/python -m unittest tests/test_storage_backends.py tests/test_gptassistant_model_auth.py
+OPENAI_API_KEY=test-key .venv/bin/python -m unittest tests/test_gpt_department_visibility.py tests/test_gpt_owner_compat.py
 ```
 
 ## 配置

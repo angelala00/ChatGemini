@@ -187,6 +187,7 @@ const CreateGpt = ({ onToggleSidebar, sidebarExpand }: CreateGptProps) => {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [authType, setAuthType] = useState<"self" | "white" | "all">("self");
     const [authUsers, setAuthUsers] = useState("");
+    const [authDepartments, setAuthDepartments] = useState<string[]>([]);
     const [ownerUser, setOwnerUser] = useState("");
     const [adminUsers, setAdminUsers] = useState<string[]>([]);
     const [viewerUsers, setViewerUsers] = useState<string[]>([]);
@@ -280,6 +281,14 @@ const CreateGpt = ({ onToggleSidebar, sidebarExpand }: CreateGptProps) => {
                     setAuthType(data.auth.type ?? "all");
                     if (data.auth.type === "white") {
                         setAuthUsers((data.auth.user || []).join(","));
+                        setAuthDepartments(
+                            Array.isArray(data.auth.departments)
+                                ? data.auth.departments.filter(
+                                      (item: unknown): item is string =>
+                                          typeof item === "string" && Boolean(item.trim()),
+                                  )
+                                : [],
+                        );
                     }
                 }
                 setOwnerUser(typeof data.owner === "string" ? data.owner : "");
@@ -452,6 +461,7 @@ const CreateGpt = ({ onToggleSidebar, sidebarExpand }: CreateGptProps) => {
                           .split(",")
                           .map((user) => user.trim())
                           .filter(Boolean),
+                      departments: authDepartments,
                   }
                 : { type: authType };
         body.admins = adminUsers;
@@ -1209,13 +1219,24 @@ const CreateGpt = ({ onToggleSidebar, sidebarExpand }: CreateGptProps) => {
                                 })}
                             </div>
                             {authType === "white" && (
-                                <input
-                                    type="text"
-                                    value={authUsers}
-                                    onChange={(event) => setAuthUsers(event.target.value)}
-                                    placeholder={t("views.CreateGpt.permission_users_placeholder")}
-                                    className={fieldClassName}
-                                />
+                                <div className="mt-4 space-y-4">
+                                    <input
+                                        type="text"
+                                        value={authUsers}
+                                        onChange={(event) => setAuthUsers(event.target.value)}
+                                        placeholder={t("views.CreateGpt.permission_users_placeholder")}
+                                        className={fieldClassName}
+                                    />
+                                    <TagInput
+                                        label={t("views.CreateGpt.permission_departments")}
+                                        placeholder={t("views.CreateGpt.permission_departments_placeholder")}
+                                        values={authDepartments}
+                                        onChange={setAuthDepartments}
+                                    />
+                                    <p className="text-xs leading-5 text-[var(--assist-text-faint)]">
+                                        {t("views.CreateGpt.permission_departments_hint")}
+                                    </p>
+                                </div>
                             )}
                             <div className="mt-5 space-y-4">
                                 {gid ? (

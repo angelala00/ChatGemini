@@ -250,6 +250,17 @@
                     <label class="rounded-xl border border-[var(--line)] bg-white px-3 py-2.5"><input type="radio" name="prototype-auth"> <span class="ml-2">部分人可见</span></label>
                     <label class="rounded-xl border border-[var(--line)] bg-white px-3 py-2.5"><input type="radio" name="prototype-auth"> <span class="ml-2">所有人可见</span></label>
                   </div>
+                  <div class="mt-4 grid gap-4 rounded-2xl border border-[var(--line)] bg-white/70 p-4">
+                    <label class="grid gap-2 text-[13px] font-medium text-[var(--text-soft)]">
+                      可见用户
+                      <input type="text" class="w-full rounded-xl border border-[var(--line)] bg-white px-3 py-2.5 text-sm outline-none focus:border-[var(--accent)]" placeholder="输入邮箱，使用逗号分隔">
+                    </label>
+                    <label class="grid gap-2 text-[13px] font-medium text-[var(--text-soft)]">
+                      可见部门
+                      <input type="text" class="w-full rounded-xl border border-[var(--line)] bg-white px-3 py-2.5 text-sm outline-none focus:border-[var(--accent)]" placeholder="输入部门名称后按回车">
+                    </label>
+                    <p class="m-0 text-xs leading-5 text-[var(--text-faint)]">部分人可见时，人员与部门成员取并集；部门名称按 LDAP OU 精确匹配。</p>
+                  </div>
                 </div>
                 <div data-gpt-chat-only class="preview-panel flex flex-col rounded-[24px] border border-[rgba(232,236,240,0.98)] bg-white overflow-hidden h-full min-h-[600px] shadow-sm">
                   <div class="preview-header px-5 py-3.5 border-b border-[var(--line)] flex items-center justify-between">

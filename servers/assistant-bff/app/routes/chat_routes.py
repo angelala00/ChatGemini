@@ -1002,6 +1002,7 @@ async def chat_with_gpts(request: QueryRequest, gid: str, user: dict = Depends(g
         user["email"],
         user.get("sub"),
         current_provider=get_current_auth_provider(user),
+        user_group=user.get("group"),
     ):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "No Authorized")
     if _is_regulation_assistant(gid, assistant_config):

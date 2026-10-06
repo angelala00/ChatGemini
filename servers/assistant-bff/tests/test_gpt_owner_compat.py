@@ -73,7 +73,11 @@ class GPTOwnerCompatibilityTests(unittest.IsolatedAsyncioTestCase):
                     "logo": VALID_LOGO_DATA_URL,
                     "system_prompt": "must not be stored",
                     "enabled_capabilities": ["attachment.document_list"],
-                    "auth": {"type": "white", "user": ["viewer@example.com"]},
+                    "auth": {
+                        "type": "white",
+                        "user": ["viewer@example.com"],
+                        "departments": ["平台运维"],
+                    },
                     "admins": ["admin@example.com"],
                     "viewers": ["viewer@example.com"],
                 }
@@ -103,6 +107,7 @@ class GPTOwnerCompatibilityTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(config["assistant_kind"], "path_redirect")
         self.assertEqual(config["redirect_path"], "apps/policy-agent")
         self.assertEqual(config["logo"], VALID_LOGO_DATA_URL)
+        self.assertEqual(config["auth"]["departments"], ["平台运维"])
         self.assertNotIn("handler_key", config)
         self.assertNotIn("models", config)
         self.assertNotIn("enabled_capabilities", config)

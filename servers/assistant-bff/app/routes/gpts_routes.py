@@ -14,6 +14,7 @@ from app.admin.access_control import (
     is_gpts_feature_visible_to_user,
     resolve_user_permissions,
     user_keys,
+    user_organizational_units,
 )
 from app.auth.auth_routes import GLOBAL_AUTH_PROVIDER, get_current_auth_provider, get_current_user
 from app.logger import gpt_logger
@@ -253,6 +254,31 @@ def _normalize_identity_list(value: object) -> list[str]:
     return items
 
 
+def _normalize_gpt_auth(value: object) -> dict:
+    if not isinstance(value, dict):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "auth must be an object")
+
+    auth = dict(value)
+    auth_type = auth.get("type")
+    if auth_type == "white":
+        users = auth.get("user", [])
+        departments = auth.get("departments", [])
+        if not isinstance(users, list) or any(not isinstance(item, str) for item in users):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "auth.user must be list of strings")
+        if not isinstance(departments, list) or any(
+            not isinstance(item, str) for item in departments
+        ):
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "auth.departments must be list of strings",
+            )
+        auth["departments"] = _normalize_identity_list(departments)
+        return auth
+    if auth_type not in {"all", "self"}:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid auth type")
+    return auth
+
+
 def _gpt_owner(gpt_dict: dict) -> str:
     return str(gpt_dict.get("owner") or "").strip()
 
@@ -394,6 +420,7 @@ def can_access_gpt(user: dict, gid: str) -> bool:
         user.get("email") or "",
         user_id,
         current_provider=current_provider,
+        user_group=user.get("group"),
     ):
         return True
     return False
@@ -427,6 +454,7 @@ def get_sidebar_gpts(user: dict) -> list[dict]:
                 user_email,
                 user_id,
                 current_provider=current_provider,
+                user_group=user.get("group"),
             ):
                 continue
             if not _is_effectively_pinned(gid, pin_state_map):
@@ -470,6 +498,7 @@ def get_sidebar_gpts(user: dict) -> list[dict]:
             user_email,
             user_id,
             current_provider=current_provider,
+            user_group=user.get("group"),
         ):
             continue
 
@@ -786,7 +815,14 @@ async def get_gpts(user: dict = Depends(get_current_user)):
             "is_pinned": _is_effectively_pinned(key, pin_state_map),
         }
         for key, value in fetch_gpts().items()
-        if auth_ok(value, user["email"], user["sub"], current_provider=current_provider) and key != "gptassistant"
+        if auth_ok(
+            value,
+            user["email"],
+            user["sub"],
+            current_provider=current_provider,
+            user_group=user.get("group"),
+        )
+        and key != "gptassistant"
     ]
     return gpts_list
 
@@ -804,6 +840,7 @@ async def toggle_pin(gid: str, request: Request, user: dict = Depends(get_curren
         user.get("email") or "",
         user.get("sub"),
         current_provider=get_current_auth_provider(user),
+        user_group=user.get("group"),
     ):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "GPTS not found or not visible")
     set_user_gpt_pin(user["sub"], gid, is_pinned=is_pinned)
@@ -991,14 +1028,7 @@ async def create_gpt(request: Request, user: dict = Depends(get_current_user)):
     provider_scope = _normalize_provider_scope(body.get("provider_scope") or GPT_PROVIDER_SCOPE_PROVIDER)
     body["provider_scope"] = provider_scope
     body["auth_provider"] = current_provider if provider_scope == GPT_PROVIDER_SCOPE_PROVIDER else GLOBAL_AUTH_PROVIDER
-    auth = body.get("auth", {"type": "self"})
-    if auth.get("type") == "white":
-        users = auth.get("user", [])
-        if not isinstance(users, list) or any(not isinstance(u, str) for u in users):
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "auth.user must be list of strings")
-    elif auth.get("type") not in {"all", "self"}:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid auth type")
-    body["auth"] = auth
+    body["auth"] = _normalize_gpt_auth(body.get("auth", {"type": "self"}))
     owner, admins, viewers = _normalize_acl_state(user["sub"], body.get("admins"), body.get("viewers"))
     body["owner"] = owner or user["sub"]
     body["admins"] = admins
@@ -1065,14 +1095,7 @@ async def update_gpt(gid: str, request: Request, user: dict = Depends(get_curren
     else:
         body["auth_provider"] = GLOBAL_AUTH_PROVIDER
     body["provider_scope"] = provider_scope
-    auth = body.get("auth", {"type": "self"})
-    if auth.get("type") == "white":
-        users = auth.get("user", [])
-        if not isinstance(users, list) or any(not isinstance(u, str) for u in users):
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "auth.user must be list of strings")
-    elif auth.get("type") not in {"all", "self"}:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid auth type")
-    body["auth"] = auth
+    body["auth"] = _normalize_gpt_auth(body.get("auth", {"type": "self"}))
     requested_owner = str(body.get("owner") or gpts[gid].get("owner") or "").strip()
     current_owner = _effective_gpt_owner(gid, gpts[gid])
     if current_owner and requested_owner != current_owner and not _is_owner_identity(user, current_owner):
@@ -1129,6 +1152,7 @@ def auth_ok(
     user_id: Optional[str] = None,
     *,
     current_provider: str | None = None,
+    user_group: str | None = None,
 ):
     if current_provider and not is_gpt_visible_to_provider(gpt_dict, current_provider):
         return False
@@ -1142,6 +1166,16 @@ def auth_ok(
     if auth['type'] == "white":
         if user in auth.get('user', []):
             return True
+        visible_departments = {
+            item.casefold() for item in _normalize_identity_list(auth.get("departments"))
+        }
+        if visible_departments and user_group:
+            user_departments = {
+                item.casefold()
+                for item in user_organizational_units({"group": user_group})
+            }
+            if visible_departments & user_departments:
+                return True
     if auth['type'] == "self":
         return False
     return False
