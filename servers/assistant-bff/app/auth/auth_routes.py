@@ -80,7 +80,7 @@ async def userinfo(
         "sub": user.get("sub", ""),
         "name": user.get("name", ""),
         "email": user.get("email", ""),
-        "group": user.get("group", ""),
+        "group": user.get("group") or "",
         "auth_provider": user.get("auth_provider", ""),
     }
 

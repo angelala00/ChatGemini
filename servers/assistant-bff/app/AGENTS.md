@@ -80,6 +80,7 @@
 - **后端回跳**：登录服务用 `_safe_return_to`（`app/auth/auth_routes.py`）校验 returnTo（以 `/` 开头、非 `//`、无反斜杠、无 scheme/netloc，允许 query/fragment），校验通过后在登录流程结束后 302 回该相对路径；非法或缺失不重定向。仓库内 `oauth-login/{provider}` 为 mock 实现（会用 Referer origin 拼绝对地址以兼容前后端不同端口的本地开发），内网真实 OAuth 实现须在 `oauth_login`（接收并携带 returnTo 穿过授权流程）与 `oauth_callback`（末尾校验回跳）两个方法遵守同一契约，且不要使用 Referer 构造跳转目标。
 - **前端无需恢复逻辑**：浏览器被 302 回原 URL 后 SPA 原地重新引导即可。
 - **死循环保护**：跳转前写一次性 sessionStorage 标记 `sso.loginRetry`（读即删，由发起跳转的子应用盖章，/login 页面不碰）；重新挂载仍未登录且标记存在 → 展示“无权限”不再跳转；登录成功（`/api/auth/status` ok）即清除标记。
+- **用户信息输出**：`/api/auth/userinfo` 的字符串字段保持字符串类型；部署侧身份源返回 `group=null` 时，接口统一输出空字符串，避免响应模型校验失败。
 
 ## 3. 存储语义
 - **存储模块分层**：`app/storage/business_store.py` 继续作为兼容聚合入口与底层初始化/连接层；GPT/Pin 状态逻辑已拆到 `app/storage/gpts_store.py`，文件映射与上传预留逻辑拆到 `app/storage/file_store.py`，管理员模型/权限/开关/审计逻辑拆到 `app/storage/admin_store.py`。新增同类能力时优先写入对应分层模块，而不是继续回填到 `business_store.py`。

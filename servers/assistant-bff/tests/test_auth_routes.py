@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import unittest
 
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from fastapi.responses import RedirectResponse
 from starlette.requests import Request
 
-from app.auth.auth_routes import _safe_return_to, oauth_login
+from app.auth.auth_routes import _safe_return_to, get_current_user, oauth_login, router
 
 
 def _build_request(headers: dict[str, str] | None = None) -> Request:
@@ -95,6 +97,24 @@ class OauthLoginReturnToTests(unittest.IsolatedAsyncioTestCase):
             returnTo="/foo\\bar",
         )
         self.assertEqual(response, {"message": "mock redirect to mock"})
+
+
+class UserInfoTests(unittest.TestCase):
+    def test_null_group_is_returned_as_empty_string(self):
+        app = FastAPI()
+        app.include_router(router)
+        app.dependency_overrides[get_current_user] = lambda: {
+            "sub": "user@example.com",
+            "name": "用户",
+            "email": "user@example.com",
+            "group": None,
+            "auth_provider": "wecom",
+        }
+
+        response = TestClient(app).get("/api/auth/userinfo")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["group"], "")
 
 
 if __name__ == "__main__":
