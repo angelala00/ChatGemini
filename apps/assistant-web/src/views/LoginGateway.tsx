@@ -1,5 +1,7 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import siteLogo from "../assets/logo.svg";
+import { globalConfig } from "../config/global";
 import { getFullPath } from "../helpers/getDomainAndPath";
 
 // Same-site relative paths only (client-side open-redirect guard); the
@@ -38,6 +40,28 @@ const referrerReturnTo = (): string => {
 export const LoginGateway = () => {
     const { t } = useTranslation();
     const [failed, setFailed] = useState(false);
+    const [loggedOut] = useState(
+        () => new URLSearchParams(window.location.search).get("loggedOut") === "1",
+    );
+
+    const startLogin = useCallback(async (target: string) => {
+        setFailed(false);
+        try {
+            const providerResp = await fetch(getFullPath("/api/auth/get-provider"), {
+                method: "GET",
+            });
+            if (!providerResp.ok) {
+                throw new Error("Network response was not ok");
+            }
+            const data = await providerResp.json();
+            window.location.href =
+                getFullPath(`/api/auth/oauth-login/${data.provider.param}`) +
+                `?returnTo=${encodeURIComponent(target)}`;
+        } catch (error) {
+            console.error("请求失败:", error);
+            setFailed(true);
+        }
+    }, []);
 
     useEffect(() => {
         const rawReturnTo = new URLSearchParams(window.location.search).get("returnTo") || "";
@@ -51,6 +75,9 @@ export const LoginGateway = () => {
         }
 
         const proceed = async () => {
+            if (loggedOut) {
+                return;
+            }
             try {
                 const resp = await fetch(getFullPath("/api/auth/status"), {
                     method: "GET",
@@ -62,29 +89,43 @@ export const LoginGateway = () => {
                     window.location.replace(target);
                     return;
                 }
-                const providerResp = await fetch(getFullPath("/api/auth/get-provider"), {
-                    method: "GET",
-                });
-                if (!providerResp.ok) {
-                    throw new Error("Network response was not ok");
-                }
-                const data = await providerResp.json();
-                window.location.href =
-                    getFullPath(`/api/auth/oauth-login/${data.provider.param}`) +
-                    `?returnTo=${encodeURIComponent(target)}`;
+                await startLogin(target);
             } catch (error) {
                 console.error("请求失败:", error);
                 setFailed(true);
             }
         };
         proceed();
-    }, []);
+    }, [loggedOut, startLogin]);
 
     return (
         <div className="w-full max-w-lg rounded-lg bg-gray-50 p-8 text-center shadow-xl">
-            {failed
-                ? t("components.LoginForm.no_authorized")
-                : t("components.LoginForm.logining")}
+            {loggedOut ? (
+                <div className="space-y-6">
+                    <div className="flex items-center justify-center">
+                        <img className="mr-2 size-10" src={siteLogo} alt="" />
+                        <span className="text-3xl font-semibold text-gray-900">
+                            {globalConfig.title.header}
+                        </span>
+                    </div>
+                    {failed && (
+                        <p className="text-gray-700">
+                            {t("components.LoginForm.login_failed")}
+                        </p>
+                    )}
+                    <button
+                        type="button"
+                        className="rounded-lg bg-[#279ab3] px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#21879d]"
+                        onClick={() => startLogin("/")}
+                    >
+                        {t("components.LoginForm.login_again")}
+                    </button>
+                </div>
+            ) : failed ? (
+                t("components.LoginForm.no_authorized")
+            ) : (
+                t("components.LoginForm.logining")
+            )}
         </div>
     );
 };

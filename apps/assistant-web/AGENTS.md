@@ -115,3 +115,10 @@
 - `Sidebar.tsx` 的发布记录使用 `notify: true` 显式标记需要产生未读提醒的版本；未标记的历史版本默认已读，不得因首次启用提醒而批量点亮。
 - 提醒分为三级：账号菜单入口、当前版本入口、具体版本条目，对应后端 `seen_stage=1/2/3`。具体版本只有在变更记录滚动区内至少 50% 可见并持续 600ms 后才推进到阶段 3；本次弹窗中已经展示的小点保持到弹窗关闭，重新打开或刷新后才按服务端已读阶段隐藏，避免提示在用户眼前突兀消失。
 - 已读阶段通过 `/api/release-notices` 按登录用户持久化，前端不以 `localStorage` 作为权威状态；阶段只能单调前进，因此清理浏览器缓存、切换设备或重复打开菜单不会恢复红点。
+
+## 登出流程
+
+- 账号菜单通过 `Sidebar.onLogout` 把登出动作交给 `App.tsx`；点击后不做二次确认，直接调用 `POST /api/auth/logout`，成功才停止当前流式请求并通过 React Router replace 到 `/login?loggedOut=1`，请求失败时保留当前登录页面并给出错误提示。
+- `LoginGateway.tsx` 识别 `loggedOut=1` 后不得自动发起 SSO；白色登录卡片内部居中展示站点 Logo + `globalConfig.title.header`，下方只保留“使用 SSO 登录”按钮。用户主动点击后才访问 OAuth 登录入口，避免退出后被共享 SSO Cookie 立即自动登录。
+- 登出后的跳转使用 React Router 的 replace，并通过 router-relative `currentPath === routes.login.prefix` 识别承载页，不能用浏览器原始 pathname 自行拼 base path；这样在本地开发、子路径部署和反向代理下都能稳定进入退出页，也避免浏览器后退回旧页面。用户点击“使用 SSO 登录”后会进行整页 OAuth 跳转，届时清理当前页面内存状态。
+- 当前登出只终止 ChatGemini 的本地应用会话，不调用企业 SSO/IdP 的全局登出接口，也不要求清除其他内网系统的登录态。

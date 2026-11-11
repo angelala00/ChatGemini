@@ -25,7 +25,6 @@ import { sendUserAlert } from "./helpers/sendUserAlert";
 import { sendUserConfirm } from "./helpers/sendUserConfirm";
 import { LoginByOAuth } from "./components/LoginByOAuth";
 import LoginGateway from "./views/LoginGateway";
-import { getBasePath } from "./helpers/getBasePath";
 import siteLogo from "./assets/logo.svg";
 import i18n, { i18nConfig } from "./config/i18n";
 import { setUserLocale } from "./helpers/setUserLocale";
@@ -493,21 +492,21 @@ const App = () => {
     };
 
     const handleLogout = async () => {
-        const logoutResponseJson = await handleRequest('POST', getFullPath('/api/auth/logout'));
-        if (logoutResponseJson.message) {
+        try {
+            const response = await fetch(getFullPath("/api/auth/logout"), {
+                method: "POST",
+                credentials: "include",
+            });
+            if (!response.ok) {
+                throw new Error(`Logout failed with status ${response.status}`);
+            }
+            abortFn();
             setHasLogined(false);
+            navigate(`${routes.login.prefix}?loggedOut=1`, { replace: true });
+        } catch (error) {
+            console.error("Logout failed:", error);
+            sendUserAlert(t("App.handleLogout.failed"), true);
         }
-
-        // sendUserConfirm(t("App.handleLogout.confirm_message"), {
-        //     title: t("App.handleLogout.confirm_title"),
-        //     confirmText: t("App.handleLogout.confirm_button"),
-        //     cancelText: t("App.handleLogout.cancel_button"),
-        //     onConfirmed: () => {
-        //         sendUserAlert(t("App.handleLogout.on_confirmed"));
-        //         setHasLogined(false);
-        //         setLocalStorage("passcode", "", false);
-        //     },
-        // });
     };
 
     const handleModelChange = useCallback(
@@ -1854,6 +1853,7 @@ const App = () => {
                                     setSidebarExpand((state) => !state)
                                 }
                                 onWorkspaceModeChange={setWorkspaceMode}
+                                onLogout={handleLogout}
                                 theme={theme}
                                 onSwitchTheme={setTheme}
                             />
@@ -1982,9 +1982,7 @@ const App = () => {
                             onClick={() => setSidebarExpand(false)}
                         />
                     </div>
-                ) : window.location.pathname === `${getBasePath()}/login` ? (
-                    // Sub-app login entry page: full-page navigations only,
-                    // so a non-reactive pathname check is sufficient here.
+                ) : currentPath === routes.login.prefix ? (
                     <LoginGateway />
                 ) : (
                     <LoginByOAuth

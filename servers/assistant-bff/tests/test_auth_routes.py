@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from fastapi.responses import RedirectResponse
 from starlette.requests import Request
+from starlette.middleware.sessions import SessionMiddleware
 
 from app.auth.auth_routes import _safe_return_to, get_current_user, oauth_login, router
 
@@ -115,6 +116,36 @@ class UserInfoTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["group"], "")
+
+
+class LogoutTests(unittest.TestCase):
+    def setUp(self):
+        app = FastAPI()
+        app.add_middleware(SessionMiddleware, secret_key="test-secret")
+        app.include_router(router)
+        self.client = TestClient(app)
+
+    def test_logout_invalidates_the_local_login_session(self):
+        self.assertEqual(self.client.get("/api/auth/status").status_code, 200)
+
+        response = self.client.post("/api/auth/logout")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"message": "logged out"})
+        self.assertEqual(response.headers["cache-control"], "no-store")
+        self.assertEqual(self.client.get("/api/auth/status").status_code, 401)
+
+    def test_explicit_oauth_login_resumes_the_session(self):
+        self.client.post("/api/auth/logout")
+
+        response = self.client.get(
+            "/api/auth/oauth-login/mock?returnTo=/library",
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers["location"], "/library")
+        self.assertEqual(self.client.get("/api/auth/status").status_code, 200)
 
 
 if __name__ == "__main__":

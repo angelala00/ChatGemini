@@ -81,6 +81,7 @@
 - **前端无需恢复逻辑**：浏览器被 302 回原 URL 后 SPA 原地重新引导即可。
 - **死循环保护**：跳转前写一次性 sessionStorage 标记 `sso.loginRetry`（读即删，由发起跳转的子应用盖章，/login 页面不碰）；重新挂载仍未登录且标记存在 → 展示“无权限”不再跳转；登录成功（`/api/auth/status` ok）即清除标记。
 - **用户信息输出**：`/api/auth/userinfo` 的字符串字段保持字符串类型；部署侧身份源返回 `group=null` 时，接口统一输出空字符串，避免响应模型校验失败。
+- **本系统登出契约**：`POST /api/auth/logout` 只清空 ChatGemini 的 app-local Session，并保留签名的 `logged_out=true` 标记；不调用企业 SSO/IdP 的全局登出接口，不影响其他内网系统。`get_current_user` 遇到该标记统一返回 401，即使浏览器仍持有共享 SSO Cookie 也不能静默恢复本应用登录。只有用户主动访问 `oauth-login/{provider}` 时才移除该标记并重新借用现有 SSO 登录态。前端登出后进入 `/login?loggedOut=1`，该页面只展示“使用 SSO 登录”按钮并等待用户点击。
 
 ## 3. 存储语义
 - **存储模块分层**：`app/storage/business_store.py` 继续作为兼容聚合入口与底层初始化/连接层；GPT/Pin 状态逻辑已拆到 `app/storage/gpts_store.py`，文件映射与上传预留逻辑拆到 `app/storage/file_store.py`，管理员模型/权限/开关/审计逻辑拆到 `app/storage/admin_store.py`。新增同类能力时优先写入对应分层模块，而不是继续回填到 `business_store.py`。

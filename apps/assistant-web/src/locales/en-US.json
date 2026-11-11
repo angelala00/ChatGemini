@@ -35,11 +35,7 @@
             "on_confirmed": "Conversation history cleared"
         },
         "handleLogout": {
-            "confirm_message": "If this is not your PC, please clear your conversation history before logging out",
-            "confirm_title": "Confirm logout",
-            "confirm_button": "OK",
-            "cancel_button": "Cancel",
-            "on_confirmed": "Logged out successfully"
+            "failed": "Could not log out. Please try again."
         },
         "handleSubmit": {
             "invalid_message": "Please enter some conversation content",
@@ -465,6 +461,8 @@
             "login_button": "Login",
             "logining": "Logging in 。。。",
             "no_authorized": "No Authorized",
+            "login_again": "Sign in with SSO",
+            "login_failed": "Could not start login. Please try again.",
             "handleLogin": {
                 "invalid_passcode": "Passcode is incorrect",
                 "login_success": "Login successful, redirecting",
@@ -505,6 +503,7 @@
             "admin": "Admin Config",
             "admin_badge": "Admin",
             "system_settings": "System Settings",
+            "logout": "Log out",
             "system_settings_subtitle": "Manage personal preferences such as language, appearance, and memory.",
             "close_system_settings": "Close system settings",
             "language": "Language",

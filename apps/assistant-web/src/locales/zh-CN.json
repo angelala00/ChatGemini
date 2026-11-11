@@ -35,11 +35,7 @@
             "on_confirmed": "对话记录已清空"
         },
         "handleLogout": {
-            "confirm_message": "如果这不是您的电脑，请在登出前清空对话记录",
-            "confirm_title": "确认登出",
-            "confirm_button": "确认",
-            "cancel_button": "取消",
-            "on_confirmed": "已成功登出"
+            "failed": "退出登录失败，请稍后重试"
         },
         "handleSubmit": {
             "invalid_message": "请输入对话内容",
@@ -465,6 +461,8 @@
             "login_button": "登入",
             "logining": "登录中 。。。请稍后",
             "no_authorized": "未授权",
+            "login_again": "使用 SSO 登录",
+            "login_failed": "无法发起登录，请稍后重试",
             "handleLogin": {
                 "invalid_passcode": "通行码有误",
                 "login_success": "登入成功，即将跳转",
@@ -505,6 +503,7 @@
             "admin": "管理员配置",
             "admin_badge": "后台",
             "system_settings": "系统设置",
+            "logout": "退出登录",
             "system_settings_subtitle": "管理语言、外观和记忆等个人偏好。",
             "close_system_settings": "关闭系统设置",
             "language": "语言",

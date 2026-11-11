@@ -14,6 +14,7 @@ import {
     PlusCircleIcon,
     TrashIcon,
     BookOpenIcon,
+    ArrowRightStartOnRectangleIcon,
 } from "@heroicons/react/24/outline";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -52,6 +53,7 @@ interface SidebarProps {
     readonly onRenameSession: (id: string, newTitle: string) => void;
     readonly onToggleSidebar: () => void;
     readonly onWorkspaceModeChange: (mode: WorkspaceMode) => void;
+    readonly onLogout: () => void;
     readonly theme: "light" | "dark" | "system";
     readonly onSwitchTheme: (theme: "light" | "dark" | "system") => void;
 }
@@ -457,6 +459,7 @@ export const Sidebar = (props: SidebarProps) => {
         onRenameSession,
         onToggleSidebar,
         onWorkspaceModeChange,
+        onLogout,
         theme,
         onSwitchTheme,
     } = props;
@@ -1162,6 +1165,17 @@ export const Sidebar = (props: SidebarProps) => {
                                 @{globalConfig.supportContact}
                             </span>
                         </div>
+                        <button
+                            type="button"
+                            className="inline-flex min-h-9 items-center gap-2 rounded-[10px] px-2.5 text-left text-[13px] font-normal text-[rgba(184,72,72,0.96)] transition-colors hover:bg-[rgba(229,234,239,0.82)]"
+                            onClick={() => {
+                                setIsProfileMenuOpen(false);
+                                onLogout();
+                            }}
+                        >
+                            <ArrowRightStartOnRectangleIcon className="size-4" strokeWidth={1.8} />
+                            {t("components.Sidebar.logout")}
+                        </button>
                     </div>
                 )}
                 <button

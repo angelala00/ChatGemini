@@ -3,7 +3,7 @@ from __future__ import annotations
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 
 from app.auth.auth_login_token import get_current_user
 from app.auth.oauth import (
@@ -16,6 +16,12 @@ from app.auth.oauth import (
 GLOBAL_AUTH_PROVIDER = "global"
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+
+def _resume_login_session(request: Request) -> None:
+    session = request.scope.get("session")
+    if isinstance(session, dict):
+        session.pop("logged_out", None)
 
 
 def _safe_return_to(value: object) -> str:
@@ -44,6 +50,7 @@ async def oauth_login(provider: str, request: Request, returnTo: str = "") -> Re
     # Do NOT build redirects from Referer in production; same-origin deployments
     # resolve relative targets correctly. The Referer handling below only exists
     # so the mock works across dev ports (frontend :3000 / backend :5008).
+    _resume_login_session(request)
     target = _safe_return_to(returnTo)
     if target:
         origin = ""
@@ -63,8 +70,16 @@ async def oauth_callback(provider: str) -> dict[str, str]:
 
 
 @router.post("/logout")
-async def logout() -> dict[str, str]:
-    return {"message": "logged out"}
+async def logout(request: Request) -> Response:
+    # Drop all app-local identity/session data, then retain only a signed marker
+    # so an upstream SSO cookie cannot silently authenticate the next request.
+    # The marker is removed only when the user explicitly starts OAuth again.
+    request.session.clear()
+    request.session["logged_out"] = True
+    return JSONResponse(
+        {"message": "logged out"},
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @router.get("/status")

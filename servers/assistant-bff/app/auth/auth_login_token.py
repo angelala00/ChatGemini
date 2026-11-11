@@ -12,7 +12,7 @@ is not authenticated.
 
 from __future__ import annotations
 
-from fastapi import Request
+from fastapi import HTTPException, Request
 
 from app.auth.oauth import resolve_auth_provider
 
@@ -25,6 +25,10 @@ def get_current_user(request: Request) -> dict[str, str]:
     dictionary so that other routes can depend on it without additional
     setup.
     """
+
+    session = request.scope.get("session")
+    if isinstance(session, dict) and session.get("logged_out") is True:
+        raise HTTPException(status_code=401, detail="Not authenticated")
 
     return {
         "name": "user2-claude",
