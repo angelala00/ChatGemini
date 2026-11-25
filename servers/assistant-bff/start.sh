@@ -114,9 +114,20 @@ else
 fi
 
 if [[ "${BUSINESS_STORAGE_BACKEND:-}" == "postgres" || -n "${POSTGRES_DSN:-}" ]]; then
-  echo "assistant-bff: migrating local sqlite business data to Postgres"
-  python "${SCRIPT_DIR}/migrate_local_sqlite_to_postgres.py"
-  echo "assistant-bff: local sqlite business data migration finished"
+  is_enabled() {
+    case "$1" in
+      [Tt][Rr][Uu][Ee]|[Yy][Ee][Ss]|[Oo][Nn]|1) return 0 ;;
+      *) return 1 ;;
+    esac
+  }
+  if is_enabled "${ASSISTANT_BFF_ENABLE_STARTUP_DATA_MIGRATION:-0}" &&
+     ! is_enabled "${ASSISTANT_BFF_SKIP_STARTUP_SQLITE_MIGRATION:-0}"; then
+    echo "assistant-bff: migrating local sqlite business data to Postgres"
+    python "${SCRIPT_DIR}/migrate_local_sqlite_to_postgres.py"
+    echo "assistant-bff: local sqlite business data migration finished"
+  else
+    echo "assistant-bff: startup sqlite migration disabled"
+  fi
   export ASSISTANT_BFF_SKIP_STARTUP_SQLITE_MIGRATION=1
 fi
 

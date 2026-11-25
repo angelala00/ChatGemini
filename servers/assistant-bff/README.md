@@ -15,7 +15,7 @@
 - [`.env.example`](./.env.example): 环境变量模板
 - [`sql/business_schema.postgres.sql`](./sql/business_schema.postgres.sql): 业务轻量表的显式 Postgres 建表 SQL
 - [`verify_storage.sh`](./verify_storage.sh): 启动服务后检查 `/healthz`、`/healthz/dependencies`、`/readyz`
-- [`migrate_local_sqlite_to_postgres.py`](./migrate_local_sqlite_to_postgres.py): 将节点本地 sqlite 会话历史、`file_mapping`、GPTs 配置与用户状态幂等迁移到 Postgres；当 `OBJECT_STORAGE_BACKEND=minio` 时，也会把历史 `filesystem` 文件本体幂等搬迁到 MinIO；`start.sh` 在 Postgres 模式启动前会自动执行一次
+- [`migrate_local_sqlite_to_postgres.py`](./migrate_local_sqlite_to_postgres.py): 将节点本地 sqlite 会话历史、`file_mapping`、GPTs 配置与用户状态幂等迁移到 Postgres；当 `OBJECT_STORAGE_BACKEND=minio` 时，也会把历史 `filesystem` 文件本体幂等搬迁到 MinIO；`start.sh` 在 Postgres 模式启动前仅在显式开启历史数据迁移时执行
 
 ## 测试
 
@@ -34,6 +34,8 @@ OPENAI_API_KEY=test-key .venv/bin/python -m unittest tests/test_gpt_department_v
 - `POSTGRES_POOL_MIN_SIZE`: Postgres 连接池最小连接数，默认 `1`。
 - `POSTGRES_POOL_MAX_SIZE`: Postgres 连接池最大连接数，默认 `5`。
 - `SQLITE_MIGRATION_NODE_ID`: 本节点 sqlite 迁移状态标识；当 `BUSINESS_STORAGE_BACKEND=postgres` 时会自动回填为当前机器的主 IP，也可以手工覆盖，但每个节点必须不同。
+- `ASSISTANT_BFF_ENABLE_STARTUP_DATA_MIGRATION`: 默认 `0`，关闭启动时 SQLite → Postgres 导入、旧 `custom_gpts` → `agents` 补迁、历史会话元数据回填和制度知识同步。需要迁移时设为 `1`，完成后恢复 `0`；部署和直接运行 uvicorn 均遵循此开关。旧的 `ASSISTANT_BFF_SKIP_STARTUP_SQLITE_MIGRATION=0` 不会重新开启迁移。
+- `ASSISTANT_BFF_ENABLE_SYSTEM_GPT_SEED`: 默认 `0`，不再自动补回系统智能体。全新数据库如需内置系统智能体，设为 `1` 启动一次后恢复 `0`。
 - `FORCE_REGULATION_KNOWLEDGE_SEED_SYNC`: 设为 `true` 时强制本节点重新扫描并同步 `FILE_BASE/regulationassistant` 制度知识文件，默认 `false`。
 - `SESSION_HISTORY_ENCRYPTION_KEY`: 会话历史加密密钥。当前要求在 `BUSINESS_STORAGE_BACKEND=postgres` 时必填，格式为 `Fernet` key。
 - `OBJECT_STORAGE_BACKEND`: 文件存储后端。生产建议 `minio`，本地开发可用 `filesystem`。
@@ -100,7 +102,7 @@ OPENAI_API_KEY=test-key .venv/bin/python -m unittest tests/test_gpt_department_v
    - `POSTGRES_DSN=...`
    - 如不手工配置，`start.sh` 会自动回填为当前机器主 IP
    - `OBJECT_STORAGE_BACKEND=filesystem`
-3. 在目标节点检查本地 sqlite 表结构和待迁移数据；正式启动时 `start.sh` 会自动执行迁移，也可手动提前执行：
+3. 在目标节点检查本地 sqlite 表结构和待迁移数据；仅当设置 `ASSISTANT_BFF_ENABLE_STARTUP_DATA_MIGRATION=1` 时，`start.sh` 才会执行迁移；也可手动提前执行（手动命令不受启动开关限制）：
 
 ```bash
 cd servers/assistant-bff
@@ -144,7 +146,7 @@ curl http://localhost:5008/readyz
 
 ### 文件本体迁移
 
-当 `OBJECT_STORAGE_BACKEND=minio` 时，`start.sh` / `deploy.sh` 触发的迁移会继续扫描 Postgres 中仍为 `storage_backend=filesystem` 的 `file_mapping` 记录，并把对应本地文件上传到 MinIO，然后原子更新该条 `file_mapping` 到 `minio`。
+当 `OBJECT_STORAGE_BACKEND=minio` 且显式开启历史数据迁移时，`start.sh` / `deploy.sh` 触发的迁移会继续扫描 Postgres 中仍为 `storage_backend=filesystem` 的 `file_mapping` 记录，并把对应本地文件上传到 MinIO，然后原子更新该条 `file_mapping` 到 `minio`。
 
 - 迁移按 `file_id` 顺序分批处理，避免一次性把全部记录载入内存。
 - 成功迁移后会把 `file_mapping.storage_backend` 改成 `minio`，后续重复升级不会重复上传。
@@ -153,7 +155,9 @@ curl http://localhost:5008/readyz
 
 ### 制度知识启动同步
 
-启动初始化会把 `FILE_BASE/regulationassistant` 下的制度文件同步为 `regulationassistant` 的 `assistant_knowledge` 文件。同步成功后会按 `(SQLITE_MIGRATION_NODE_ID, regulation_knowledge_seed_sync:v1)` 在 `startup_task_state` 中记录节点级完成状态；同一节点后续升级启动会直接跳过该目录扫描。需要重新同步本地制度文件时，将 `FORCE_REGULATION_KNOWLEDGE_SEED_SYNC=true` 后启动一次服务。
+显式开启历史数据迁移后，启动初始化会把 `FILE_BASE/regulationassistant` 下的制度文件同步为 `regulationassistant` 的 `assistant_knowledge` 文件。同步成功后会按 `(SQLITE_MIGRATION_NODE_ID, regulation_knowledge_seed_sync:v1)` 在 `startup_task_state` 中记录节点级完成状态；同一节点后续升级启动会直接跳过该目录扫描。需要重新同步本地制度文件时，将 `FORCE_REGULATION_KNOWLEDGE_SEED_SYNC=true` 后启动一次服务。
+
+正常升级无需增加配置；默认保留表结构初始化与字段兼容升级，不导入历史业务数据。已恢复的智能体请在部署此变更后重新删除。迁移开关会重读旧数据，可能恢复已删除记录，仅在确实需要迁移时开启。
 
 ### 暂不处理的内容
 

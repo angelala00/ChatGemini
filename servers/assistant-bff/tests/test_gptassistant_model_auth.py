@@ -521,7 +521,8 @@ class GPTAssistantModelAuthTests(unittest.IsolatedAsyncioTestCase):
             patcher.start()
         try:
             business_store._INITIALIZED = False
-            business_store.init_business_storage()
+            with patch.dict(os.environ, {"ASSISTANT_BFF_ENABLE_STARTUP_DATA_MIGRATION": "1"}):
+                business_store.init_business_storage()
 
             mappings = business_store.list_file_mappings("regulationassistant")
             file_mapping = mappings["regulationassistant:policy.txt"]

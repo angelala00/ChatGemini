@@ -1645,13 +1645,20 @@ def _migrate_sqlite_light_business_tables_to_postgres_if_needed() -> None:
     )
 
 
-def _skip_startup_sqlite_migration() -> bool:
-    return os.getenv("ASSISTANT_BFF_SKIP_STARTUP_SQLITE_MIGRATION", "").strip().lower() in {
+def _startup_flag_enabled(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in {
         "1",
         "true",
         "yes",
         "on",
     }
+
+
+def _skip_startup_sqlite_migration() -> bool:
+    return (
+        not _startup_flag_enabled("ASSISTANT_BFF_ENABLE_STARTUP_DATA_MIGRATION")
+        or _startup_flag_enabled("ASSISTANT_BFF_SKIP_STARTUP_SQLITE_MIGRATION")
+    )
 
 
 def ensure_initialized() -> None:
@@ -2501,10 +2508,16 @@ def init_business_storage() -> None:
         _seed_admin_model_configs_if_empty()
         _seed_admin_user_permissions_if_empty()
         _seed_admin_feature_flags_if_empty()
-        _migrate_legacy_custom_gpts_to_agents()
+        if _startup_flag_enabled("ASSISTANT_BFF_ENABLE_STARTUP_DATA_MIGRATION"):
+            _migrate_legacy_custom_gpts_to_agents()
     _ensure_file_mapping_owner_columns()
-    _sync_seed_system_gpts_to_storage()
-    _sync_seed_regulation_knowledge_files_to_storage()
+    if _startup_flag_enabled("ASSISTANT_BFF_ENABLE_SYSTEM_GPT_SEED"):
+        _sync_seed_system_gpts_to_storage()
+    if (
+        _startup_flag_enabled("ASSISTANT_BFF_ENABLE_STARTUP_DATA_MIGRATION")
+        or model_config.FORCE_REGULATION_KNOWLEDGE_SEED_SYNC
+    ):
+        _sync_seed_regulation_knowledge_files_to_storage()
     _migrate_sqlite_file_mapping_to_postgres_if_needed()
     _migrate_sqlite_light_business_tables_to_postgres_if_needed()
     if not _skip_startup_sqlite_migration():

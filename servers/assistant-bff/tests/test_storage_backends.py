@@ -68,6 +68,53 @@ class StorageBackendFallbackTests(unittest.TestCase):
         metrics_events.init_metrics_storage()
         tracing.init_trace_storage()
 
+    def test_deleted_agents_stay_deleted_after_default_restart(self):
+        flags = {
+            "ASSISTANT_BFF_ENABLE_STARTUP_DATA_MIGRATION": "0",
+            "ASSISTANT_BFF_ENABLE_SYSTEM_GPT_SEED": "0",
+            "ASSISTANT_BFF_SKIP_STARTUP_SQLITE_MIGRATION": "0",
+        }
+        seed = {"deleted-system": {
+            "name": "System", "assistant_kind": "system", "handler_key": "test"
+        }}
+        with patch.dict(os.environ, flags), patch.object(
+            business_store, "_load_seed_system_gpts", return_value=seed
+        ):
+            with business_store._connect() as conn:
+                conn.execute(
+                    "INSERT INTO custom_gpts(gid, config) VALUES(?, ?)",
+                    ("deleted-custom", '{"name": "Custom"}'),
+                )
+                conn.commit()
+            with patch.dict(os.environ, {
+                "ASSISTANT_BFF_ENABLE_STARTUP_DATA_MIGRATION": "1",
+                "ASSISTANT_BFF_ENABLE_SYSTEM_GPT_SEED": "1",
+            }):
+                business_store.init_business_storage()
+            with business_store._connect() as conn:
+                self.assertEqual(
+                    conn.execute(
+                        "SELECT COUNT(*) FROM agents WHERE gid IN (?, ?)",
+                        ("deleted-custom", "deleted-system"),
+                    ).fetchone()[0], 2
+                )
+                conn.execute(
+                    "DELETE FROM agents WHERE gid IN (?, ?)",
+                    ("deleted-custom", "deleted-system"),
+                )
+                conn.commit()
+            business_store.init_business_storage()
+            with business_store._connect() as conn:
+                self.assertEqual(
+                    conn.execute(
+                        "SELECT COUNT(*) FROM agents WHERE gid IN (?, ?)",
+                        ("deleted-custom", "deleted-system"),
+                    ).fetchone()[0], 0
+                )
+            self.assertTrue(business_store._skip_startup_sqlite_migration())
+            with patch.dict(os.environ, {"ASSISTANT_BFF_ENABLE_STARTUP_DATA_MIGRATION": "1"}):
+                self.assertFalse(business_store._skip_startup_sqlite_migration())
+
     def tearDown(self) -> None:
         for patcher in (
             self.trace_dir_patcher,
@@ -390,7 +437,11 @@ class StorageBackendFallbackTests(unittest.TestCase):
         tracker.finalize(status="success", latency_ms=10.0)
 
         business_store._INITIALIZED = False
-        business_store.init_business_storage()
+        with patch.dict(os.environ, {
+            "ASSISTANT_BFF_ENABLE_STARTUP_DATA_MIGRATION": "1",
+            "ASSISTANT_BFF_SKIP_STARTUP_SQLITE_MIGRATION": "0",
+        }):
+            business_store.init_business_storage()
 
         meta = business_store.get_session_history_meta("cid-legacy")
         self.assertIsNotNone(meta)
