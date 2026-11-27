@@ -29,7 +29,7 @@ register_gpt({
         "name": "AI助手",
         "title": "通用对话助手",
         "sub_title": "通用对话助手111",
-        "system_prompt": "You are a helpful assistant.",
+        "system_prompt": "",
         "file_upload_enabled": True,
         "upload_file_types": ["document", "image"],
         "max_active_files": 2000,

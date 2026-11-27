@@ -116,3 +116,7 @@
 - **智能体聊天引擎收敛**：用户创建的普通自定义智能体统一走 `chat_with_kernel_gptassistant`；仅少数历史内置且未声明 owner 的助手继续保留旧 `chat_service` 分支兼容。
 
 - **启动数据开关**：`ASSISTANT_BFF_ENABLE_STARTUP_DATA_MIGRATION` 默认关闭，统一控制部署脚本 SQLite/Postgres 与文件本体迁移、服务内旧智能体补迁、SQLite 补迁、历史会话元数据回填及制度知识同步；`FORCE_REGULATION_KNOWLEDGE_SEED_SYNC` 仍可单独强制同步制度知识。`ASSISTANT_BFF_ENABLE_SYSTEM_GPT_SEED` 默认关闭，控制内置系统智能体补种，新库需显式开启一次。表结构初始化、字段兼容升级和管理员基础配置初始化继续执行。内部 `ASSISTANT_BFF_SKIP_STARTUP_SQLITE_MIGRATION` 仅抑制 SQLite 补迁，不会开启其他历史迁移；手动迁移命令仍可使用。迁移/补种完成后关闭对应开关，避免恢复用户已删除数据。
+
+## 默认助手通用提示词
+
+- `gptassistant` 的内置 `system_prompt` 默认为空。运行时仅对该助手精确匹配旧通用提示词 `You are a helpful assistant`（可带结尾句号、首尾空白）并清空，兼容已持久化配置；自定义提示词不变。OpenAI compatible provider 在最终 system prompt 为空时省略该消息；附件说明、历史摘要和工具规则仍按原逻辑附加。

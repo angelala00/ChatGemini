@@ -631,6 +631,11 @@ def apply_runtime_gpt_defaults(
     config: dict,
 ) -> dict:
     next_config = dict(config)
+    # Also handle the generic prompt persisted by older default-assistant seeds.
+    if _gid == GPTASSISTANT_GPT_ID and isinstance(next_config.get("system_prompt"), str):
+        prompt = next_config["system_prompt"].strip()
+        if prompt in {"You are a helpful assistant", "You are a helpful assistant."}:
+            next_config["system_prompt"] = ""
     resolved_upload_types = _resolve_default_upload_file_types(next_config)
     next_config["upload_file_types"] = resolved_upload_types
     if "file_upload_enabled" in next_config:
